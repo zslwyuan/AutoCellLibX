@@ -1,0 +1,28 @@
+read_liberty -lib ../../stdCelllib/gscl45nm.lib
+read -sv ./vFiles/*v
+hierarchy -top BranchPredictor
+flatten
+synth -top BranchPredictor
+flatten
+
+# the high-level stuff
+proc; fsm; opt; memory; opt
+clean
+
+# mapping to internal cell library
+techmap; opt
+
+# mapping flip-flops to mycells.lib
+dfflibmap -liberty ../../stdCelllib/gscl45nm.lib
+clean
+
+# mapping logic to mycells.lib
+abc  -liberty ../../stdCelllib/gscl45nm.lib
+
+clean
+opt
+clean
+clean
+clean
+
+write_blif boom.blif
