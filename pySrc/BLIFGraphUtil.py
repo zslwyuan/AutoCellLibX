@@ -116,7 +116,15 @@ def removeEmptySeqs(seqs):
     newClusterSeqs = []
     for curSeq in seqs:
         if (len(curSeq.patternClusters) > 0):
-            newClusterSeqs.append(curSeq)
+            newClusters = []
+            for tmpCluster in curSeq.patternClusters:
+                if (not tmpCluster.disabled):
+                    newClusters.append(tmpCluster)
+            if (len(newClusters) > 0):
+                curSeq.patternClusters = newClusters
+                newClusterSeqs.append(curSeq)
+            else:
+                del curSeq
         else:
             del curSeq
     return newClusterSeqs
@@ -125,8 +133,10 @@ def removeEmptySeqs(seqs):
 def sortPatternClusterSeqs(seqs):
     newClusterSeqsCnts = []
     newClusterSeqsSize = []
+
     for curSeq in seqs:
-        newClusterSeqsCnts.append(len(curSeq.patternClusters))
+        newClusterSeqsCnts.append(
+            len(curSeq.patternClusters) * len(curSeq.patternClusters[0].cellIdsContained))
         newClusterSeqsSize.append(
             len(curSeq.patternClusters[0].cellIdsContained))
 

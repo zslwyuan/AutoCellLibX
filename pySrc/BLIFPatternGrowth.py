@@ -10,6 +10,7 @@ def growASeqOfClusters(BLIFGraph, clusterSeq, clusterNum, patternNum, paintPatte
     cellsInClusters = set()
     # remove disabled clusters
     for cluster in clusterSeq.patternClusters:
+        assert(cluster.disabled)  # disabled cluster should have been removed.
         if (not cluster.disabled):
             clusters.append(cluster)
             for cellId in cluster.cellIdsContained:
@@ -33,6 +34,8 @@ def growASeqOfClusters(BLIFGraph, clusterSeq, clusterNum, patternNum, paintPatte
             inOrderId = 0
             for inputNet in cell.inputNets:
                 curNeighbor = inputNet.predCell
+                if (curNeighbor is None):
+                    continue
                 # bypass cells in current cluster or visited
                 if (curNeighbor.clusterId == cluster.clusterId or curNeighbor in visitedNeighbors or curNeighbor.stopType):
                     continue
@@ -128,14 +131,6 @@ def growASeqOfClusters(BLIFGraph, clusterSeq, clusterNum, patternNum, paintPatte
         print("extended ", len(newClusters), " clusters and new pattern is : ",
               newClusters[0].patternExtensionTrace, " and the size of each clustet is ", len(newClusters[0].cellsContained))
 
-        print("painting subgraph which will be saved to ",
-              "./figs/COMPLEX"+str(patternNum)+".png")
-        if (paintPattern):
-            patternSubgraph = BLIFGraph.subgraph(
-                newClusters[0].cellIdsContained)
-            drawColorfulFigureForGraphWithAttributes(
-                patternSubgraph, save_to_file="./figs/COMPLEX"+str(patternNum)+".png", withLabel=True, figsize=(20, 20))
-
         newSeq = DesignPatternClusterSeq(newClusters[0].patternExtensionTrace)
         for cluster in newClusters:
             newSeq.addCluster(cluster)
@@ -153,4 +148,4 @@ def growASeqOfClusters(BLIFGraph, clusterSeq, clusterNum, patternNum, paintPatte
 
     resSeqs.append(clusterSeq)
 
-    return resSeqs
+    return resSeqs, patternNum

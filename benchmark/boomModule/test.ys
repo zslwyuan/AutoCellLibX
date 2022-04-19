@@ -1,16 +1,13 @@
 read_liberty -lib ../../stdCelllib/gscl45nm.lib
 read -sv ./vFiles/*v
-hierarchy -top BranchPredictor
+hierarchy -top BoomCore
 flatten
-synth -top BranchPredictor
+synth -top BoomCore
 flatten
 
 # the high-level stuff
 proc; fsm; opt; memory; opt
 clean
-
-# mapping to internal cell library
-techmap; opt
 
 # mapping flip-flops to mycells.lib
 dfflibmap -liberty ../../stdCelllib/gscl45nm.lib
@@ -20,6 +17,7 @@ clean
 abc  -liberty ../../stdCelllib/gscl45nm.lib
 
 clean
+opt
 opt
 clean
 clean

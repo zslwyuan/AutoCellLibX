@@ -199,12 +199,12 @@ def extractAndEncodeSubgraph_Tree(cells, rootNode, depthLimit=2, clusterId=None)
     depths = [0]
     tree = [rootNode]
     encodes = [cells[rootNode].stdCellType.typeName]
-
+    Que = [rootNode]
     head = 0
     while (head < len(tree)):
-        curNode = cells[tree[head]]
+        curNode = cells[Que[head]]
         curDepth = depths[head]
-        if (curDepth > depthLimit):
+        if (curDepth >= depthLimit):
             break
         for inputNet in curNode.inputNets:
             if (not inputNet.predCell is None):
@@ -213,9 +213,11 @@ def extractAndEncodeSubgraph_Tree(cells, rootNode, depthLimit=2, clusterId=None)
                     if (inputNet.predCell.stdCellType.typeName.find(typeKey) >= 0):
                         shouldBypass = True
                         break
-                if (not shouldBypass):
+                if ((not shouldBypass)):
                     depths.append(curDepth+1)
-                    tree.append(inputNet.predCell.id)
+                    Que.append(inputNet.predCell.id)
+                    if (not inputNet.predCell.id in tree):
+                        tree.append(inputNet.predCell.id)
                     encodes.append(inputNet.predCell.stdCellType.typeName)
         head += 1
 
@@ -231,7 +233,7 @@ def extractAndEncodeSubgraph_Tree(cells, rootNode, depthLimit=2, clusterId=None)
 
 def heuristicLabelSomeNodesAndGetInitialClusters(BLIFGraph, cells, netlist):
 
-    treeDepth = 3
+    treeDepth = 1
 
     pattern2RootCells = dict()
     for cell in cells:
