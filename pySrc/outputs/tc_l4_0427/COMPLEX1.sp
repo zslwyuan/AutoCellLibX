@@ -1,4 +1,4 @@
-.subckt COMPLEX1 cl0#A cl2#B VCC cl2#C GND cl2#A cl0#Y cl1#A
+.subckt COMPLEX1 VCC cl0#A cl0#Y cl2#B cl2#C cl1#A cl2#A GND
 Mcl0#0 cl0#a_9_54# cl0#A VCC VCC PMOS W=1u L=0.05u
 + ad=0p pd=0u as=0p ps=0u 
 Mcl0#1 cl0#Y cl1#Y cl0#a_9_54# VCC PMOS W=1u L=0.05u
@@ -29,9 +29,9 @@ Mcl2#5 GND cl2#C cl2#Y GND NMOS W=0.25u L=0.05u
 + ad=0p pd=0u as=0p ps=0u 
 .ends COMPLEX1
 * pattern code: [OAI21X1,INVX1,AOI21X1]
-* 187 occurrences in design 
+* 391 occurrences in design 
 * each contains 3 cells
 * Example occurence:
-*   .subckt OAI21X1 A=sel[0] B=w1_5270 C=w1_0225 Y=w1_3075
-*   .subckt INVX1 A=din30[39] Y=w1_5270
-*   .subckt AOI21X1 A=sel[0] B=din31[39] C=w1_3578 Y=w1_0225
+*   .subckt OAI21X1 A=sel[0] B=w1_0781 C=w1_2358 Y=w1_5285
+*   .subckt INVX1 A=din42[6] Y=w1_0781
+*   .subckt AOI21X1 A=sel[0] B=din43[6] C=w1_4069 Y=w1_2358

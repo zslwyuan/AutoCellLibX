@@ -97,11 +97,12 @@ def main():
 
                 # if ASTRAN is available, run it to get the layout and area evaluation
                 if (ASTRANBuildPath != ""):
-                    runAstranForNetlist(AstranPath=ASTRANBuildPath, gurobiPath="/opt/gurobi950/linux64/bin/gurobi_cl",
-                                        technologyPath="../tools/astran/Astran/build/Work/tech_freePDK45.rul",
-                                        spiceNetlistPath=outputPath+'/COMPLEX' +
-                                        str(patternTraceId)+'.sp',
-                                        complexName='COMPLEX'+str(patternTraceId), commandDir=outputPath)
+                    if (len(clusterSeq.patternClusters[0].cellIdsContained) < 11):
+                        runAstranForNetlist(AstranPath=ASTRANBuildPath, gurobiPath="/opt/gurobi950/linux64/bin/gurobi_cl",
+                                            technologyPath="../tools/astran/Astran/build/Work/tech_freePDK45.rul",
+                                            spiceNetlistPath=outputPath+'/COMPLEX' +
+                                            str(patternTraceId)+'.sp',
+                                            complexName='COMPLEX'+str(patternTraceId), commandDir=outputPath)
 
             newSeqOfClusters, patternNum = growASeqOfClusters(
                 BLIFGraph, clusterSeq, clusterNum, patternNum, paintPattern=True)
@@ -112,7 +113,7 @@ def main():
 
             clusterSeqs = clusterSeqs[1:]
             clusterSeqs += newSeqOfClusters
-            clusterSeqs = removeEmptySeqs(clusterSeqs)
+            clusterSeqs = removeEmptySeqsAndDisableClusters(clusterSeqs)
             clusterSeqs = sortPatternClusterSeqs(clusterSeqs)
 
 

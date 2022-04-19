@@ -10,7 +10,8 @@ def growASeqOfClusters(BLIFGraph, clusterSeq, clusterNum, patternNum, paintPatte
     cellsInClusters = set()
     # remove disabled clusters
     for cluster in clusterSeq.patternClusters:
-        assert(cluster.disabled)  # disabled cluster should have been removed.
+        # disabled cluster should have been removed.
+        assert(not cluster.disabled)
         if (not cluster.disabled):
             clusters.append(cluster)
             for cellId in cluster.cellIdsContained:

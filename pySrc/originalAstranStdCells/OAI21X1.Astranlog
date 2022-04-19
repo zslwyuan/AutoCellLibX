@@ -102,7 +102,7 @@ astran> read ./originalAstranStdCells//OAI21X1.run
    NMOS: M5-M4-M3-
 -> Placing transistors...
 -> Routing cell...
--> Routing finished in 1 attempts after 0 s
+-> Routing finished in 3 attempts after 0.009 s
  ( initial cost = 7460 num reps = 1350 problem size = 9 )  Iteration 1; cost = 9203.000 (7460.000); p_cost = 9203.000; accept = 1.000; avg_delta = 1.291; dp = 1460.064; thres = 99999.000; cost_ratio = 1.234; [0]
  Iteration 2; cost = 8476.000 (7460.000); p_cost = 8476.000; accept = 1.000; avg_delta = -0.539; dp = 1328.473; thres = 47999.520; cost_ratio = 0.921; [0]
  Iteration 3; cost = 9421.000 (7460.000); p_cost = 9421.000; accept = 1.000; avg_delta = 0.700; dp = 1344.514; thres = 23039.770; cost_ratio = 1.111; [0]
@@ -132,7 +132,8 @@ astran> read ./originalAstranStdCells//OAI21X1.run
  Iteration 27; cost = 4222.000 (4222.000); p_cost = 4222.000; accept = 0.209; avg_delta = 0.000; dp = 0.001; thres = 397.481; cost_ratio = 1.000; [9]
  final cost = 4222 
 -> Routing cell...
--> Routing finished in 2 attempts after 0 s
+-> Routing finished in 1 attempts after 0.006 s
+-> New best transistor ordering found with cost: 2543
  ( initial cost = 7460 num reps = 1350 problem size = 9 )  Iteration 1; cost = 7365.000 (7365.000); p_cost = 7365.000; accept = 1.000; avg_delta = -0.070; dp = 1383.038; thres = 99999.000; cost_ratio = 0.987; [0]
  Iteration 2; cost = 8799.000 (7365.000); p_cost = 8799.000; accept = 1.000; avg_delta = 1.062; dp = 1369.034; thres = 47999.520; cost_ratio = 1.195; [0]
  Iteration 3; cost = 10857.000 (7365.000); p_cost = 10857.000; accept = 1.000; avg_delta = 1.524; dp = 1356.304; thres = 23039.770; cost_ratio = 1.234; [0]
@@ -162,7 +163,7 @@ astran> read ./originalAstranStdCells//OAI21X1.run
  Iteration 27; cost = 4222.000 (4222.000); p_cost = 4222.000; accept = 0.209; avg_delta = 0.000; dp = 0.001; thres = 384.444; cost_ratio = 1.000; [9]
  final cost = 4222 
 -> Routing cell...
--> Routing finished in 1 attempts after 0 s
+-> Routing finished in 3 attempts after 0.009 s
  ( initial cost = 7460 num reps = 1350 problem size = 9 )  Iteration 1; cost = 9504.000 (7460.000); p_cost = 9504.000; accept = 1.000; avg_delta = 1.514; dp = 1343.710; thres = 99999.000; cost_ratio = 1.274; [0]
  Iteration 2; cost = 6749.000 (6749.000); p_cost = 6749.000; accept = 1.000; avg_delta = -2.041; dp = 1373.944; thres = 47999.520; cost_ratio = 0.710; [0]
  Iteration 3; cost = 11057.000 (6749.000); p_cost = 11057.000; accept = 1.000; avg_delta = 3.191; dp = 1343.060; thres = 23039.770; cost_ratio = 1.638; [0]
@@ -192,24 +193,24 @@ astran> read ./originalAstranStdCells//OAI21X1.run
  Iteration 27; cost = 4222.000 (4222.000); p_cost = 4222.000; accept = 0.203; avg_delta = 0.000; dp = 0.001; thres = 391.884; cost_ratio = 1.000; [9]
  final cost = 4222 
 -> Routing cell...
--> Routing finished in 2 attempts after 0 s
+-> Routing finished in 1 attempts after 0.005 s
 -> Final cost: Width=7; Gate Mismatches=0; WL=6; Rt. Density=2; Nr. Gaps=0
-   PMOS: M2-M1-M0-
-   NMOS: M5-M4-M3-
+   PMOS: M0-M1-M2-
+   NMOS: M3-M4-M5-
 -> Routing cell...
--> Routing finished in 1 attempts after 0 s
+-> Routing finished in 1 attempts after 0.005 s
 
--> Cost before optimization:2512
+-> Cost before optimization:2543
 -> Optimizing routing graph...
--> Cost after optimization: 2499
--> Runtime = 0.115 s
+-> Cost after optimization: 2538
+-> Runtime = 3.079 s
 
--> Cost before optimization:2499
+-> Cost before optimization:2538
 -> Optimizing routing graph...
--> Cost after optimization: 2499
--> Runtime = 0.053 s
+-> Cost after optimization: 2538
+-> Runtime = 1.434 s
 -> Compacting layout...
--> Calling LP Solver (3009 variables, 4338 constraints)
+-> Calling LP Solver (4758 variables, 6653 constraints)
 -> Running command: "/opt/gurobi950/linux64/bin/gurobi_cl" TimeLimit=3600 ResultFile=ILPmodel.sol ILPmodel.lp
 -> To interrupt earlier and get the current best solution, type in a terminal: kill -2 [gurobi process]
 -> * and H means new feasible solution found:Set parameter Username
@@ -225,76 +226,87 @@ Copyright (c) 2021, Gurobi Optimization, LLC
 
 Read LP format model from file ILPmodel.lp
 Reading time = 0.01 seconds
-: 4339 rows, 2125 columns, 15179 nonzeros
+: 6654 rows, 3115 columns, 24928 nonzeros
 Thread count: 6 physical cores, 12 logical processors, using up to 12 threads
-Optimize a model with 4339 rows, 2125 columns and 15179 nonzeros
-Model fingerprint: 0x183b92ca
+Optimize a model with 6654 rows, 3115 columns and 24928 nonzeros
+Model fingerprint: 0x7fee104f
 
-Model fingerprint: 0x183b92ca
-Variable types: 0 continuous, 2125 integer (1164 binary)
+Model fingerprint: 0x7fee104f
+Variable types: 0 continuous, 3115 integer (1920 binary)
 Coefficient statistics:
   Matrix range     [7e-01, 1e+05]
   Objective range  [1e+00, 5e+03]
   Bounds range     [1e+00, 1e+00]
   RHS range        [1e+00, 2e+04]
-Presolve removed 1809 rows and 770 columns
-Presolve time: 0.02s
-Presolved: 2530 rows, 1355 columns, 7425 nonzeros
-Variable types: 0 continuous, 1355 integer (892 binary)
+Presolve removed 2121 rows and 860 columns
+Presolve time: 0.04s
+Presolved: 4533 rows, 2255 columns, 14033 nonzeros
+Variable types: 0 continuous, 2255 integer (1625 binary)
 
-Root relaxation: objective 1.637111e+06, 973 iterations, 0.01 seconds (0.01 work units)
+Root relaxation: objective 2.039668e+06, 1509 iterations, 0.02 seconds (0.03 work units)
 
     Nodes    |    Current Node    |     Objective Bounds      |     Work
  Expl Unexpl |  Obj  Depth IntInf | Incumbent    BestBd   Gap | It/Node Time
 
-     0     0 1637110.82    0  182          - 1637110.82      -     -    0s
-H    0     0                    2040693.0000 1637123.39  19.8%     -    0s
-     0     0 1637328.45    0  337 2040693.00 1637328.45  19.8%     -    0s
-H    0     0                    2040127.0000 1637328.45  19.7%     -    0s
-     0     0 1637328.45    0  353 2040127.00 1637328.45  19.7%     -    0s
-     0     0 1637563.23    0  118 2040127.00 1637563.23  19.7%     -    0s
-     0     0 1637563.23    0   81 2040127.00 1637563.23  19.7%     -    0s
-H    0     0                    1638665.0000 1637563.23  0.07%     -    0s
-H    0     0                    1638583.0000 1637563.23  0.06%     -    0s
-H    0     0                    1638429.0000 1637563.23  0.05%     -    0s
-     0     0 1637612.66    0  260 1638429.00 1637612.66  0.05%     -    0s
-H    0     0                    1637873.0000 1637612.66  0.02%     -    0s
-     0     0 1637614.12    0  298 1637873.00 1637614.12  0.02%     -    0s
-     0     0 1637638.48    0  368 1637873.00 1637638.48  0.01%     -    0s
-H    0     0                    1637867.0000 1637638.48  0.01%     -    0s
-     0     0 1637639.71    0  327 1637867.00 1637639.71  0.01%     -    0s
-     0     0 1637639.73    0  328 1637867.00 1637639.73  0.01%     -    0s
-     0     0 1637639.77    0  336 1637867.00 1637639.77  0.01%     -    0s
-H    0     0                    1637861.0000 1637639.77  0.01%     -    0s
-H    0     0                    1637705.0000 1637639.77  0.00%     -    0s
-     0     0 1637639.97    0  341 1637705.00 1637639.97  0.00%     -    0s
+     0     0 2039667.66    0  311          - 2039667.66      -     -    0s
+H    0     0                    2044376.0000 2039667.66  0.23%     -    0s
+     0     0 2040229.04    0   88 2044376.00 2040229.04  0.20%     -    0s
+     0     0 2040339.67    0  206 2044376.00 2040339.67  0.20%     -    0s
+     0     0 2040353.98    0  321 2044376.00 2040353.98  0.20%     -    0s
+     0     0 2040364.34    0  324 2044376.00 2040364.34  0.20%     -    0s
+     0     0 2040368.45    0  317 2044376.00 2040368.45  0.20%     -    0s
+H    0     0                    2042654.0000 2040368.72  0.11%     -    0s
+     0     0 2040368.72    0  322 2042654.00 2040368.72  0.11%     -    0s
+H    0     0                    2042139.0000 2040436.28  0.08%     -    0s
+     0     0 2040450.52    0  501 2042139.00 2040450.52  0.08%     -    0s
+     0     0 2040450.71    0  346 2042139.00 2040450.71  0.08%     -    0s
+     0     0 2040451.66    0  338 2042139.00 2040451.66  0.08%     -    0s
+     0     0 2040453.03    0  526 2042139.00 2040453.03  0.08%     -    0s
+     0     0 2040453.76    0  542 2042139.00 2040453.76  0.08%     -    0s
+     0     0 2040454.03    0  379 2042139.00 2040454.03  0.08%     -    0s
+     0     0 2040454.03    0  380 2042139.00 2040454.03  0.08%     -    0s
+     0     0 2040456.06    0  387 2042139.00 2040456.06  0.08%     -    0s
+     0     0 2040456.06    0  378 2042139.00 2040456.06  0.08%     -    0s
+     0     0 2040462.52    0  374 2042139.00 2040462.52  0.08%     -    0s
+     0     0 2040462.71    0  380 2042139.00 2040462.71  0.08%     -    0s
+     0     0 2040465.03    0  377 2042139.00 2040465.03  0.08%     -    0s
+     0     0 2040468.45    0  353 2042139.00 2040468.45  0.08%     -    0s
+H    0     0                    2040890.0000 2040468.45  0.02%     -    0s
+     0     0 2040468.45    0   40 2040890.00 2040468.45  0.02%     -    1s
+     0     0 2040468.45    0  418 2040890.00 2040468.45  0.02%     -    1s
+     0     0 2040468.45    0  459 2040890.00 2040468.45  0.02%     -    1s
+     0     0 2040468.45    0  461 2040890.00 2040468.45  0.02%     -    1s
+     0     0 2040468.45    0  462 2040890.00 2040468.45  0.02%     -    1s
+     0     0 2040575.65    0  360 2040890.00 2040575.65  0.02%     -    1s
+     0     0 2040585.14    0  361 2040890.00 2040585.14  0.01%     -    1s
+     0     0 2040585.44    0  357 2040890.00 2040585.44  0.01%     -    1s
+H    0     0                    2040812.0000 2040585.44  0.01%     -    1s
+     0     0 2040608.69    0  408 2040812.00 2040608.69  0.01%     -    1s
 
 Cutting planes:
-  Gomory: 22
-  Cover: 2
-  Implied bound: 3
-  Clique: 1
-  MIR: 39
-  StrongCG: 2
-  Zero half: 1
+  Gomory: 33
+  Implied bound: 2
+  MIR: 30
+  StrongCG: 4
+  Zero half: 3
   RLT: 9
-  Relax-and-lift: 5
+  Relax-and-lift: 1
 
-Explored 1 nodes (2944 simplex iterations) in 0.58 seconds (0.25 work units)
+Explored 1 nodes (4307 simplex iterations) in 1.33 seconds (0.81 work units)
 Thread count was 12 (of 12 available processors)
 
-Solution count 10: 1.6377e+06 1.63786e+06 1.63787e+06 ... 2.04069e+06
+Solution count 7: 2.04081e+06 2.04089e+06 2.04089e+06 ... 2.04438e+06
 
 Optimal solution found (tolerance 1.00e-04)
 
 Optimal solution found (tolerance 1.00e-04)
-Best objective 1.637705000000e+06, best bound 1.637639973322e+06, gap 0.0040%
+Best objective 2.040812000000e+06, best bound 2.040608687750e+06, gap 0.0100%
 
 Wrote result file 'ILPmodel.sol'
 
 Wrote result file 'ILPmodel.sol'
 
--> Cell Size (W x H): 0.8 x 2.6
--> Total generation time for cell OAI21X1: 1s
+-> Cell Size (W x H): 1 x 3.2
+-> Total generation time for cell OAI21X1: 6s
 -> Saving GDSII Technology Mapping File: ./originalAstranStdCells//GDSIILTable.txt
 -> Saving layout OAI21X1 to file: ./originalAstranStdCells//OAI21X1.gds

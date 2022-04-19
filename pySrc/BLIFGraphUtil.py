@@ -112,7 +112,7 @@ class DesignPatternClusterSeq(object):
         self.patternClusters.append(patternCluster)
 
 
-def removeEmptySeqs(seqs):
+def removeEmptySeqsAndDisableClusters(seqs):
     newClusterSeqs = []
     for curSeq in seqs:
         if (len(curSeq.patternClusters) > 0):
