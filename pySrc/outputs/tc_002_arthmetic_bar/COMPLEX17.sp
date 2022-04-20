@@ -1,4 +1,4 @@
-.subckt COMPLEX17 cl1#C cl3#A cl4#B cl2#A cl4#C cl5#C cl4#Y GND cl5#Y cl6#C cl0#Y cl1#B cl6#B cl5#B cl2#B cl6#Y cl1#A VCC cl1#D cl3#B
+.subckt COMPLEX17 cl1#D cl0#Y cl3#A cl3#B cl1#A cl1#B GND cl2#B cl4#B cl1#C cl4#C VCC cl2#A cl4#Y
 Mcl0#0 cl0#Y cl1#Y VCC VCC PMOS W=0.5u L=0.05u
 + ad=0p pd=0u as=0p ps=0u 
 Mcl0#1 VCC cl2#Y cl0#Y VCC PMOS W=0.5u L=0.05u
@@ -55,39 +55,13 @@ Mcl4#4 cl4#a_2_6# cl4#B GND GND NMOS W=0.5u L=0.05u
 + ad=0p pd=0u as=0p ps=0u 
 Mcl4#5 cl4#Y cl4#C cl4#a_2_6# GND NMOS W=0.5u L=0.05u
 + ad=0p pd=0u as=0p ps=0u 
-Mcl5#0 cl5#a_9_54# cl0#Y VCC VCC PMOS W=1u L=0.05u
-+ ad=0p pd=0u as=0p ps=0u 
-Mcl5#1 cl5#Y cl5#B cl5#a_9_54# VCC PMOS W=1u L=0.05u
-+ ad=0p pd=0u as=0p ps=0u 
-Mcl5#2 VCC cl5#C cl5#Y VCC PMOS W=0.5u L=0.05u
-+ ad=0p pd=0u as=0p ps=0u 
-Mcl5#3 GND cl0#Y cl5#a_2_6# GND NMOS W=0.5u L=0.05u
-+ ad=0p pd=0u as=0p ps=0u 
-Mcl5#4 cl5#a_2_6# cl5#B GND GND NMOS W=0.5u L=0.05u
-+ ad=0p pd=0u as=0p ps=0u 
-Mcl5#5 cl5#Y cl5#C cl5#a_2_6# GND NMOS W=0.5u L=0.05u
-+ ad=0p pd=0u as=0p ps=0u 
-Mcl6#0 cl6#a_9_54# cl0#Y VCC VCC PMOS W=1u L=0.05u
-+ ad=0p pd=0u as=0p ps=0u 
-Mcl6#1 cl6#Y cl6#B cl6#a_9_54# VCC PMOS W=1u L=0.05u
-+ ad=0p pd=0u as=0p ps=0u 
-Mcl6#2 VCC cl6#C cl6#Y VCC PMOS W=0.5u L=0.05u
-+ ad=0p pd=0u as=0p ps=0u 
-Mcl6#3 GND cl0#Y cl6#a_2_6# GND NMOS W=0.5u L=0.05u
-+ ad=0p pd=0u as=0p ps=0u 
-Mcl6#4 cl6#a_2_6# cl6#B GND GND NMOS W=0.5u L=0.05u
-+ ad=0p pd=0u as=0p ps=0u 
-Mcl6#5 cl6#Y cl6#C cl6#a_2_6# GND NMOS W=0.5u L=0.05u
-+ ad=0p pd=0u as=0p ps=0u 
 .ends COMPLEX17
-* pattern code: [NAND3X1,AOI22X1,NAND2X1,NAND2X1]+c0o0_OAI21X1+c0o0_OAI21X1+c0o0_OAI21X1
-* 57 occurrences in design 
-* each contains 7 cells
+* pattern code: [NAND3X1,AOI22X1,NAND2X1,NAND2X1]+c0o0_OAI21X1
+* 78 occurrences in design 
+* each contains 5 cells
 * Example occurence:
 *   .subckt NAND3X1 A=w1_0744 B=w1_1524 C=w1_0785 Y=w1_0070
 *   .subckt AOI22X1 A=w1_0162 B=w1_0544 C=w1_0608 D=w1_1971 Y=w1_0744
 *   .subckt NAND2X1 A=w1_1062 B=w1_1358 Y=w1_1524
 *   .subckt NAND2X1 A=w1_1528 B=w1_0523 Y=w1_0785
 *   .subckt OAI21X1 A=w1_0070 B=w1_0787 C=w1_0647 Y=w1_0788
-*   .subckt OAI21X1 A=w1_0070 B=w1_0787 C=w1_0668 Y=w1_0899
-*   .subckt OAI21X1 A=w1_0070 B=w1_0787 C=w1_0521 Y=w1_0537

@@ -1,4 +1,4 @@
-.subckt COMPLEX28 cl1#Y cl1#A GND cl1#B cl1#S cl0#Y cl2#A cl2#S VCC cl2#Y
+.subckt COMPLEX28 cl2#S cl1#B cl0#Y cl1#Y VCC cl1#A cl2#A cl1#S GND cl2#Y
 Mcl0#0 cl0#Y cl1#Y VCC VCC PMOS W=0.5u L=0.05u
 + ad=0p pd=0u as=0p ps=0u 
 Mcl0#1 cl0#Y cl1#Y GND GND NMOS W=0.25u L=0.05u
@@ -45,7 +45,7 @@ Mcl2#9 GND cl2#A cl2#a_30_10# GND NMOS W=0.5u L=0.05u
 + ad=0p pd=0u as=0p ps=0u 
 .ends COMPLEX28
 * pattern code: [INVX1,MUX2X1]+c0o0_MUX2X1
-* 198 occurrences in design 
+* 231 occurrences in design 
 * each contains 3 cells
 * Example occurence:
 *   .subckt INVX1 A=w1_22220 Y=w1_35371

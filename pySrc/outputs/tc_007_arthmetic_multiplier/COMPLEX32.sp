@@ -1,4 +1,4 @@
-.subckt COMPLEX32 cl7#A cl1#A cl6#Y cl4#B cl2#A cl3#A VCC cl7#B cl4#Y cl3#B cl5#S GND cl7#Y cl1#B cl2#D cl2#C cl2#B cl4#A
+.subckt COMPLEX32 cl5#S cl7#B cl1#B cl2#A cl2#D cl3#A cl2#C cl4#Y cl3#B cl7#A cl6#Y VCC cl4#B cl2#B cl4#A cl1#A cl7#Y GND
 Mcl0#0 cl0#Y cl1#Y VCC VCC PMOS W=0.5u L=0.05u
 + ad=0p pd=0u as=0p ps=0u 
 Mcl0#1 VCC cl2#Y cl0#Y VCC PMOS W=0.5u L=0.05u

@@ -385,6 +385,14 @@ def loadDataAndPreprocess(libFileName="sky130_fd_sc_hd__tt_025C_1v80.lib", blifF
     return BLIFGraph, cells, netlist, stdCellTypesForFeature, dataset, maxLabelIndex, initialClusterSeqs, clusterNum
 
 
+def getArea(cells, type2Area):
+    resArea = 0
+    for cell in cells:
+        if (cell.stdCellType.typeName in type2Area.keys()):
+            resArea += type2Area[cell.stdCellType.typeName]
+    return resArea
+
+
 def main():
     loadDataAndPreprocess()
 

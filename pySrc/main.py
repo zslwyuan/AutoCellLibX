@@ -6,6 +6,7 @@ import time
 import matplotlib
 from spice import *
 from Astran import *
+from GDSIIAnalysis import *
 
 
 def mkdir(pathStr):
@@ -23,27 +24,17 @@ def main():
 
     startTime = time.time()
 
-    benchmarks = ["tc_001_arthmetic_adder",
-                  "tc_005_arthmetic_log2",
-                  "tc_009_arthmetic_sqrt",
-                  "tc_l4_0413",
-                  "tc_l4_0430",
-                  "tc_002_arthmetic_bar",
-                  "tc_l4_0431",
-                  "tc_l4_0409",
-                  "tc_l4_0428",
-                  "tc_l4_0432",
-                  "tc_l4_0412",
-                  "tc_l4_0429",
-                  "tc_l4_0427",
-                  "tc_l8_0415"
-                  ] + ["tc_006_arthmetic_max",
-                       "tc_010_arthmetic_square",
-                       "tc_003_arthmetic_divisor",
-                       "tc_007_arthmetic_multiplier",
-                       "tc_004_arthmetic_hypotenuse",
-                       "tc_008_arthmetic_sin"
-                       ]
+    benchmarks = [
+        "tc_001_arthmetic_adder", "tc_002_arthmetic_bar", "tc_003_arthmetic_divisor",
+        "tc_004_arthmetic_hypotenuse", "tc_005_arthmetic_log2",
+        "tc_006_arthmetic_max", "tc_007_arthmetic_multiplier", "tc_008_arthmetic_sin",
+        "tc_009_arthmetic_sqrt", "tc_010_arthmetic_square"
+    ] + ["tc_l4_0413", "tc_l4_0430", "tc_l4_0431", "tc_l4_0409",
+         "tc_l4_0428", "tc_l4_0432", "tc_l4_0412", "tc_l4_0429",
+         "tc_l4_0427", "tc_l8_0415"
+         ]
+
+    stdType2GSCLArea = loadOrignalGSCL45nmGDS()
 
     for benchmarkName in benchmarks:
         print("=================================================================================\n",
@@ -52,22 +43,25 @@ def main():
         subckts = loadSpiceSubcircuits("../stdCelllib/cellsAstranFriendly.sp")
         BLIFGraph, cells, netlist, stdCellTypesForFeature, dataset, maxLabelIndex, clusterSeqs, clusterNum = loadDataAndPreprocess(
             libFileName="../stdCelllib/gscl45nm.lib", blifFileName="../benchmark/blif/"+benchmarkName+".blif", startTime=startTime)
-        outputPath = "./outputs/"+benchmarkName
+        oriArea = getArea(cells, stdType2GSCLArea)
+        print("originalArea=", oriArea)
+
+        outputPath = "./outputs/"+benchmarkName+"/"
         mkdir(outputPath)
 
         if (ASTRANBuildPath != ""):
             for oriStdCellType in stdCellTypesForFeature:
-                bypass = False
-                for tmpType in bypassTypes:
-                    if (oriStdCellType.find(tmpType) >= 0):
-                        bypass = True
-                        break
-                if (bypass or os.path.exists('./originalAstranStdCells/'+oriStdCellType+'.gds')):
+                if (oriStdCellType.find("bool") >= 0):
+                    continue
+                if (os.path.exists('./originalAstranStdCells/'+oriStdCellType+'.gds')):
                     continue
                 runAstranForNetlist(AstranPath=ASTRANBuildPath, gurobiPath="/opt/gurobi950/linux64/bin/gurobi_cl",
                                     technologyPath="../tools/astran/Astran/build/Work/tech_freePDK45.rul",
                                     spiceNetlistPath='../stdCelllib/cellsAstranFriendly.sp',
                                     complexName=oriStdCellType, commandDir='./originalAstranStdCells/')
+        stdType2AstranArea = loadAstranGDS()
+        astranArea = getArea(cells, stdType2AstranArea)
+        print("astranArea=", astranArea)
 
         clusterSeqs = sortPatternClusterSeqs(clusterSeqs)
 
@@ -75,12 +69,19 @@ def main():
         dumpedPaterns = set()
 
         patternNum = len(clusterSeqs)
+        lastSaveArea = 0
+        lastSaveGSCLArea = 0
+        lastComplexSelection = 0
+
         for i in range(0, 10):
             if (len(clusterSeqs[0].patternClusters) == 0):
                 break
             if (len(clusterSeqs[0].patternClusters[0].cellIdsContained) >= 11):
                 continue
 
+            saveArea = 0
+            saveGSCLArea = 0
+            complexSelection = []
             for j in range(0, 5):
                 if (j >= len(clusterSeqs)):
                     break
@@ -117,8 +118,44 @@ def main():
                                                     str(patternTraceId)+'.sp',
                                                     complexName='COMPLEX'+str(patternTraceId), commandDir=outputPath)
 
-            clusterSeq = clusterSeqs[0]
+                exampleCells = []
+                for cellId in tmpClusterSeq.patternClusters[0].cellIdsContained:
+                    exampleCells.append(cells[cellId])
 
+                complexSelection.append(("COMPLEX"+str(patternTraceId), len(
+                    tmpClusterSeq.patternClusters), len(tmpClusterSeq.patternClusters[0].cellIdsContained)))
+                oriUnitAstranArea = getArea(exampleCells, stdType2AstranArea)
+                oriUnitGSCLArea = getArea(exampleCells, stdType2GSCLArea)
+                newUnitAstranArea = loadAstranArea(
+                    outputPath, "COMPLEX"+str(patternTraceId))
+                saveArea += (oriUnitAstranArea-newUnitAstranArea) * \
+                    len(tmpClusterSeq.patternClusters)
+                saveGSCLArea += (oriUnitGSCLArea-newUnitAstranArea) * \
+                    len(tmpClusterSeq.patternClusters)
+
+            print("saveArea=", saveArea, " / ", saveArea/astranArea*100, "%")
+            if (saveArea > lastSaveArea):
+                lastSaveArea = saveArea
+                lastSaveGSCLArea = saveGSCLArea
+                lastComplexSelection = complexSelection
+                fileResult = open(outputPath+"/bestRecord-"+benchmarkName, 'w')
+                print(lastSaveArea, " <- compared to Astran GDS area",
+                      file=fileResult)
+                print(lastSaveArea/astranArea*100,
+                      "% <- compared to Astran GDS area", file=fileResult)
+                print(lastSaveGSCLArea,
+                      " <- compared to GSCL GDS area", file=fileResult)
+                print(lastSaveArea/oriArea*100,
+                      "% <- compared to GSCL GDS area", file=fileResult)
+                print(
+                    "The generated complex cells are (name, clusterNum, cellNumInOneCluster):", file=fileResult)
+                for complexName in lastComplexSelection:
+                    print(complexName, file=fileResult)
+                fileResult.close()
+            else:
+                break
+
+            clusterSeq = clusterSeqs[0]
             if (len(clusterSeq.patternClusters[0].cellIdsContained)*len(clusterSeq.patternClusters) < 0.05 * len(cells) and len(clusterSeq.patternClusters) < 100):
                 break
 

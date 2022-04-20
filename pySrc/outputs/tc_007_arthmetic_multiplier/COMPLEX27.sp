@@ -1,4 +1,4 @@
-.subckt COMPLEX27 cl1#A cl4#B cl2#A cl3#A VCC cl5#Y cl4#Y cl3#B GND cl1#B cl2#D cl5#B cl2#C cl2#B cl4#A
+.subckt COMPLEX27 cl1#B cl2#A cl2#D cl3#A cl2#C cl4#Y cl3#B VCC cl4#B cl5#B cl2#B cl5#Y cl4#A cl1#A GND
 Mcl0#0 cl0#Y cl1#Y VCC VCC PMOS W=0.5u L=0.05u
 + ad=0p pd=0u as=0p ps=0u 
 Mcl0#1 VCC cl2#Y cl0#Y VCC PMOS W=0.5u L=0.05u
