@@ -1,4 +1,4 @@
-.subckt COMPLEX2 cl1#Y cl1#S cl1#B cl0#Y VCC GND cl1#A
+.subckt COMPLEX2 VCC cl1#Y GND cl1#S cl1#A cl1#B cl0#Y
 Mcl0#0 cl0#Y cl1#Y VCC VCC PMOS W=0.5u L=0.05u
 + ad=0p pd=0u as=0p ps=0u 
 Mcl0#1 cl0#Y cl1#Y GND GND NMOS W=0.25u L=0.05u

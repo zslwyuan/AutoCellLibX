@@ -1,4 +1,4 @@
-.subckt COMPLEX23 cl10#A cl1#C cl4#B cl5#A cl10#B cl5#B GND cl8#A cl9#B cl9#A cl7#A cl8#B cl3#C cl4#A cl7#B VCC cl2#C cl10#Y cl6#B cl6#A
+.subckt COMPLEX23 cl2#C cl8#A cl5#A cl7#B cl1#C cl3#C cl5#B cl0#Y cl8#B VCC cl6#B cl4#A cl6#A GND cl7#A cl3#B cl4#B
 Mcl0#0 cl0#Y cl1#Y VCC VCC PMOS W=0.5u L=0.05u
 + ad=0p pd=0u as=0p ps=0u 
 Mcl0#1 VCC cl2#Y cl0#Y VCC PMOS W=0.5u L=0.05u
@@ -37,13 +37,13 @@ Mcl2#5 cl2#Y cl2#C cl2#a_14_6# GND NMOS W=0.75u L=0.05u
 + ad=0p pd=0u as=0p ps=0u 
 Mcl3#0 cl3#Y cl8#Y VCC VCC PMOS W=0.5u L=0.05u
 + ad=0p pd=0u as=0p ps=0u 
-Mcl3#1 VCC cl9#Y cl3#Y VCC PMOS W=0.5u L=0.05u
+Mcl3#1 VCC cl3#B cl3#Y VCC PMOS W=0.5u L=0.05u
 + ad=0p pd=0u as=0p ps=0u 
 Mcl3#2 cl3#Y cl3#C VCC VCC PMOS W=0.5u L=0.05u
 + ad=0p pd=0u as=0p ps=0u 
 Mcl3#3 cl3#a_9_6# cl8#Y GND GND NMOS W=0.75u L=0.05u
 + ad=0p pd=0u as=0p ps=0u 
-Mcl3#4 cl3#a_14_6# cl9#Y cl3#a_9_6# GND NMOS W=0.75u L=0.05u
+Mcl3#4 cl3#a_14_6# cl3#B cl3#a_9_6# GND NMOS W=0.75u L=0.05u
 + ad=0p pd=0u as=0p ps=0u 
 Mcl3#5 cl3#Y cl3#C cl3#a_14_6# GND NMOS W=0.75u L=0.05u
 + ad=0p pd=0u as=0p ps=0u 
@@ -87,39 +87,17 @@ Mcl8#2 cl8#a_9_6# cl8#A GND GND NMOS W=0.5u L=0.05u
 + ad=0p pd=0u as=0p ps=0u 
 Mcl8#3 cl8#Y cl8#B cl8#a_9_6# GND NMOS W=0.5u L=0.05u
 + ad=0p pd=0u as=0p ps=0u 
-Mcl9#0 cl9#Y cl9#A VCC VCC PMOS W=0.5u L=0.05u
-+ ad=0p pd=0u as=0p ps=0u 
-Mcl9#1 VCC cl9#B cl9#Y VCC PMOS W=0.5u L=0.05u
-+ ad=0p pd=0u as=0p ps=0u 
-Mcl9#2 cl9#a_9_6# cl9#A GND GND NMOS W=0.5u L=0.05u
-+ ad=0p pd=0u as=0p ps=0u 
-Mcl9#3 cl9#Y cl9#B cl9#a_9_6# GND NMOS W=0.5u L=0.05u
-+ ad=0p pd=0u as=0p ps=0u 
-Mcl10#0 VCC cl10#A cl10#a_2_54# VCC PMOS W=1u L=0.05u
-+ ad=0p pd=0u as=0p ps=0u 
-Mcl10#1 cl10#a_2_54# cl10#B VCC VCC PMOS W=1u L=0.05u
-+ ad=0p pd=0u as=0p ps=0u 
-Mcl10#2 cl10#Y cl0#Y cl10#a_2_54# VCC PMOS W=1u L=0.05u
-+ ad=0p pd=0u as=0p ps=0u 
-Mcl10#3 cl10#a_12_6# cl10#A GND GND NMOS W=0.5u L=0.05u
-+ ad=0p pd=0u as=0p ps=0u 
-Mcl10#4 cl10#Y cl10#B cl10#a_12_6# GND NMOS W=0.5u L=0.05u
-+ ad=0p pd=0u as=0p ps=0u 
-Mcl10#5 GND cl0#Y cl10#Y GND NMOS W=0.25u L=0.05u
-+ ad=0p pd=0u as=0p ps=0u 
 .ends COMPLEX23
-* pattern code: [NAND3X1,NAND3X1,NAND3X1,NAND3X1]+c1i0NAND2X1+c1i0NAND2X1+c2i0NAND2X1+c2i0NAND2X1+c3i0NAND2X1+c3i0NAND2X1+c0o0_AOI21X1
-* 55 occurrences in design 
-* each contains 11 cells
+* pattern code: [NAND3X1,NAND3X1,NAND3X1,NAND3X1]+c1i0NAND2X1+c1i0NAND2X1+c2i0NAND2X1+c2i0NAND2X1+c3i0NAND2X1
+* 137 occurrences in design 
+* each contains 9 cells
 * Example occurence:
-*   .subckt NAND3X1 A=w1_0555 B=w1_0556 C=w1_4043 Y=w1_2897
-*   .subckt NAND3X1 A=w1_3505 B=w1_2786 C=w1_2427 Y=w1_0555
-*   .subckt NAND3X1 A=w1_1848 B=w1_0558 C=w1_2730 Y=w1_0556
-*   .subckt NAND3X1 A=w1_4298 B=w1_0560 C=w1_2260 Y=w1_4043
-*   .subckt NAND2X1 A=din20[22] B=w1_3537 Y=w1_3505
-*   .subckt NAND2X1 A=sel[0] B=din21[22] Y=w1_2786
-*   .subckt NAND2X1 A=din16[22] B=w1_3537 Y=w1_1848
-*   .subckt NAND2X1 A=sel[0] B=din17[22] Y=w1_0558
-*   .subckt NAND2X1 A=din28[22] B=w1_3537 Y=w1_4298
-*   .subckt NAND2X1 A=sel[0] B=din29[22] Y=w1_0560
-*   .subckt AOI21X1 A=w1_2594 B=w1_0553 C=w1_2897 Y=w1_0552
+*   .subckt NAND3X1 A=w1_0310 B=w1_3909 C=w1_0318 Y=w1_0309
+*   .subckt NAND3X1 A=w1_0314 B=w1_0312 C=w1_2260 Y=w1_0310
+*   .subckt NAND3X1 A=w1_0315 B=w1_2518 C=w1_3869 Y=w1_3909
+*   .subckt NAND3X1 A=w1_3907 B=w1_2722 C=w1_2730 Y=w1_0318
+*   .subckt NAND2X1 A=din30[19] B=w1_3537 Y=w1_0314
+*   .subckt NAND2X1 A=sel[0] B=din31[19] Y=w1_0312
+*   .subckt NAND2X1 A=din26[19] B=w1_3537 Y=w1_0315
+*   .subckt NAND2X1 A=sel[0] B=din27[19] Y=w1_2518
+*   .subckt NAND2X1 A=din18[19] B=w1_3537 Y=w1_3907

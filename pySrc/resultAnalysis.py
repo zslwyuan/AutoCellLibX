@@ -11,6 +11,15 @@ def findStat(lines, key):
     return 1
 
 
+def mkdir(pathStr):
+    if os.path.exists(pathStr):
+        pass
+    else:
+        os.mkdir(pathStr)
+
+
+outputPath = "./results/"
+
 resultFileNames = []
 for filename in glob.iglob('./outputs/*/best*', recursive=True):
     resultFileNames.append(os.path.abspath(filename))
@@ -19,6 +28,7 @@ benchmark2stat = dict()
 benchmarkNames = []
 for resultFileName in resultFileNames:
     benchmarkName = resultFileName.split("-")[-1]
+    benchmarkOutputPath = '/'.join(resultFileName.split('/')[:-1])
     benchmarkNames.append(benchmarkName)
 
     resultFile = open(resultFileName, 'r')
@@ -38,8 +48,16 @@ for resultFileName in resultFileNames:
         AstranReduceArea, GSCLReduceArea,
         AstranReduceAreaPercentage, GSCLReduceAreaPercentage]
 
+    targetPath = outputPath+benchmarkName
+    mkdir(targetPath)
+    os.system('cp '+resultFileName+" "+targetPath)
+    for line in lines[5:]:
+        complexName = line.split("\'")[1]
+        os.system('cp '+benchmarkOutputPath+"/"+complexName+".* "+targetPath)
+
+
 print(benchmark2stat)
-csvFile = open('result.csv', 'w')
+csvFile = open(outputPath + 'result.csv', 'w')
 print("benchmark | originalAstranTotalArea | originalGSCLTotalArea "
       "| reduceAreaComparedToAstranTotal | reduceAreaComparedToTotal "
       "| AstranReduceAreaPercentage | GSCLReduceAreaPercentage |", file=csvFile)

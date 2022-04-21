@@ -1,0 +1,8 @@
+set lpsolve "/opt/gurobi950/linux64/bin/gurobi_cl"
+load technology "../tools/astran/Astran/build/Work/tech_freePDK45.rul"
+load netlist "./outputs/tc_008_arthmetic_sin//COMPLEX4.sp"
+cellgen select COMPLEX4
+cellgen autoflow
+export layout COMPLEX4 ./outputs/tc_008_arthmetic_sin//COMPLEX4.gds
+exit
+

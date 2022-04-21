@@ -35,6 +35,14 @@ def main():
          ]
 
     stdType2GSCLArea = loadOrignalGSCL45nmGDS()
+    topThr = 5
+    ratioThr = 0.05
+    cntThr = 100
+    benchmarks = ["tc_008_arthmetic_sin"]
+    ratioThr = 0.025
+    cntThr = 30
+
+    specialCount = -1
 
     for benchmarkName in benchmarks:
         print("=================================================================================\n",
@@ -73,7 +81,7 @@ def main():
         lastSaveGSCLArea = 0
         lastComplexSelection = 0
 
-        for i in range(0, 10):
+        for i in range(0, topThr):
             if (len(clusterSeqs[0].patternClusters) == 0):
                 break
             if (len(clusterSeqs[0].patternClusters[0].cellIdsContained) >= 11):
@@ -82,7 +90,7 @@ def main():
             saveArea = 0
             saveGSCLArea = 0
             complexSelection = []
-            for j in range(0, 5):
+            for j in range(0, topThr):
                 if (j >= len(clusterSeqs)):
                     break
                 tmpClusterSeq = clusterSeqs[j]
@@ -95,7 +103,7 @@ def main():
                         continue
                     print("dealing with pattern#", patternTraceId, " with ", len(
                         tmpClusterSeq.patternClusters), " clusters (size=", len(tmpClusterSeq.patternClusters[0].cellIdsContained), ")")
-                    if (len(tmpClusterSeq.patternClusters[0].cellIdsContained)*len(tmpClusterSeq.patternClusters) < 0.05 * len(cells) and len(tmpClusterSeq.patternClusters) < 100):
+                    if (len(tmpClusterSeq.patternClusters[0].cellIdsContained)*len(tmpClusterSeq.patternClusters) < ratioThr * len(cells) and len(tmpClusterSeq.patternClusters) < cntThr):
                         print("===Warning: the pattern is too small and bypassed.")
                         break
                     dumpedPaterns.add(patternTraceId)
@@ -123,7 +131,7 @@ def main():
                     exampleCells.append(cells[cellId])
 
                 complexSelection.append(("COMPLEX"+str(patternTraceId), len(
-                    tmpClusterSeq.patternClusters), len(tmpClusterSeq.patternClusters[0].cellIdsContained)))
+                    tmpClusterSeq.patternClusters), len(tmpClusterSeq.patternClusters[0].cellIdsContained), tmpClusterSeq.patternExtensionTrace))
                 oriUnitAstranArea = getArea(exampleCells, stdType2AstranArea)
                 oriUnitGSCLArea = getArea(exampleCells, stdType2GSCLArea)
                 newUnitAstranArea = loadAstranArea(
@@ -145,10 +153,10 @@ def main():
                       "% <- compared to Astran GDS area", file=fileResult)
                 print(lastSaveGSCLArea,
                       " <- compared to GSCL GDS area", file=fileResult)
-                print(lastSaveArea/oriArea*100,
+                print(lastSaveGSCLArea/oriArea*100,
                       "% <- compared to GSCL GDS area", file=fileResult)
                 print(
-                    "The generated complex cells are (name, clusterNum, cellNumInOneCluster):", file=fileResult)
+                    "The generated complex cells are (name, clusterNum, cellNumInOneCluster, patternCode):", file=fileResult)
                 for complexName in lastComplexSelection:
                     print(complexName, file=fileResult)
                 fileResult.close()
@@ -156,7 +164,8 @@ def main():
                 break
 
             clusterSeq = clusterSeqs[0]
-            if (len(clusterSeq.patternClusters[0].cellIdsContained)*len(clusterSeq.patternClusters) < 0.05 * len(cells) and len(clusterSeq.patternClusters) < 100):
+            if (len(clusterSeq.patternClusters[0].cellIdsContained)*len(clusterSeq.patternClusters) < ratioThr * len(cells)
+                    and len(clusterSeq.patternClusters) < cntThr):
                 break
 
             newSeqOfClusters, patternNum = growASeqOfClusters(

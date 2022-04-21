@@ -1,4 +1,4 @@
-.subckt COMPLEX24 cl1#C cl4#B cl5#A cl5#B GND cl8#A cl9#B cl9#A cl7#A cl8#B cl3#C cl4#A cl0#Y cl7#B VCC cl2#C cl6#B cl6#A
+.subckt COMPLEX24 cl2#C cl8#A cl5#A cl7#B cl1#C cl3#C cl5#B cl0#Y cl8#B VCC cl6#B cl4#A cl6#A GND cl7#A cl3#B cl4#B
 Mcl0#0 cl0#Y cl1#Y VCC VCC PMOS W=0.5u L=0.05u
 + ad=0p pd=0u as=0p ps=0u 
 Mcl0#1 VCC cl2#Y cl0#Y VCC PMOS W=0.5u L=0.05u
@@ -37,13 +37,13 @@ Mcl2#5 cl2#Y cl2#C cl2#a_14_6# GND NMOS W=0.75u L=0.05u
 + ad=0p pd=0u as=0p ps=0u 
 Mcl3#0 cl3#Y cl8#Y VCC VCC PMOS W=0.5u L=0.05u
 + ad=0p pd=0u as=0p ps=0u 
-Mcl3#1 VCC cl9#Y cl3#Y VCC PMOS W=0.5u L=0.05u
+Mcl3#1 VCC cl3#B cl3#Y VCC PMOS W=0.5u L=0.05u
 + ad=0p pd=0u as=0p ps=0u 
 Mcl3#2 cl3#Y cl3#C VCC VCC PMOS W=0.5u L=0.05u
 + ad=0p pd=0u as=0p ps=0u 
 Mcl3#3 cl3#a_9_6# cl8#Y GND GND NMOS W=0.75u L=0.05u
 + ad=0p pd=0u as=0p ps=0u 
-Mcl3#4 cl3#a_14_6# cl9#Y cl3#a_9_6# GND NMOS W=0.75u L=0.05u
+Mcl3#4 cl3#a_14_6# cl3#B cl3#a_9_6# GND NMOS W=0.75u L=0.05u
 + ad=0p pd=0u as=0p ps=0u 
 Mcl3#5 cl3#Y cl3#C cl3#a_14_6# GND NMOS W=0.75u L=0.05u
 + ad=0p pd=0u as=0p ps=0u 
@@ -87,18 +87,10 @@ Mcl8#2 cl8#a_9_6# cl8#A GND GND NMOS W=0.5u L=0.05u
 + ad=0p pd=0u as=0p ps=0u 
 Mcl8#3 cl8#Y cl8#B cl8#a_9_6# GND NMOS W=0.5u L=0.05u
 + ad=0p pd=0u as=0p ps=0u 
-Mcl9#0 cl9#Y cl9#A VCC VCC PMOS W=0.5u L=0.05u
-+ ad=0p pd=0u as=0p ps=0u 
-Mcl9#1 VCC cl9#B cl9#Y VCC PMOS W=0.5u L=0.05u
-+ ad=0p pd=0u as=0p ps=0u 
-Mcl9#2 cl9#a_9_6# cl9#A GND GND NMOS W=0.5u L=0.05u
-+ ad=0p pd=0u as=0p ps=0u 
-Mcl9#3 cl9#Y cl9#B cl9#a_9_6# GND NMOS W=0.5u L=0.05u
-+ ad=0p pd=0u as=0p ps=0u 
 .ends COMPLEX24
-* pattern code: [NAND3X1,NAND3X1,NAND3X1,NAND3X1]+c1i0NAND2X1+c1i0NAND2X1+c2i0NAND2X1+c2i0NAND2X1+c3i0NAND2X1+c3i0NAND2X1
+* pattern code: [NAND3X1,NAND3X1,NAND3X1,NAND3X1]+c1i0NAND2X1+c1i0NAND2X1+c2i0NAND2X1+c2i0NAND2X1+c3i0NAND2X1
 * 202 occurrences in design 
-* each contains 10 cells
+* each contains 9 cells
 * Example occurence:
 *   .subckt NAND3X1 A=w1_4684 B=w1_3536 C=w1_0245 Y=w1_0237
 *   .subckt NAND3X1 A=w1_2220 B=w1_0240 C=w1_1988 Y=w1_4684
@@ -109,4 +101,3 @@ Mcl9#3 cl9#Y cl9#B cl9#a_9_6# GND NMOS W=0.5u L=0.05u
 *   .subckt NAND2X1 A=din2[16] B=w1_2377 Y=w1_0241
 *   .subckt NAND2X1 A=sel[0] B=din3[16] Y=w1_0243
 *   .subckt NAND2X1 A=din14[16] B=w1_2377 Y=w1_0586
-*   .subckt NAND2X1 A=sel[0] B=din15[16] Y=w1_3974
