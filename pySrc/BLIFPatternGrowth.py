@@ -197,6 +197,9 @@ def growASeqOfClusters_BasedOn(BLIFGraph, clusterSeq, clusterNum, patternNum, pa
                 neighbor2cluster[curNeighbor] = cluster
                 neighborF = "c"+str(cellOrderId)+"i" + \
                     str(inOrderId)+curNeighbor.stdCellType.typeName
+                if (targetPatternTrace.find(clusterSeq.patternExtensionTrace + "+" + neighborF) != 0):
+                    continue
+
                 # neighborF = str(curNeighbor.featureOrder[:featureLen]).replace(
                 #     "\'", "").replace("\\", "").replace("\"", "")
                 if (not neighborF in feature2Neighbors.keys()):
@@ -219,6 +222,8 @@ def growASeqOfClusters_BasedOn(BLIFGraph, clusterSeq, clusterNum, patternNum, pa
                     neighborF = "c" + \
                         str(cellOrderId)+"o"+str(outOrderId) + "_" + \
                         curNeighbor.stdCellType.typeName
+                    if (targetPatternTrace.find(clusterSeq.patternExtensionTrace + "+" + neighborF) != 0):
+                        continue
                     # neighborF = str(curNeighbor.featureOrder[:featureLen]).replace(
                     #     "\'", "").replace("\\", "").replace("\"", "")
                     if (not neighborF in feature2Neighbors.keys()):
@@ -265,9 +270,6 @@ def growASeqOfClusters_BasedOn(BLIFGraph, clusterSeq, clusterNum, patternNum, pa
                 continue
             targetCluster = neighbor2cluster[neighbor]
             if (targetCluster in mergedCluster):
-                continue
-
-            if ((targetCluster.patternExtensionTrace + "+" + neighborCode).find(targetPatternTrace) != 0):
                 continue
 
             if (not neighbor.cluster is None):
