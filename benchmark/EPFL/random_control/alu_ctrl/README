@@ -1,0 +1,25 @@
+alu controller benchmark
+
+simple control unit for an ALU
+
+the (main) output signals controlling function is the following
+
+alu_op
+000-rotate left, 001-shift left, 010-rotate right, 011-shift right
+100-add,         101-or,         110-xor,          111-and
+
+sel_alu_opB
+00 - rt,   01 - imm16_z5,   10 - imm16_s5,   11 - imm16_s8
+
+sel_reg_dst
+00 - rt_addr,   01 - rd_addr,   10 - rs_addr,   11 - 3'd7
+
+-----------------------------------
+
+Basic (unoptimized) implementation:
+
+And gates: 174
+
+Levels: 10
+
+-----------------------------------

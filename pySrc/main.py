@@ -24,16 +24,12 @@ def main():
     ASTRANBuildPath = "../tools/astran/Astran/build"
 
     startTime = time.time()
-# "tc_001_arthmetic_adder", "tc_002_arthmetic_bar", "tc_003_arthmetic_divisor",
-#                   "tc_004_arthmetic_hypotenuse", "tc_005_arthmetic_log2",
-#                   "tc_006_arthmetic_max","tc_007_arthmetic_multiplier",
-    #   "tc_008_arthmetic_sin",
-    #   "tc_009_arthmetic_sqrt", "tc_010_arthmetic_square"
-    # "tc_l4_0413", "tc_l4_0430", "tc_l4_0431", "tc_l4_0409",
-    #        "tc_l4_0428", "tc_l4_0432",
-    benchmarks = ["tc_l4_0412", "tc_l4_0429",
-                  "tc_l4_0427", "tc_l8_0415"
-                  ]
+
+    benchmarks = ["adder", "bar", "ctrl", "i2c",
+                  "log2", "multiplier", "router", "sqrt",
+                  "voter", "arbiter", "cavlc", "div",
+                  "int2float", "max", "priority", "sin",
+                  "square"]
 
     stdType2GSCLArea = loadOrignalGSCL45nmGDS()
     topThr = 5

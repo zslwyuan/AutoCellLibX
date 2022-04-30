@@ -1,0 +1,19 @@
+blind round robin arbiter benchmark
+
+working with a one-hot priority vector for the request (req) signal.
+
+In output the grant (vector) result plus a "anygrant" information (telling if any grant is given)
+
+priority, req, grant: 128 bit width
+
+anygrant: 1 bit width
+
+-----------------------------------
+
+Basic (unoptimized) implementation:
+
+And gates: 11839
+
+Levels: 87
+
+-----------------------------------
