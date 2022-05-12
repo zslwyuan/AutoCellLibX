@@ -1,4 +1,4 @@
-.subckt COMPLEX9 GND cl2#B cl1#A cl2#Y cl3#B VCC cl1#Y cl2#A cl1#B
+.subckt COMPLEX9 cl1#Y cl1#B cl2#A GND cl1#A cl3#B cl2#Y VCC cl2#B
 Mcl0#0 cl0#Y cl1#Y VCC VCC PMOS W=0.5u L=0.05u
 + ad=0p pd=0u as=0p ps=0u 
 Mcl0#1 VCC cl2#Y cl0#Y VCC PMOS W=0.5u L=0.05u
@@ -52,7 +52,7 @@ Mcl3#10 GND cl3#B cl3#a_35_6# GND NMOS W=0.5u L=0.05u
 Mcl3#11 cl3#a_12_41# cl3#B GND GND NMOS W=0.5u L=0.05u
 + ad=0p pd=0u as=0p ps=0u 
 .ends COMPLEX9
-* pattern code: [NAND2X1,NAND2X1,OR2X1]+c0o0_XNOR2X1
+* pattern code: [NAND2X1,NAND2X1,OR2X1]+XNOR2X1_c0o0
 * 60 occurrences in design 
 * each contains 4 cells
 * Example occurence:

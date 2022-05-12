@@ -1,4 +1,4 @@
-.subckt COMPLEX2 GND cl2#B cl2#C cl1#A cl0#Y cl1#C cl2#D VCC cl1#D cl2#A cl1#B
+.subckt COMPLEX2 cl1#C cl1#B cl0#Y cl2#A GND cl1#A VCC cl2#D cl1#D cl2#C cl2#B
 Mcl0#0 cl0#a_2_6# cl1#Y VCC VCC PMOS W=0.5u L=0.05u
 + ad=0p pd=0u as=0p ps=0u 
 Mcl0#1 VCC cl2#Y cl0#a_2_6# VCC PMOS W=0.5u L=0.05u
@@ -45,9 +45,9 @@ Mcl2#7 GND cl2#C cl2#a_28_6# GND NMOS W=0.5u L=0.05u
 + ad=0p pd=0u as=0p ps=0u 
 .ends COMPLEX2
 * pattern code: [AND2X1,AOI22X1,AOI22X1]
-* 55 occurrences in design 
+* 128 occurrences in design 
 * each contains 3 cells
 * Example occurence:
-*   .subckt AND2X1 A=$abc$14848$new_n1047_ B=$abc$14848$new_n1048_ Y=$abc$14848$new_n1049_
-*   .subckt AOI22X1 A=$abc$14848$new_n319_ B=$abc$14848$new_n612_ C=$abc$14848$new_n643_ D=$abc$14848$new_n286_ Y=$abc$14848$new_n1047_
-*   .subckt AOI22X1 A=$abc$14848$new_n266_ B=$abc$14848$new_n597_ C=$abc$14848$new_n604_ D=$abc$14848$new_n303_ Y=$abc$14848$new_n1048_
+*   .subckt AND2X1 A=$abc$14848$new_n302_ B=$abc$14848$new_n335_ Y=$abc$14848$new_n336_
+*   .subckt AOI22X1 A=$abc$14848$new_n266_ B=$abc$14848$new_n285_ C=$abc$14848$new_n286_ D=$abc$14848$new_n301_ Y=$abc$14848$new_n302_
+*   .subckt AOI22X1 A=$abc$14848$new_n303_ B=$abc$14848$new_n318_ C=$abc$14848$new_n319_ D=$abc$14848$new_n334_ Y=$abc$14848$new_n335_

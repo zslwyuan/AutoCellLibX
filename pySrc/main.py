@@ -25,11 +25,12 @@ def main():
 
     startTime = time.time()
 
-    benchmarks = ["adder", "bar", "ctrl", "i2c",
-                  "log2", "multiplier", "router", "sqrt",
-                  "voter", "arbiter", "cavlc", "div",
-                  "int2float", "max", "priority", "sin",
-                  "square"]
+    benchmarks = ["boomCore"]
+    # benchmarks = ["adder", "bar", "ctrl", "i2c",
+    #               "log2", "multiplier", "router", "sqrt",
+    #               "voter", "arbiter", "cavlc", "div",
+    #               "int2float", "max", "priority", "sin",
+    #               "square"]
 
     stdType2GSCLArea = loadOrignalGSCL45nmGDS()
     topThr = 5
@@ -193,7 +194,7 @@ def main():
         recordPatternDetails = []
         detectedPatterns.reverse()
         fileResult = open(
-            outputPath+"/bestRecord-"+benchmarkName, 'w')
+            outputPath+"/bestRecord-seperate"+benchmarkName, 'w')
         for targetPatternTrace in detectedPatterns:
             if (targetPatternTrace in countedSet):
                 continue

@@ -535,7 +535,7 @@ astran> read ./outputs/bar//COMPLEX0.run
    NMOS: MCL1#5-MCL1#6-MCL1#7-MCL1#8-MCL1#9-MCL0#9-MCL0#8-MCL0#7-MCL0#6-MCL0#5-MCL2#9-MCL2#8-MCL2#7-MCL2#6-MCL2#5-
 -> Placing transistors...
 -> Routing cell...
--> Routing finished in 26 attempts after 0.68 s
+-> Routing finished in 41 attempts after 1.857 s
  ( initial cost = 46339 num reps = 33750 problem size = 225 )  Iteration 1; cost = 101015.000 (46339.000); p_cost = 101015.000; accept = 1.000; avg_delta = 1.620; dp = 6451.083; thres = 99999.000; cost_ratio = 2.180; [0]
  Iteration 2; cost = 96912.000 (46339.000); p_cost = 96912.000; accept = 1.000; avg_delta = -0.122; dp = 6325.185; thres = 47999.520; cost_ratio = 0.959; [0]
  Iteration 3; cost = 87447.000 (46339.000); p_cost = 87447.000; accept = 1.000; avg_delta = -0.281; dp = 6310.400; thres = 23039.770; cost_ratio = 0.902; [0]
@@ -594,8 +594,8 @@ astran> read ./outputs/bar//COMPLEX0.run
  Iteration 56; cost = 22609.000 (22609.000); p_cost = 22609.000; accept = 0.062; avg_delta = 0.000; dp = 0.013; thres = 672.165; cost_ratio = 1.000; [2]
  final cost = 22609 
 -> Routing cell...
--> Routing finished in 13 attempts after 0.541 s
--> New best transistor ordering found with cost: 7548
+-> Routing finished in 14 attempts after 0.649 s
+-> New best transistor ordering found with cost: 7572
  ( initial cost = 46339 num reps = 33750 problem size = 225 )  Iteration 1; cost = 77471.000 (46339.000); p_cost = 77471.000; accept = 1.000; avg_delta = 0.922; dp = 6365.861; thres = 99999.000; cost_ratio = 1.672; [0]
  Iteration 2; cost = 106155.000 (46339.000); p_cost = 106155.000; accept = 1.000; avg_delta = 0.850; dp = 6423.530; thres = 47999.520; cost_ratio = 1.370; [0]
  Iteration 3; cost = 93747.000 (46339.000); p_cost = 93747.000; accept = 0.999; avg_delta = -0.368; dp = 6447.681; thres = 23039.770; cost_ratio = 0.883; [0]
@@ -649,7 +649,7 @@ astran> read ./outputs/bar//COMPLEX0.run
  Iteration 51; cost = 23318.000 (23318.000); p_cost = 23318.000; accept = 0.064; avg_delta = 0.000; dp = 354.452; thres = 754.131; cost_ratio = 1.000; [2]
  final cost = 23318 
 -> Routing cell...
--> Routing finished in 13 attempts after 0.53 s
+-> Routing finished in 32 attempts after 1.031 s
  ( initial cost = 46339 num reps = 33750 problem size = 225 )  Iteration 1; cost = 98445.000 (46339.000); p_cost = 98445.000; accept = 1.000; avg_delta = 1.544; dp = 6384.379; thres = 99999.000; cost_ratio = 2.124; [0]
  Iteration 2; cost = 90084.000 (46339.000); p_cost = 90084.000; accept = 1.000; avg_delta = -0.248; dp = 6389.888; thres = 47999.520; cost_ratio = 0.915; [0]
  Iteration 3; cost = 99532.000 (46339.000); p_cost = 99532.000; accept = 1.000; avg_delta = 0.280; dp = 6397.332; thres = 23039.770; cost_ratio = 1.105; [0]
@@ -708,131 +708,12 @@ astran> read ./outputs/bar//COMPLEX0.run
  Iteration 56; cost = 22609.000 (22609.000); p_cost = 22609.000; accept = 0.061; avg_delta = 0.000; dp = 0.013; thres = 673.165; cost_ratio = 1.000; [2]
  final cost = 22609 
 -> Routing cell...
--> Routing finished in 28 attempts after 0.729 s
--> New best transistor ordering found with cost: 7541
+-> Routing finished in 33 attempts after 1.062 s
 -> Final cost: Width=32; Gate Mismatches=6; WL=52; Rt. Density=4; Nr. Gaps=2
-   PMOS: MCL2#0-MCL2#1-MCL2#2-MCL2#3-MCL2#4-MCL0#0-MCL0#1-MCL0#2-MCL0#3-MCL0#4-MCL1#4-MCL1#3-MCL1#2-MCL1#1-MCL1#0-
-   NMOS: MCL2#5-MCL2#6-MCL2#7-MCL2#8-MCL2#9-MCL0#5-MCL0#6-MCL0#7-MCL0#8-MCL0#9-MCL1#9-MCL1#8-MCL1#7-MCL1#6-MCL1#5-
+   PMOS: MCL1#0-MCL1#1-MCL1#2-MCL1#3-MCL1#4-MCL0#0-MCL0#4-MCL0#3-MCL0#2-MCL0#1-MCL2#4-MCL2#3-MCL2#2-MCL2#1-MCL2#0-
+   NMOS: MCL1#5-MCL1#6-MCL1#7-MCL1#8-MCL1#9-MCL0#5-MCL0#9-MCL0#8-MCL0#7-MCL0#6-MCL2#9-MCL2#8-MCL2#7-MCL2#6-MCL2#5-
 -> start real routing
 -> Routing cell...
--> Routing finished in 28 attempts after 0.712 s
+-> Routing finished in 14 attempts after 0.634 s
 
--> Cost before optimization:7541
--> Optimizing routing graph...
--> Cost after optimization: 7487
--> Runtime = 200.563 s
-
--> Cost before optimization:7487
--> Optimizing routing graph...
--> Cost after optimization: 7487
--> Runtime = 54.762 s
--> Compacting layout...
--> Calling LP Solver (26707 variables, 41641 constraints)
--> Running command: "/opt/gurobi950/linux64/bin/gurobi_cl" TimeLimit=3600 ResultFile=ILPmodel.sol ILPmodel.lp
--> To interrupt earlier and get the current best solution, type in a terminal: kill -2 [gurobi process]
--> * and H means new feasible solution found:Set parameter Username
-Set parameter TimeLimit to value 3600
-Set parameter LogFile to value "gurobi.log"
-Academic license - for non-commercial use only - expires 2022-05-31
-Using license file /home/zslwyuan-laptop/.gurobi/gurobi.lic
-
-Gurobi Optimizer version 9.5.0 build v9.5.0rc5 (linux64)
-Copyright (c) 2021, Gurobi Optimization, LLC
-
-         of a constant term in the left-hand side of a constraint.
-
-Read LP format model from file ILPmodel.lp
-Reading time = 0.07 seconds
-: 41642 rows, 16880 columns, 154984 nonzeros
-Thread count: 6 physical cores, 12 logical processors, using up to 12 threads
-Optimize a model with 41642 rows, 16880 columns and 154984 nonzeros
-Model fingerprint: 0x6e4c0f2e
-
-Model fingerprint: 0x6e4c0f2e
-Variable types: 0 continuous, 16880 integer (11641 binary)
-Coefficient statistics:
-  Matrix range     [7e-01, 1e+05]
-  Objective range  [1e+00, 5e+03]
-  Bounds range     [1e+00, 1e+00]
-  RHS range        [1e+00, 2e+04]
-Presolve removed 11514 rows and 3619 columns
-Presolve time: 0.26s
-Presolved: 30128 rows, 13261 columns, 90846 nonzeros
-Variable types: 0 continuous, 13261 integer (10223 binary)
-
-Root relaxation: objective 7.540958e+06, 8170 iterations, 0.20 seconds (0.24 work units)
-
-    Nodes    |    Current Node    |     Objective Bounds      |     Work
- Expl Unexpl |  Obj  Depth IntInf | Incumbent    BestBd   Gap | It/Node Time
-
-     0     0 7571627.55    0  618          - 7571627.55      -     -    1s
-     0     0 7797023.53    0 1708          - 7797023.53      -     -    2s
-     0     0 7797023.53    0 1708          - 7797023.53      -     -    2s
-     0     0 7799257.83    0 2009          - 7799257.83      -     -    3s
-     0     0 7799262.46    0 2053          - 7799262.46      -     -    3s
-     0     0 7799419.22    0 2885          - 7799419.22      -     -    4s
-     0     0 7799422.04    0 2896          - 7799422.04      -     -    4s
-     0     0 7799428.98    0 2773          - 7799428.98      -     -    4s
-     0     0 7799435.16    0 2733          - 7799435.16      -     -    4s
-     0     0 7799436.50    0 2745          - 7799436.50      -     -    4s
-     0     0 7799436.50    0 2721          - 7799436.50      -     -    4s
-     0     0 7799437.82    0 2642          - 7799437.82      -     -    5s
-     0     0 7799437.82    0 2494          - 7799437.82      -     -    7s
-H    0     0                    7815059.0000 7799437.82  0.20%     -    9s
-H    0     0                    7804210.0000 7799437.82  0.06%     -    9s
-     0     0 7801336.29    0 1583 7804210.00 7801336.29  0.04%     -   10s
-H    0     0                    7804178.0000 7801336.29  0.04%     -   10s
-     0     0 7801840.02    0  772 7804178.00 7801840.02  0.03%     -   10s
-H    0     0                    7804146.0000 7801840.02  0.03%     -   10s
-     0     0 7801864.96    0  708 7804146.00 7801864.96  0.03%     -   11s
-     0     0 7801865.08    0 1673 7804146.00 7801865.08  0.03%     -   11s
-     0     0 7801989.36    0 1140 7804146.00 7801989.36  0.03%     -   11s
-     0     0 7802006.71    0 1288 7804146.00 7802006.71  0.03%     -   11s
-     0     0 7802010.28    0 1228 7804146.00 7802010.28  0.03%     -   11s
-     0     0 7802011.00    0 1229 7804146.00 7802011.00  0.03%     -   11s
-     0     0 7802050.39    0 2352 7804146.00 7802050.39  0.03%     -   12s
-     0     0 7802051.05    0 2359 7804146.00 7802051.05  0.03%     -   12s
-     0     0 7802056.39    0 2180 7804146.00 7802056.39  0.03%     -   12s
-     0     0 7802057.74    0 2189 7804146.00 7802057.74  0.03%     -   12s
-     0     0 7802057.76    0 2176 7804146.00 7802057.76  0.03%     -   12s
-     0     0 7802069.77    0 2294 7804146.00 7802069.77  0.03%     -   12s
-     0     0 7802070.46    0 2165 7804146.00 7802070.46  0.03%     -   13s
-H    0     0                    7803864.0000 7802070.46  0.02%     -   13s
-     0     0 7802075.18    0 2198 7803864.00 7802075.18  0.02%     -   13s
-H    0     0                    7803854.0000 7802075.18  0.02%     -   13s
-     0     0 7802075.18    0 2200 7803854.00 7802075.18  0.02%     -   13s
-H    0     0                    7803576.0000 7802075.18  0.02%     -   13s
-H    0     0                    7803551.0000 7802075.18  0.02%     -   13s
-     0     0 7802075.40    0 2200 7803551.00 7802075.40  0.02%     -   13s
-     0     0 7802075.40    0 2086 7803551.00 7802075.40  0.02%     -   15s
-H    0     0                    7803143.0000 7802075.48  0.01%     -   15s
-     0     2 7802075.48    0 2000 7803143.00 7802075.48  0.01%     -   16s
-  1788  1942 7802851.45   90  286 7803143.00 7802178.15  0.01%  11.5   20s
-H 1866  1729                    7802977.0000 7802178.15  0.01%  11.1   20s
-
-Cutting planes:
-  Gomory: 90
-  Implied bound: 26
-  MIR: 122
-  Zero half: 10
-  RLT: 57
-  Relax-and-lift: 8
-
-Explored 2163 nodes (47745 simplex iterations) in 20.10 seconds (14.87 work units)
-Thread count was 12 (of 12 available processors)
-
-Solution count 10: 7.80298e+06 7.80314e+06 7.80355e+06 ... 7.80421e+06
-
-Optimal solution found (tolerance 1.00e-04)
-
-Optimal solution found (tolerance 1.00e-04)
-Best objective 7.802977000000e+06, best bound 7.802208184861e+06, gap 0.0099%
-
-Wrote result file 'ILPmodel.sol'
-
-Wrote result file 'ILPmodel.sol'
-
--> Cell Size (W x H): 3.8 x 3.2
--> Total generation time for cell COMPLEX0: 541s
--> Saving GDSII Technology Mapping File: ./outputs/bar//GDSIILTable.txt
--> Saving layout COMPLEX0 to file: ./outputs/bar//COMPLEX0.gds
+-> Cost before optimization:7572
