@@ -25,12 +25,15 @@ def main():
 
     startTime = time.time()
 
-    benchmarks = ["boomCore"]
-    # benchmarks = ["adder", "bar", "ctrl", "i2c",
-    #               "log2", "multiplier", "router", "sqrt",
-    #               "voter", "arbiter", "cavlc", "div",
-    #               "int2float", "max", "priority", "sin",
-    #               "square"]
+    # ]  # "GemminiLoopMatmul"]  # , "boomCore"]
+    # "GemminiLoopConv", "DCache", "BoomBranchPredictor"]
+    # benchmarks = ["BoomRegisterFile"]  # ["BoomRob"]
+    # benchmarks = ["GemminiMesh"]
+    # "adder",  "ctrl", "i2c",  # "bar",
+    # "log2", "multiplier", "router",  # "sqrt",
+    benchmarks = ["voter", "arbiter", "cavlc", "div",
+                  "int2float", "max", "priority", "sin",
+                  "square"]
 
     stdType2GSCLArea = loadOrignalGSCL45nmGDS()
     topThr = 5

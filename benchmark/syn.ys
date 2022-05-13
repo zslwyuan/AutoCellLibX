@@ -1,9 +1,9 @@
 
 read_liberty -lib ../stdCelllib/gscl45nm.lib
-read -sv ./EPFL/random_control/router/verilog/router.v
-hierarchy -top top
+read -sv ./boomModule/vFiles/*.v
+hierarchy -top RegisterFileSynthesizable
 flatten
-synth -top top
+synth -top RegisterFileSynthesizable
 flatten
 
 # the high-level stuff
@@ -20,5 +20,5 @@ clean
 opt
 clean
 
-write_blif /home/zslwyuan-laptop/Softwares/yosys/blifPatternExtraction_Jingsong/benchmark/blif//router.blif
+write_blif /home/zslwyuan-laptop/Softwares/yosys/blifPatternExtraction_Jingsong/benchmark/blif//BoomRegisterFile.blif
 
