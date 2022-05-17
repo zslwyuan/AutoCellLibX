@@ -107,15 +107,13 @@ def growASeqOfClusters(BLIFGraph, clusterSeq, clusterNum, patternNum, paintPatte
             if (neighbor in cellsInClusters):
                 neighborsInThisSeqCnt += 1
 
-        # temporarily we do not allow merge clusters in the same pattern. Will be fixed in the future
-        if (neighborsInThisSeqCnt/len(neighbors) > 0.5):
-            continue
-
         newClusters = []
         for neighbor in neighbors:
-            if (neighbor in cellsInClusters):
-                continue
             targetCluster = neighbor2cluster[neighbor]
+
+            if (targetCluster.disabled):
+                continue
+
             if (targetCluster in mergedCluster):
                 continue
 
@@ -259,15 +257,13 @@ def growASeqOfClusters_BasedOn(BLIFGraph, clusterSeq, clusterNum, patternNum, pa
             if (neighbor in cellsInClusters):
                 neighborsInThisSeqCnt += 1
 
-        # temporarily we do not allow merge clusters in the same pattern. Will be fixed in the future
-        if (neighborsInThisSeqCnt/len(neighbors) > 0.5):
-            continue
-
         newClusters = []
         for neighbor in neighbors:
-            if (neighbor in cellsInClusters):
-                continue
             targetCluster = neighbor2cluster[neighbor]
+
+            if (targetCluster.disabled):
+                continue
+
             if (targetCluster in mergedCluster):
                 continue
 
