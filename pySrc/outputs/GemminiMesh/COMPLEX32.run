@@ -1,8 +1,0 @@
-set lpsolve "/opt/gurobi950/linux64/bin/gurobi_cl"
-load technology "../tools/astran/Astran/build/Work/tech_freePDK45.rul"
-load netlist "./outputs/GemminiMesh//COMPLEX32.sp"
-cellgen select COMPLEX32
-cellgen autoflow
-export layout COMPLEX32 ./outputs/GemminiMesh//COMPLEX32.gds
-exit
-

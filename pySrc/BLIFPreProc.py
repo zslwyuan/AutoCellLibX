@@ -288,10 +288,9 @@ def heuristicLabelSomeNodesAndGetInitialClusters(BLIFGraph, cells, netlist):
             clusterCellsCnt += len(tree)
         if (len(newSeq.patternClusters) > 0):
             initialClusterSeqs.append(newSeq)
+            labelId += 1
         else:
             del newSeq
-
-        labelId += 1
 
     resSeqs = sortPatternClusterSeqs(initialClusterSeqs)
 
