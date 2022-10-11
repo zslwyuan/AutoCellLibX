@@ -23,17 +23,12 @@ def main():
     # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     ASTRANBuildPath = "../tools/astran/Astran/build"
 
-    startTime = time.time()
-
-    # ]  # "GemminiLoopMatmul"]  # , "boomCore"]
-    # "GemminiLoopConv", "DCache", "BoomBranchPredictor"]
-    # benchmarks = ["BoomRegisterFile"]  # ["BoomRob"]
-    # benchmarks = ["GemminiMesh"]
-    # "adder",  "ctrl", "i2c",  # "bar",
-    # "log2", "multiplier", "router",  # "sqrt",
-    benchmarks = ["voter", "arbiter", "cavlc", "div",
+    benchmarks = ["sqrt",
+                  "voter", "arbiter", "cavlc", "div",
                   "int2float", "max", "priority", "sin",
-                  "square"]
+                  "square", "BoomBranchPredictor",
+                  "GemminiLoopMatmul", "GemminiLoopConv", "DCache", "BoomRegisterFile", "GemminiMesh", ]
+    benchmarks = ["adder",  "ctrl", "i2c", "multiplier", "router"]
 
     stdType2GSCLArea = loadOrignalGSCL45nmGDS()
     topThr = 5
@@ -44,7 +39,7 @@ def main():
     # cntThr = -1
 
     for benchmarkName in benchmarks:
-
+        startTime = time.time()
         ratioThr = 0.05
         cntThr = 30
         if (benchmarkName == "tc_008_arthmetic_sin"):
@@ -83,10 +78,12 @@ def main():
         detectedPatterns = []
 
         patternNum = len(clusterSeqs)
-        lastSaveArea = 0
+        bestSaveArea = 0
         lastSaveGSCLArea = 0
         lastComplexSelection = 0
         targetPatternTrace = ""
+        failImproveCnt = 0
+        benchmarkFailure = False
 
         for i in range(0, topThr):
             if (len(clusterSeqs[0].patternClusters) == 0):
@@ -131,36 +128,49 @@ def main():
                         if (not os.path.exists(outputPath+'/COMPLEX' +
                                                str(patternTraceId)+'.gds')):
                             if (len(tmpClusterSeq.patternClusters[0].cellIdsContained) < 11):
-                                runAstranForNetlist(AstranPath=ASTRANBuildPath, gurobiPath="/opt/gurobi950/linux64/bin/gurobi_cl",
-                                                    technologyPath="../tools/astran/Astran/build/Work/tech_freePDK45.rul",
-                                                    spiceNetlistPath=outputPath+'/COMPLEX' +
-                                                    str(patternTraceId)+'.sp',
-                                                    complexName='COMPLEX'+str(patternTraceId), commandDir=outputPath)
+                                try:
+                                    runAstranForNetlist(AstranPath=ASTRANBuildPath, gurobiPath="/opt/gurobi950/linux64/bin/gurobi_cl",
+                                                        technologyPath="../tools/astran/Astran/build/Work/tech_freePDK45.rul",
+                                                        spiceNetlistPath=outputPath+'/COMPLEX' +
+                                                        str(patternTraceId) +
+                                                        '.sp',
+                                                        complexName='COMPLEX'+str(patternTraceId), commandDir=outputPath)
+                                    loadAstranArea(
+                                        outputPath, "COMPLEX"+str(patternTraceId))
+                                except:
+                                    print("WARNING :", benchmarkName, " fails!")
+                                    benchmarkFailure = True
 
+                if (benchmarkFailure):
+                    break
                 exampleCells = []
                 for cellId in tmpClusterSeq.patternClusters[0].cellIdsContained:
                     exampleCells.append(cells[cellId])
 
-                complexSelection.append(("COMPLEX"+str(patternTraceId), len(
-                    tmpClusterSeq.patternClusters), len(tmpClusterSeq.patternClusters[0].cellIdsContained), tmpClusterSeq.patternExtensionTrace))
                 oriUnitAstranArea = getArea(exampleCells, stdType2AstranArea)
                 oriUnitGSCLArea = getArea(exampleCells, stdType2GSCLArea)
                 newUnitAstranArea = loadAstranArea(
                     outputPath, "COMPLEX"+str(patternTraceId))
-                saveArea += (oriUnitAstranArea-newUnitAstranArea) * \
-                    len(tmpClusterSeq.patternClusters)
-                saveGSCLArea += (oriUnitGSCLArea-newUnitAstranArea) * \
-                    len(tmpClusterSeq.patternClusters)
+                if (oriUnitAstranArea-newUnitAstranArea > 0):
+                    complexSelection.append(("COMPLEX"+str(patternTraceId), len(
+                        tmpClusterSeq.patternClusters), len(tmpClusterSeq.patternClusters[0].cellIdsContained), tmpClusterSeq.patternExtensionTrace))
+                    saveArea += (oriUnitAstranArea-newUnitAstranArea) * \
+                        len(tmpClusterSeq.patternClusters)
+                    saveGSCLArea += (oriUnitGSCLArea-newUnitAstranArea) * \
+                        len(tmpClusterSeq.patternClusters)
+
+            if (benchmarkFailure):
+                break
 
             print("saveArea=", saveArea, " / ", saveArea/astranArea*100, "%")
-            if (saveArea > lastSaveArea):
-                lastSaveArea = saveArea
+            if (saveArea > bestSaveArea):
+                bestSaveArea = saveArea
                 lastSaveGSCLArea = saveGSCLArea
                 lastComplexSelection = complexSelection
                 fileResult = open(outputPath+"/bestRecord-"+benchmarkName, 'w')
-                print(lastSaveArea, " <- compared to Astran GDS area",
+                print(bestSaveArea, " <- compared to Astran GDS area",
                       file=fileResult)
-                print(lastSaveArea/astranArea*100,
+                print(bestSaveArea/astranArea*100,
                       "% <- compared to Astran GDS area", file=fileResult)
                 print(lastSaveGSCLArea,
                       " <- compared to GSCL GDS area", file=fileResult)
@@ -170,6 +180,8 @@ def main():
                     "The generated complex cells are (name, clusterNum, cellNumInOneCluster, patternCode):", file=fileResult)
                 for complexName in lastComplexSelection:
                     print(complexName, file=fileResult)
+                print("\n runtime:", time.time() -
+                      startTime, " (s)", file=fileResult)
                 fileResult.close()
             else:
                 break
@@ -192,6 +204,9 @@ def main():
             clusterSeqs += newSeqOfClusters
             clusterSeqs = removeEmptySeqsAndDisableClusters(clusterSeqs)
             clusterSeqs = sortPatternClusterSeqs(clusterSeqs)
+
+        if (benchmarkFailure):
+            continue
 
         countedSet = set()
         recordPatternDetails = []
@@ -224,7 +239,7 @@ def main():
             clusterSeqs = sortPatternClusterSeqs(clusterSeqs)
 
             patternNum = len(clusterSeqs)
-            lastSaveArea = 0
+            bestSaveArea = 0
             lastSaveGSCLArea = 0
             lastComplexSelection = 0
 
@@ -270,13 +285,13 @@ def main():
                 if (touch and (not tmpClusterSeq.patternExtensionTrace in countedSet)):
 
                     countedSet.add(tmpClusterSeq.patternExtensionTrace)
-                    lastSaveArea = saveArea
+                    bestSaveArea = saveArea
                     lastSaveGSCLArea = saveGSCLArea
                     lastComplexSelection = complexSelection
 
-                    # print(lastSaveArea, " <- compared to Astran GDS area",
+                    # print(bestSaveArea, " <- compared to Astran GDS area",
                     #       file=fileResult)
-                    # print(lastSaveArea/astranArea*100,
+                    # print(bestSaveArea/astranArea*100,
                     #       "% <- compared to Astran GDS area", file=fileResult)
                     # print(lastSaveGSCLArea,
                     #       " <- compared to GSCL GDS area", file=fileResult)
@@ -285,7 +300,7 @@ def main():
                     # print(
                     #     "The generated complex cells are (name, clusterNum, cellNumInOneCluster, patternCode):", file=fileResult)
 
-                    recordPatternDetails.append((lastSaveArea, lastSaveArea/astranArea*100,
+                    recordPatternDetails.append((bestSaveArea, bestSaveArea/astranArea*100,
                                                  len(tmpClusterSeq.patternClusters),
                                                  len(
                                                      tmpClusterSeq.patternClusters[0].cellIdsContained),
