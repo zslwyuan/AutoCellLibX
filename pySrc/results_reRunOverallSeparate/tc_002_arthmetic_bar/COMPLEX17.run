@@ -1,8 +1,0 @@
-set lpsolve "/opt/gurobi950/linux64/bin/gurobi_cl"
-load technology "../tools/astran/Astran/build/Work/tech_freePDK45.rul"
-load netlist "./outputs/tc_002_arthmetic_bar//COMPLEX17.sp"
-cellgen select COMPLEX17
-cellgen autoflow
-export layout COMPLEX17 ./outputs/tc_002_arthmetic_bar//COMPLEX17.gds
-exit
-
