@@ -17,7 +17,7 @@ which shows the overall flow that we presented in the released paper for people 
 If you are curious about more details or some parts of the implementation confuse you, please feel free to raise issue in GitHub or contact us.
 
 <p align="center">
-<img src="https://github.com/zslwyuan/ASIC-StdCell-Mining/blob/main/doc/pattern.png" alt="Pattern" title="Pattern" width="400" /> 
+<img src="https://github.com/zslwyuan/AutoCellLibX/blob/main/doc/pattern.png" alt="Pattern" title="Pattern" width="400" /> 
 </p>
 
 ## License
@@ -49,7 +49,7 @@ Since commonly-used standard cell libraries cannot meet all the requirements in 
 Standard cell merging provides noticeable optimization potentials but it is critically challenging since numerous factors, e.g., the design context, transistor layout, design rules and expected PPAC metrics, should be considered to realize a beneficial library. First, as for the design context, designers should identify the characteristics of the target design to locate the optimization opportunities and design pattern mining is one of the promising approaches. Second, the transistor network and layout should be designed under the constraints of design rules and PPAC metrics, which is usually called standard cell layout synthesis. In this paper, we propose a fully automatic standard-cell library extension framework, AutoCellLibX which can analyze characteristics of the target gate-level netlist and extent an initial standard cell library with custom complex standard cells to minimize the area cost. 
 	
 <p align="center">
-<img src="https://github.com/zslwyuan/ASIC-StdCell-Mining/blob/main/doc/motivation.png" alt="Motivation" title="Motivation" width="400" /> 
+<img src="https://github.com/zslwyuan/AutoCellLibX/blob/main/doc/motivation.png" alt="Motivation" title="Motivation" width="400" /> 
 </p>
 
 ## Features
@@ -64,13 +64,13 @@ Standard cell merging provides noticeable optimization potentials but it is crit
 ## Implementation Overview
 
 <p align="center">
-<img src="https://github.com/zslwyuan/ASIC-StdCell-Mining/blob/main/doc/flow.png" alt="Implementation Overview" title="Implementation Overview" width="800" /> 
+<img src="https://github.com/zslwyuan/AutoCellLibX/blob/main/doc/flow.png" alt="Implementation Overview" title="Implementation Overview" width="800" /> 
 </p>
 
 ## Some Extracted Patterns and Generated Layouts
 
 <p align="center">
-<img src="https://github.com/zslwyuan/ASIC-StdCell-Mining/blob/main/doc/experimentalResult.png" alt="Experimental Result" title="Experimental Result" width="800" /> 
+<img src="https://github.com/zslwyuan/AutoCellLibX/blob/main/doc/experimentalResult.png" alt="Experimental Result" title="Experimental Result" width="800" /> 
 </p>
 
 ## Project Hiearchy
@@ -85,7 +85,7 @@ Below is a hiearchy tree of this project. As for the details, please refer to th
 Below is the call graph of the project for your reference:
 
 <p align="center">
-<img src="https://github.com/zslwyuan/ASIC-StdCell-Mining/blob/main/doc/callGraph.png" alt="Call Graph of the Project" title="Call Graph of the Project" width="800" /> 
+<img src="https://github.com/zslwyuan/AutoCellLibX/blob/main/doc/callGraph.png" alt="Call Graph of the Project" title="Call Graph of the Project" width="800" /> 
 </p>
 
 ## Dependencies
@@ -118,7 +118,7 @@ C++ 3-rd party tool:
 ## Issue Report
 
 This project is under active development and far from perfect. We do want to make the placer useful for people in the community. Therefore,
-* If you have any question/problem, please feel free to create an issue in the [GitHub Issue](https://github.com/zslwyuan/ASIC-StdCell-Mining/issues) or email us (Tingyuan LIANG, tliang AT connect DOT ust DOT hk)
+* If you have any question/problem, please feel free to create an issue in the [GitHub Issue](https://github.com/zslwyuan/AutoCellLibX/issues) or email us (Tingyuan LIANG, tliang AT connect DOT ust DOT hk)
 * We sincerely welcome code contribution to this project or suggestion in any approach!
 
 
