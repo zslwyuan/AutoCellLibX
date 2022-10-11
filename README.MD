@@ -69,6 +69,7 @@ Standard cell merging provides noticeable optimization potentials but it is crit
 
 ## Some Extracted Patterns and Generated Layouts
 
+Some related resultant files are provided in "pySrc/outputs" and below is an example layout.
 <p align="center">
 <img src="https://github.com/zslwyuan/AutoCellLibX/blob/main/doc/experimentalResult.png" alt="Experimental Result" title="Experimental Result" width="800" /> 
 </p>

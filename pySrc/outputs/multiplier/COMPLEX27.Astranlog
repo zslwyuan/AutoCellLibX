@@ -1,0 +1,675 @@
+astran> read ./outputs/multiplier//COMPLEX27.run
+-> Reading file: ./outputs/multiplier//COMPLEX27.run
+-> Setting lpsolve executable to: /opt/gurobi950/linux64/bin/gurobi_cl
+-> Loading technology from file: ../tools/astran/Astran/build/Work/tech_freePDK45.rul
+-> Loading cells netlist from file: ./outputs/multiplier//COMPLEX27.sp
+-> Selecting cell netlist: COMPLEX27
+-> Trying with 3 tracks and conservative = 0 ...
+-> Calculating cell area...
+-> Applying folding...
+-> Number of transistors before folding: 38 -> P(19) N(19)
+-> Number of transistors after folding: 38 -> P(19) N(19)
+-> Placing transistors...
+ ( initial cost = 54445 num reps = 54150 problem size = 361 )  Iteration 1; cost = 126085.000 (54445.000); p_cost = 126085.000; accept = 1.000; avg_delta = 1.323; dp = 9270.957; thres = 99999.000; cost_ratio = 2.316; [0]
+ Iteration 2; cost = 138229.000 (54445.000); p_cost = 138229.000; accept = 1.000; avg_delta = 0.224; dp = 9186.276; thres = 47999.520; cost_ratio = 1.096; [0]
+ Iteration 3; cost = 141153.000 (54445.000); p_cost = 141153.000; accept = 0.987; avg_delta = 0.055; dp = 9398.093; thres = 23040.656; cost_ratio = 1.021; [0]
+ Iteration 4; cost = 127246.000 (54445.000); p_cost = 127246.000; accept = 0.845; avg_delta = -0.304; dp = 9434.534; thres = 11347.036; cost_ratio = 0.901; [0]
+ Iteration 5; cost = 95233.000 (54445.000); p_cost = 95233.000; accept = 0.613; avg_delta = -0.964; dp = 9189.989; thres = 7072.381; cost_ratio = 0.748; [0]
+ Iteration 6; cost = 116257.000 (54445.000); p_cost = 116257.000; accept = 0.488; avg_delta = 0.796; dp = 8870.505; thres = 5600.537; cost_ratio = 1.221; [0]
+ Iteration 7; cost = 108216.000 (54445.000); p_cost = 108216.000; accept = 0.405; avg_delta = -0.367; dp = 8902.538; thres = 4822.426; cost_ratio = 0.931; [0]
+ Iteration 8; cost = 116487.000 (54445.000); p_cost = 116487.000; accept = 0.356; avg_delta = 0.429; dp = 8452.316; thres = 4331.118; cost_ratio = 1.076; [0]
+ Iteration 9; cost = 109310.000 (54445.000); p_cost = 109310.000; accept = 0.326; avg_delta = -0.407; dp = 8377.421; thres = 3970.053; cost_ratio = 0.938; [0]
+ Iteration 10; cost = 100302.000 (54445.000); p_cost = 100302.000; accept = 0.291; avg_delta = -0.572; dp = 8855.281; thres = 3680.095; cost_ratio = 0.918; [0]
+ Iteration 11; cost = 96998.000 (54445.000); p_cost = 96998.000; accept = 0.276; avg_delta = -0.221; dp = 8065.776; thres = 3451.005; cost_ratio = 0.967; [0]
+ Iteration 12; cost = 102662.000 (54445.000); p_cost = 102662.000; accept = 0.254; avg_delta = 0.412; dp = 8135.448; thres = 3250.427; cost_ratio = 1.058; [0]
+ Iteration 13; cost = 95563.000 (54445.000); p_cost = 95563.000; accept = 0.238; avg_delta = -0.550; dp = 8306.270; thres = 3080.903; cost_ratio = 0.931; [0]
+ Iteration 14; cost = 101140.000 (54445.000); p_cost = 101140.000; accept = 0.226; avg_delta = 0.456; dp = 7497.207; thres = 2931.807; cost_ratio = 1.058; [0]
+ Iteration 15; cost = 83832.000 (54445.000); p_cost = 83832.000; accept = 0.214; avg_delta = -1.495; dp = 7987.723; thres = 2798.492; cost_ratio = 0.829; [0]
+ Iteration 16; cost = 78809.000 (54445.000); p_cost = 78809.000; accept = 0.203; avg_delta = -0.458; dp = 7420.627; thres = 2678.554; cost_ratio = 0.940; [0]
+ Iteration 17; cost = 90074.000 (54445.000); p_cost = 90074.000; accept = 0.190; avg_delta = 1.094; dp = 7634.212; thres = 2569.998; cost_ratio = 1.143; [0]
+ Iteration 18; cost = 90197.000 (54445.000); p_cost = 90197.000; accept = 0.182; avg_delta = 0.012; dp = 7634.383; thres = 2472.133; cost_ratio = 1.001; [0]
+ Iteration 19; cost = 90490.000 (54445.000); p_cost = 90490.000; accept = 0.176; avg_delta = 0.031; dp = 7477.493; thres = 2381.525; cost_ratio = 1.003; [0]
+ Iteration 20; cost = 83658.000 (54445.000); p_cost = 83658.000; accept = 0.178; avg_delta = -0.709; dp = 7271.199; thres = 2296.904; cost_ratio = 0.924; [0]
+ Iteration 21; cost = 85602.000 (54445.000); p_cost = 85602.000; accept = 0.164; avg_delta = 0.219; dp = 7532.738; thres = 2214.606; cost_ratio = 1.023; [0]
+ Iteration 22; cost = 79604.000 (54445.000); p_cost = 79604.000; accept = 0.159; avg_delta = -0.695; dp = 7349.498; thres = 2140.616; cost_ratio = 0.930; [0]
+ Iteration 23; cost = 82276.000 (54445.000); p_cost = 82276.000; accept = 0.159; avg_delta = 0.309; dp = 5876.394; thres = 2070.619; cost_ratio = 1.034; [0]
+ Iteration 24; cost = 72523.000 (54445.000); p_cost = 72523.000; accept = 0.149; avg_delta = -1.206; dp = 6423.238; thres = 2002.886; cost_ratio = 0.881; [0]
+ Iteration 25; cost = 89289.000 (54445.000); p_cost = 89289.000; accept = 0.144; avg_delta = 2.145; dp = 5386.708; thres = 1940.487; cost_ratio = 1.231; [0]
+ Iteration 26; cost = 79029.000 (54445.000); p_cost = 79029.000; accept = 0.147; avg_delta = -1.287; dp = 5690.083; thres = 1881.458; cost_ratio = 0.885; [0]
+ Iteration 27; cost = 72136.000 (54445.000); p_cost = 72136.000; accept = 0.135; avg_delta = -0.946; dp = 6649.941; thres = 1823.444; cost_ratio = 0.913; [0]
+ Iteration 28; cost = 76147.000 (54445.000); p_cost = 76147.000; accept = 0.138; avg_delta = 0.539; dp = 5915.143; thres = 1770.465; cost_ratio = 1.056; [0]
+ Iteration 29; cost = 69861.000 (54445.000); p_cost = 69861.000; accept = 0.131; avg_delta = -0.889; dp = 5677.628; thres = 1718.317; cost_ratio = 0.917; [0]
+ Iteration 30; cost = 73900.000 (54445.000); p_cost = 73900.000; accept = 0.125; avg_delta = 0.599; dp = 6146.629; thres = 1669.305; cost_ratio = 1.058; [0]
+ Iteration 31; cost = 75917.000 (54445.000); p_cost = 75917.000; accept = 0.128; avg_delta = 0.291; dp = 4880.734; thres = 1622.958; cost_ratio = 1.027; [0]
+ Iteration 32; cost = 72801.000 (54445.000); p_cost = 72801.000; accept = 0.123; avg_delta = -0.467; dp = 5417.608; thres = 1577.189; cost_ratio = 0.959; [0]
+ Iteration 33; cost = 64465.000 (54445.000); p_cost = 64465.000; accept = 0.117; avg_delta = -1.310; dp = 5211.254; thres = 1533.673; cost_ratio = 0.885; [0]
+ Iteration 34; cost = 72053.000 (54445.000); p_cost = 72053.000; accept = 0.116; avg_delta = 1.207; dp = 5333.289; thres = 1492.414; cost_ratio = 1.118; [0]
+ Iteration 35; cost = 73147.000 (54445.000); p_cost = 73147.000; accept = 0.113; avg_delta = 0.179; dp = 5564.690; thres = 1452.507; cost_ratio = 1.015; [0]
+ Iteration 36; cost = 70780.000 (54445.000); p_cost = 70780.000; accept = 0.107; avg_delta = -0.410; dp = 6079.032; thres = 1414.235; cost_ratio = 0.968; [0]
+ Iteration 37; cost = 69672.000 (54445.000); p_cost = 69672.000; accept = 0.109; avg_delta = -0.187; dp = 4592.175; thres = 1377.927; cost_ratio = 0.984; [0]
+ Iteration 38; cost = 74551.000 (54445.000); p_cost = 74551.000; accept = 0.104; avg_delta = 0.865; dp = 5615.951; thres = 1342.128; cost_ratio = 1.070; [0]
+ Iteration 39; cost = 72076.000 (54445.000); p_cost = 72076.000; accept = 0.104; avg_delta = -0.439; dp = 5562.354; thres = 1308.000; cost_ratio = 0.967; [0]
+ Iteration 40; cost = 50645.000 (50645.000); p_cost = 50645.000; accept = 0.103; avg_delta = -3.828; dp = 4280.613; thres = 1274.761; cost_ratio = 0.703; [0]
+ Iteration 41; cost = 58061.000 (50645.000); p_cost = 58061.000; accept = 0.095; avg_delta = 1.434; dp = 4510.259; thres = 1242.454; cost_ratio = 1.146; [0]
+ Iteration 42; cost = 54696.000 (50645.000); p_cost = 54696.000; accept = 0.089; avg_delta = -0.696; dp = 6512.818; thres = 1211.940; cost_ratio = 0.942; [0]
+ Iteration 43; cost = 59428.000 (50645.000); p_cost = 59428.000; accept = 0.088; avg_delta = 0.994; dp = 5150.104; thres = 1182.868; cost_ratio = 1.087; [0]
+ Iteration 44; cost = 47322.000 (47322.000); p_cost = 47322.000; accept = 0.090; avg_delta = -2.485; dp = 4366.630; thres = 1154.640; cost_ratio = 0.796; [0]
+ Iteration 45; cost = 54111.000 (47322.000); p_cost = 54111.000; accept = 0.084; avg_delta = 1.484; dp = 4834.815; thres = 1126.876; cost_ratio = 1.143; [0]
+ Iteration 46; cost = 47417.000 (47322.000); p_cost = 47417.000; accept = 0.079; avg_delta = -1.569; dp = 3958.143; thres = 1100.318; cost_ratio = 0.876; [0]
+ Iteration 47; cost = 40548.000 (40548.000); p_cost = 40548.000; accept = 0.082; avg_delta = -1.548; dp = 5464.379; thres = 1074.896; cost_ratio = 0.855; [0]
+ Iteration 48; cost = 45737.000 (40548.000); p_cost = 45737.000; accept = 0.073; avg_delta = 1.320; dp = 6636.802; thres = 1049.789; cost_ratio = 1.128; [0]
+ Iteration 49; cost = 44187.000 (40548.000); p_cost = 44187.000; accept = 0.077; avg_delta = -0.373; dp = 2892.067; thres = 1026.027; cost_ratio = 0.966; [0]
+ Iteration 50; cost = 42517.000 (40548.000); p_cost = 42517.000; accept = 0.072; avg_delta = -0.428; dp = 3432.140; thres = 1002.486; cost_ratio = 0.962; [0]
+ Iteration 51; cost = 45373.000 (40548.000); p_cost = 45373.000; accept = 0.074; avg_delta = 0.717; dp = 3380.737; thres = 979.838; cost_ratio = 1.067; [0]
+ Iteration 52; cost = 43969.000 (40548.000); p_cost = 43969.000; accept = 0.072; avg_delta = -0.360; dp = 4648.022; thres = 957.588; cost_ratio = 0.969; [0]
+ Iteration 53; cost = 37594.000 (37594.000); p_cost = 37594.000; accept = 0.065; avg_delta = -1.823; dp = 4409.560; thres = 935.953; cost_ratio = 0.855; [0]
+ Iteration 54; cost = 43725.000 (37594.000); p_cost = 43725.000; accept = 0.062; avg_delta = 1.831; dp = 2474.291; thres = 915.282; cost_ratio = 1.163; [0]
+ Iteration 55; cost = 37414.000 (37414.000); p_cost = 37414.000; accept = 0.054; avg_delta = -2.150; dp = 1938.908; thres = 895.226; cost_ratio = 0.856; [0]
+ Iteration 56; cost = 37533.000 (37414.000); p_cost = 37533.000; accept = 0.056; avg_delta = 0.039; dp = 1596.898; thres = 876.005; cost_ratio = 1.003; [0]
+ Iteration 57; cost = 35447.000 (35447.000); p_cost = 35447.000; accept = 0.057; avg_delta = -0.681; dp = 2037.187; thres = 857.125; cost_ratio = 0.944; [0]
+ Iteration 58; cost = 35291.000 (35291.000); p_cost = 35291.000; accept = 0.051; avg_delta = -0.056; dp = 601.779; thres = 838.610; cost_ratio = 0.996; [0]
+ Iteration 59; cost = 36503.000 (35291.000); p_cost = 36503.000; accept = 0.052; avg_delta = 0.428; dp = 634.291; thres = 820.741; cost_ratio = 1.034; [0]
+ Iteration 60; cost = 34613.000 (34613.000); p_cost = 34613.000; accept = 0.052; avg_delta = -0.670; dp = 648.102; thres = 803.202; cost_ratio = 0.948; [0]
+ Iteration 61; cost = 33262.000 (33262.000); p_cost = 33262.000; accept = 0.054; avg_delta = -0.461; dp = 436.689; thres = 786.047; cost_ratio = 0.961; [0]
+ Iteration 62; cost = 33058.000 (33058.000); p_cost = 33058.000; accept = 0.054; avg_delta = -0.070; dp = 87.532; thres = 769.175; cost_ratio = 0.994; [0]
+ Iteration 63; cost = 33262.000 (33058.000); p_cost = 33262.000; accept = 0.052; avg_delta = 0.072; dp = 139.492; thres = 752.676; cost_ratio = 1.006; [0]
+ Iteration 64; cost = 33262.000 (33058.000); p_cost = 33262.000; accept = 0.053; avg_delta = 0.000; dp = 143.578; thres = 736.591; cost_ratio = 1.000; [1]
+ Iteration 65; cost = 33476.000 (33058.000); p_cost = 33476.000; accept = 0.054; avg_delta = 0.073; dp = 150.351; thres = 720.815; cost_ratio = 1.006; [0]
+ Iteration 66; cost = 33670.000 (33058.000); p_cost = 33670.000; accept = 0.054; avg_delta = 0.066; dp = 211.995; thres = 705.343; cost_ratio = 1.006; [0]
+ Iteration 67; cost = 32771.000 (32771.000); p_cost = 32771.000; accept = 0.054; avg_delta = -0.309; dp = 323.148; thres = 690.207; cost_ratio = 0.973; [0]
+ Iteration 68; cost = 32975.000 (32771.000); p_cost = 32975.000; accept = 0.053; avg_delta = 0.071; dp = 117.854; thres = 675.404; cost_ratio = 1.006; [0]
+ Iteration 69; cost = 32985.000 (32771.000); p_cost = 32985.000; accept = 0.052; avg_delta = 0.004; dp = 137.811; thres = 660.951; cost_ratio = 1.000; [0]
+ Iteration 70; cost = 32985.000 (32771.000); p_cost = 32985.000; accept = 0.052; avg_delta = 0.000; dp = 147.595; thres = 646.821; cost_ratio = 1.000; [1]
+ Iteration 71; cost = 33383.000 (32771.000); p_cost = 33383.000; accept = 0.053; avg_delta = 0.139; dp = 206.286; thres = 632.997; cost_ratio = 1.012; [0]
+ Iteration 72; cost = 32975.000 (32771.000); p_cost = 32975.000; accept = 0.053; avg_delta = -0.143; dp = 373.558; thres = 619.448; cost_ratio = 0.988; [0]
+ Iteration 73; cost = 32975.000 (32771.000); p_cost = 32975.000; accept = 0.053; avg_delta = 0.000; dp = 120.868; thres = 606.199; cost_ratio = 1.000; [1]
+ Iteration 74; cost = 33262.000 (32771.000); p_cost = 33262.000; accept = 0.052; avg_delta = 0.102; dp = 205.558; thres = 593.238; cost_ratio = 1.009; [0]
+ Iteration 75; cost = 33262.000 (32771.000); p_cost = 33262.000; accept = 0.054; avg_delta = 0.000; dp = 127.274; thres = 580.579; cost_ratio = 1.000; [1]
+ Iteration 76; cost = 33262.000 (32771.000); p_cost = 33262.000; accept = 0.053; avg_delta = 0.000; dp = 118.269; thres = 568.129; cost_ratio = 1.000; [2]
+ final cost = 33262 
+ ( initial cost = 32771 num reps = 54150 problem size = 361 )  Iteration 1; cost = 116230.000 (32771.000); p_cost = 116230.000; accept = 1.000; avg_delta = 1.541; dp = 9394.154; thres = 99999.000; cost_ratio = 3.547; [0]
+ Iteration 2; cost = 129785.000 (32771.000); p_cost = 129785.000; accept = 1.000; avg_delta = 0.250; dp = 9243.577; thres = 47999.520; cost_ratio = 1.117; [0]
+ Iteration 3; cost = 151548.000 (32771.000); p_cost = 151548.000; accept = 0.987; avg_delta = 0.407; dp = 9353.188; thres = 23039.770; cost_ratio = 1.168; [0]
+ Iteration 4; cost = 113754.000 (32771.000); p_cost = 113754.000; accept = 0.848; avg_delta = -0.823; dp = 9311.163; thres = 11349.540; cost_ratio = 0.751; [0]
+ Iteration 5; cost = 121014.000 (32771.000); p_cost = 121014.000; accept = 0.612; avg_delta = 0.219; dp = 9062.045; thres = 7040.591; cost_ratio = 1.064; [0]
+ Iteration 6; cost = 117624.000 (32771.000); p_cost = 117624.000; accept = 0.485; avg_delta = -0.129; dp = 9162.019; thres = 5580.382; cost_ratio = 0.972; [0]
+ Iteration 7; cost = 121265.000 (32771.000); p_cost = 121265.000; accept = 0.402; avg_delta = 0.167; dp = 9071.001; thres = 4812.389; cost_ratio = 1.031; [0]
+ Iteration 8; cost = 100134.000 (32771.000); p_cost = 100134.000; accept = 0.361; avg_delta = -1.081; dp = 8594.337; thres = 4327.337; cost_ratio = 0.826; [0]
+ Iteration 9; cost = 102505.000 (32771.000); p_cost = 102505.000; accept = 0.323; avg_delta = 0.136; dp = 8699.291; thres = 3958.996; cost_ratio = 1.024; [0]
+ Iteration 10; cost = 83406.000 (32771.000); p_cost = 83406.000; accept = 0.288; avg_delta = -1.223; dp = 8089.577; thres = 3673.662; cost_ratio = 0.814; [0]
+ Iteration 11; cost = 102082.000 (32771.000); p_cost = 102082.000; accept = 0.266; avg_delta = 1.298; dp = 9087.994; thres = 3447.506; cost_ratio = 1.224; [0]
+ Iteration 12; cost = 97568.000 (32771.000); p_cost = 97568.000; accept = 0.256; avg_delta = -0.325; dp = 7784.735; thres = 3256.775; cost_ratio = 0.956; [0]
+ Iteration 13; cost = 115293.000 (32771.000); p_cost = 115293.000; accept = 0.231; avg_delta = 1.419; dp = 8013.584; thres = 3084.712; cost_ratio = 1.182; [0]
+ Iteration 14; cost = 114218.000 (32771.000); p_cost = 114218.000; accept = 0.224; avg_delta = -0.088; dp = 8431.554; thres = 2940.988; cost_ratio = 0.991; [0]
+ Iteration 15; cost = 98612.000 (32771.000); p_cost = 98612.000; accept = 0.212; avg_delta = -1.360; dp = 7718.715; thres = 2808.063; cost_ratio = 0.863; [0]
+ Iteration 16; cost = 92283.000 (32771.000); p_cost = 92283.000; accept = 0.206; avg_delta = -0.569; dp = 7213.521; thres = 2688.851; cost_ratio = 0.936; [0]
+ Iteration 17; cost = 91405.000 (32771.000); p_cost = 91405.000; accept = 0.190; avg_delta = -0.085; dp = 7601.125; thres = 2578.297; cost_ratio = 0.990; [0]
+ Iteration 18; cost = 83483.000 (32771.000); p_cost = 83483.000; accept = 0.184; avg_delta = -0.795; dp = 7245.224; thres = 2480.152; cost_ratio = 0.913; [0]
+ Iteration 19; cost = 78153.000 (32771.000); p_cost = 78153.000; accept = 0.179; avg_delta = -0.550; dp = 6708.455; thres = 2388.503; cost_ratio = 0.936; [0]
+ Iteration 20; cost = 86353.000 (32771.000); p_cost = 86353.000; accept = 0.173; avg_delta = 0.875; dp = 7148.771; thres = 2302.482; cost_ratio = 1.105; [0]
+ Iteration 21; cost = 87519.000 (32771.000); p_cost = 87519.000; accept = 0.170; avg_delta = 0.127; dp = 7241.204; thres = 2221.970; cost_ratio = 1.014; [0]
+ Iteration 22; cost = 80297.000 (32771.000); p_cost = 80297.000; accept = 0.161; avg_delta = -0.830; dp = 6918.539; thres = 2145.517; cost_ratio = 0.917; [0]
+ Iteration 23; cost = 86489.000 (32771.000); p_cost = 86489.000; accept = 0.158; avg_delta = 0.726; dp = 6733.623; thres = 2074.883; cost_ratio = 1.077; [0]
+ Iteration 24; cost = 69871.000 (32771.000); p_cost = 69871.000; accept = 0.152; avg_delta = -2.018; dp = 6910.288; thres = 2007.642; cost_ratio = 0.808; [0]
+ Iteration 25; cost = 76466.000 (32771.000); p_cost = 76466.000; accept = 0.148; avg_delta = 0.822; dp = 6112.915; thres = 1944.268; cost_ratio = 1.094; [0]
+ Iteration 26; cost = 69620.000 (32771.000); p_cost = 69620.000; accept = 0.143; avg_delta = -0.885; dp = 5830.086; thres = 1884.053; cost_ratio = 0.910; [0]
+ Iteration 27; cost = 79131.000 (32771.000); p_cost = 79131.000; accept = 0.138; avg_delta = 1.271; dp = 6587.460; thres = 1827.155; cost_ratio = 1.137; [0]
+ Iteration 28; cost = 68390.000 (32771.000); p_cost = 68390.000; accept = 0.134; avg_delta = -1.478; dp = 6111.267; thres = 1773.152; cost_ratio = 0.864; [0]
+ Iteration 29; cost = 74094.000 (32771.000); p_cost = 74094.000; accept = 0.133; avg_delta = 0.791; dp = 5585.470; thres = 1721.722; cost_ratio = 1.083; [0]
+ Iteration 30; cost = 79407.000 (32771.000); p_cost = 79407.000; accept = 0.134; avg_delta = 0.735; dp = 6997.658; thres = 1672.013; cost_ratio = 1.072; [0]
+ Iteration 31; cost = 67762.000 (32771.000); p_cost = 67762.000; accept = 0.125; avg_delta = -1.715; dp = 6057.816; thres = 1623.661; cost_ratio = 0.853; [0]
+ Iteration 32; cost = 64429.000 (32771.000); p_cost = 64429.000; accept = 0.125; avg_delta = -0.494; dp = 6337.767; thres = 1578.427; cost_ratio = 0.951; [0]
+ Iteration 33; cost = 66231.000 (32771.000); p_cost = 66231.000; accept = 0.118; avg_delta = 0.282; dp = 5335.562; thres = 1534.613; cost_ratio = 1.028; [0]
+ Iteration 34; cost = 72114.000 (32771.000); p_cost = 72114.000; accept = 0.117; avg_delta = 0.929; dp = 4532.039; thres = 1493.242; cost_ratio = 1.089; [0]
+ Iteration 35; cost = 66382.000 (32771.000); p_cost = 66382.000; accept = 0.112; avg_delta = -0.946; dp = 5316.041; thres = 1453.159; cost_ratio = 0.921; [0]
+ Iteration 36; cost = 69706.000 (32771.000); p_cost = 69706.000; accept = 0.113; avg_delta = 0.542; dp = 5806.545; thres = 1414.993; cost_ratio = 1.050; [0]
+ Iteration 37; cost = 65943.000 (32771.000); p_cost = 65943.000; accept = 0.105; avg_delta = -0.662; dp = 5548.180; thres = 1377.629; cost_ratio = 0.946; [0]
+ Iteration 38; cost = 73966.000 (32771.000); p_cost = 73966.000; accept = 0.109; avg_delta = 1.363; dp = 5575.849; thres = 1342.477; cost_ratio = 1.122; [0]
+ Iteration 39; cost = 71470.000 (32771.000); p_cost = 71470.000; accept = 0.106; avg_delta = -0.437; dp = 5368.286; thres = 1307.696; cost_ratio = 0.966; [0]
+ Iteration 40; cost = 63434.000 (32771.000); p_cost = 63434.000; accept = 0.099; avg_delta = -1.503; dp = 5142.562; thres = 1274.264; cost_ratio = 0.888; [0]
+ Iteration 41; cost = 72809.000 (32771.000); p_cost = 72809.000; accept = 0.099; avg_delta = 1.746; dp = 4497.366; thres = 1242.564; cost_ratio = 1.148; [0]
+ Iteration 42; cost = 56202.000 (32771.000); p_cost = 56202.000; accept = 0.087; avg_delta = -3.507; dp = 4560.918; thres = 1211.608; cost_ratio = 0.772; [0]
+ Iteration 43; cost = 46215.000 (32771.000); p_cost = 46215.000; accept = 0.089; avg_delta = -2.069; dp = 5273.234; thres = 1182.743; cost_ratio = 0.822; [0]
+ Iteration 44; cost = 60694.000 (32771.000); p_cost = 60694.000; accept = 0.088; avg_delta = 3.025; dp = 4289.012; thres = 1154.387; cost_ratio = 1.313; [0]
+ Iteration 45; cost = 55395.000 (32771.000); p_cost = 55395.000; accept = 0.086; avg_delta = -1.135; dp = 5084.455; thres = 1126.789; cost_ratio = 0.913; [0]
+ Iteration 46; cost = 48670.000 (32771.000); p_cost = 48670.000; accept = 0.083; avg_delta = -1.492; dp = 3893.057; thres = 1100.065; cost_ratio = 0.879; [0]
+ Iteration 47; cost = 45732.000 (32771.000); p_cost = 45732.000; accept = 0.079; avg_delta = -0.690; dp = 4706.016; thres = 1074.251; cost_ratio = 0.940; [0]
+ Iteration 48; cost = 53415.000 (32771.000); p_cost = 53415.000; accept = 0.079; avg_delta = 1.795; dp = 4493.679; thres = 1049.443; cost_ratio = 1.168; [0]
+ Iteration 49; cost = 57668.000 (32771.000); p_cost = 57668.000; accept = 0.079; avg_delta = 0.989; dp = 4330.944; thres = 1025.177; cost_ratio = 1.080; [0]
+ Iteration 50; cost = 45868.000 (32771.000); p_cost = 45868.000; accept = 0.069; avg_delta = -3.142; dp = 5663.958; thres = 1001.441; cost_ratio = 0.795; [0]
+ Iteration 51; cost = 44345.000 (32771.000); p_cost = 44345.000; accept = 0.073; avg_delta = -0.386; dp = 6286.647; thres = 979.003; cost_ratio = 0.967; [0]
+ Iteration 52; cost = 48833.000 (32771.000); p_cost = 48833.000; accept = 0.071; avg_delta = 1.160; dp = 3221.670; thres = 956.819; cost_ratio = 1.101; [0]
+ Iteration 53; cost = 42192.000 (32771.000); p_cost = 42192.000; accept = 0.071; avg_delta = -1.721; dp = 3926.808; thres = 935.241; cost_ratio = 0.864; [0]
+ Iteration 54; cost = 43882.000 (32771.000); p_cost = 43882.000; accept = 0.069; avg_delta = 0.454; dp = 2105.083; thres = 914.162; cost_ratio = 1.040; [0]
+ Iteration 55; cost = 46911.000 (32771.000); p_cost = 46911.000; accept = 0.066; avg_delta = 0.842; dp = 2612.392; thres = 893.720; cost_ratio = 1.069; [0]
+ Iteration 56; cost = 37956.000 (32771.000); p_cost = 37956.000; accept = 0.062; avg_delta = -2.675; dp = 5012.913; thres = 873.874; cost_ratio = 0.809; [0]
+ Iteration 57; cost = 36573.000 (32771.000); p_cost = 36573.000; accept = 0.059; avg_delta = -0.436; dp = 3136.997; thres = 854.727; cost_ratio = 0.964; [0]
+ Iteration 58; cost = 43702.000 (32771.000); p_cost = 43702.000; accept = 0.063; avg_delta = 2.090; dp = 2200.538; thres = 836.166; cost_ratio = 1.195; [0]
+ Iteration 59; cost = 41386.000 (32771.000); p_cost = 41386.000; accept = 0.065; avg_delta = -0.662; dp = 2286.156; thres = 817.783; cost_ratio = 0.947; [0]
+ Iteration 60; cost = 31063.000 (31063.000); p_cost = 31063.000; accept = 0.059; avg_delta = -3.227; dp = 2491.548; thres = 799.723; cost_ratio = 0.751; [0]
+ Iteration 61; cost = 30156.000 (30156.000); p_cost = 30156.000; accept = 0.051; avg_delta = -0.328; dp = 653.045; thres = 782.333; cost_ratio = 0.971; [0]
+ Iteration 62; cost = 30356.000 (30156.000); p_cost = 30356.000; accept = 0.053; avg_delta = 0.070; dp = 176.004; thres = 765.667; cost_ratio = 1.007; [0]
+ Iteration 63; cost = 30051.000 (30051.000); p_cost = 30051.000; accept = 0.053; avg_delta = -0.107; dp = 83.104; thres = 749.290; cost_ratio = 0.990; [0]
+ Iteration 64; cost = 30051.000 (30051.000); p_cost = 30051.000; accept = 0.051; avg_delta = 0.000; dp = 95.523; thres = 733.264; cost_ratio = 1.000; [1]
+ Iteration 65; cost = 30255.000 (30051.000); p_cost = 30255.000; accept = 0.052; avg_delta = 0.072; dp = 83.481; thres = 717.629; cost_ratio = 1.007; [0]
+ Iteration 66; cost = 30255.000 (30051.000); p_cost = 30255.000; accept = 0.053; avg_delta = 0.000; dp = 91.717; thres = 702.291; cost_ratio = 1.000; [1]
+ Iteration 67; cost = 30255.000 (30051.000); p_cost = 30255.000; accept = 0.053; avg_delta = 0.000; dp = 83.773; thres = 687.269; cost_ratio = 1.000; [2]
+ Iteration 68; cost = 30542.000 (30051.000); p_cost = 30542.000; accept = 0.052; avg_delta = 0.102; dp = 190.295; thres = 672.560; cost_ratio = 1.009; [0]
+ Iteration 69; cost = 31271.000 (30051.000); p_cost = 31271.000; accept = 0.055; avg_delta = 0.247; dp = 582.252; thres = 658.209; cost_ratio = 1.024; [0]
+ Iteration 70; cost = 30776.000 (30051.000); p_cost = 30776.000; accept = 0.051; avg_delta = -0.178; dp = 666.686; thres = 644.066; cost_ratio = 0.984; [0]
+ Iteration 71; cost = 30776.000 (30051.000); p_cost = 30776.000; accept = 0.052; avg_delta = 0.000; dp = 86.490; thres = 630.339; cost_ratio = 1.000; [1]
+ Iteration 72; cost = 30572.000 (30051.000); p_cost = 30572.000; accept = 0.052; avg_delta = -0.072; dp = 99.325; thres = 616.866; cost_ratio = 0.993; [0]
+ Iteration 73; cost = 30776.000 (30051.000); p_cost = 30776.000; accept = 0.053; avg_delta = 0.072; dp = 91.206; thres = 603.688; cost_ratio = 1.007; [0]
+ Iteration 74; cost = 29740.000 (29740.000); p_cost = 29740.000; accept = 0.051; avg_delta = -0.372; dp = 480.686; thres = 590.779; cost_ratio = 0.966; [0]
+ Iteration 75; cost = 29740.000 (29740.000); p_cost = 29740.000; accept = 0.052; avg_delta = 0.000; dp = 0.030; thres = 578.184; cost_ratio = 1.000; [1]
+ Iteration 76; cost = 30154.000 (29740.000); p_cost = 30154.000; accept = 0.053; avg_delta = 0.144; dp = 120.368; thres = 565.844; cost_ratio = 1.014; [0]
+ Iteration 77; cost = 30154.000 (29740.000); p_cost = 30154.000; accept = 0.052; avg_delta = 0.000; dp = 0.020; thres = 553.735; cost_ratio = 1.000; [1]
+ Iteration 78; cost = 30148.000 (29740.000); p_cost = 30148.000; accept = 0.051; avg_delta = -0.002; dp = 59.441; thres = 541.902; cost_ratio = 1.000; [0]
+ Iteration 79; cost = 30148.000 (29740.000); p_cost = 30148.000; accept = 0.052; avg_delta = 0.000; dp = 211.437; thres = 530.373; cost_ratio = 1.000; [1]
+ Iteration 80; cost = 30148.000 (29740.000); p_cost = 30148.000; accept = 0.054; avg_delta = 0.000; dp = 0.031; thres = 519.052; cost_ratio = 1.000; [2]
+ final cost = 30148 
+ ( initial cost = 29740 num reps = 54150 problem size = 361 )  Iteration 1; cost = 133989.000 (29740.000); p_cost = 133989.000; accept = 1.000; avg_delta = 1.925; dp = 9230.934; thres = 99999.000; cost_ratio = 4.505; [0]
+ Iteration 2; cost = 119478.000 (29740.000); p_cost = 119478.000; accept = 1.000; avg_delta = -0.268; dp = 9288.555; thres = 47999.520; cost_ratio = 0.892; [0]
+ Iteration 3; cost = 140123.000 (29740.000); p_cost = 140123.000; accept = 0.988; avg_delta = 0.386; dp = 9364.809; thres = 23039.770; cost_ratio = 1.173; [0]
+ Iteration 4; cost = 119124.000 (29740.000); p_cost = 119124.000; accept = 0.849; avg_delta = -0.457; dp = 9422.942; thres = 11332.310; cost_ratio = 0.850; [0]
+ Iteration 5; cost = 100816.000 (29740.000); p_cost = 100816.000; accept = 0.611; avg_delta = -0.554; dp = 9197.688; thres = 7025.464; cost_ratio = 0.846; [0]
+ Iteration 6; cost = 116949.000 (29740.000); p_cost = 116949.000; accept = 0.481; avg_delta = 0.619; dp = 8941.737; thres = 5575.531; cost_ratio = 1.160; [0]
+ Iteration 7; cost = 111877.000 (29740.000); p_cost = 111877.000; accept = 0.411; avg_delta = -0.228; dp = 8937.428; thres = 4818.850; cost_ratio = 0.957; [0]
+ Iteration 8; cost = 105730.000 (29740.000); p_cost = 105730.000; accept = 0.351; avg_delta = -0.323; dp = 8683.289; thres = 4314.799; cost_ratio = 0.945; [0]
+ Iteration 9; cost = 98941.000 (29740.000); p_cost = 98941.000; accept = 0.325; avg_delta = -0.386; dp = 8044.555; thres = 3962.140; cost_ratio = 0.936; [0]
+ Iteration 10; cost = 85592.000 (29740.000); p_cost = 85592.000; accept = 0.292; avg_delta = -0.844; dp = 8278.430; thres = 3673.545; cost_ratio = 0.865; [0]
+ Iteration 11; cost = 107579.000 (29740.000); p_cost = 107579.000; accept = 0.270; avg_delta = 1.506; dp = 8086.514; thres = 3443.381; cost_ratio = 1.257; [0]
+ Iteration 12; cost = 94900.000 (29740.000); p_cost = 94900.000; accept = 0.253; avg_delta = -0.925; dp = 7671.781; thres = 3249.353; cost_ratio = 0.882; [0]
+ Iteration 13; cost = 91582.000 (29740.000); p_cost = 91582.000; accept = 0.231; avg_delta = -0.265; dp = 7893.877; thres = 3080.205; cost_ratio = 0.965; [0]
+ Iteration 14; cost = 99831.000 (29740.000); p_cost = 99831.000; accept = 0.223; avg_delta = 0.683; dp = 7530.823; thres = 2936.296; cost_ratio = 1.090; [0]
+ Iteration 15; cost = 91543.000 (29740.000); p_cost = 91543.000; accept = 0.217; avg_delta = -0.704; dp = 7130.697; thres = 2804.457; cost_ratio = 0.917; [0]
+ Iteration 16; cost = 93224.000 (29740.000); p_cost = 93224.000; accept = 0.196; avg_delta = 0.159; dp = 8266.443; thres = 2682.109; cost_ratio = 1.018; [0]
+ Iteration 17; cost = 86479.000 (29740.000); p_cost = 86479.000; accept = 0.196; avg_delta = -0.635; dp = 7637.505; thres = 2577.146; cost_ratio = 0.928; [0]
+ Iteration 18; cost = 95667.000 (29740.000); p_cost = 95667.000; accept = 0.189; avg_delta = 0.897; dp = 7691.842; thres = 2475.956; cost_ratio = 1.106; [0]
+ Iteration 19; cost = 90495.000 (29740.000); p_cost = 90495.000; accept = 0.181; avg_delta = -0.528; dp = 6840.380; thres = 2382.123; cost_ratio = 0.946; [0]
+ Iteration 20; cost = 90391.000 (29740.000); p_cost = 90391.000; accept = 0.169; avg_delta = -0.011; dp = 6881.190; thres = 2295.485; cost_ratio = 0.999; [0]
+ Iteration 21; cost = 77496.000 (29740.000); p_cost = 77496.000; accept = 0.167; avg_delta = -1.426; dp = 7613.747; thres = 2216.933; cost_ratio = 0.857; [0]
+ Iteration 22; cost = 87067.000 (29740.000); p_cost = 87067.000; accept = 0.155; avg_delta = 1.139; dp = 8086.648; thres = 2141.701; cost_ratio = 1.124; [0]
+ Iteration 23; cost = 88750.000 (29740.000); p_cost = 88750.000; accept = 0.156; avg_delta = 0.200; dp = 6439.273; thres = 2073.080; cost_ratio = 1.019; [0]
+ Iteration 24; cost = 73258.000 (29740.000); p_cost = 73258.000; accept = 0.154; avg_delta = -1.854; dp = 6169.457; thres = 2006.491; cost_ratio = 0.825; [0]
+ Iteration 25; cost = 80007.000 (29740.000); p_cost = 80007.000; accept = 0.144; avg_delta = 0.865; dp = 6929.608; thres = 1942.478; cost_ratio = 1.092; [0]
+ Iteration 26; cost = 87351.000 (29740.000); p_cost = 87351.000; accept = 0.145; avg_delta = 0.936; dp = 5362.158; thres = 1883.471; cost_ratio = 1.092; [0]
+ Iteration 27; cost = 80202.000 (29740.000); p_cost = 80202.000; accept = 0.132; avg_delta = -1.003; dp = 5876.652; thres = 1826.016; cost_ratio = 0.918; [0]
+ Iteration 28; cost = 70801.000 (29740.000); p_cost = 70801.000; accept = 0.135; avg_delta = -1.287; dp = 6036.154; thres = 1773.679; cost_ratio = 0.883; [0]
+ Iteration 29; cost = 74817.000 (29740.000); p_cost = 74817.000; accept = 0.130; avg_delta = 0.571; dp = 5854.308; thres = 1722.080; cost_ratio = 1.057; [0]
+ Iteration 30; cost = 68342.000 (29740.000); p_cost = 68342.000; accept = 0.127; avg_delta = -0.943; dp = 5772.282; thres = 1673.113; cost_ratio = 0.913; [0]
+ Iteration 31; cost = 69559.000 (29740.000); p_cost = 69559.000; accept = 0.125; avg_delta = 0.180; dp = 5268.073; thres = 1626.213; cost_ratio = 1.018; [0]
+ Iteration 32; cost = 68396.000 (29740.000); p_cost = 68396.000; accept = 0.125; avg_delta = -0.172; dp = 4471.335; thres = 1581.013; cost_ratio = 0.983; [0]
+ Iteration 33; cost = 59209.000 (29740.000); p_cost = 59209.000; accept = 0.118; avg_delta = -1.439; dp = 5116.393; thres = 1537.102; cost_ratio = 0.866; [0]
+ Iteration 34; cost = 63691.000 (29740.000); p_cost = 63691.000; accept = 0.118; avg_delta = 0.700; dp = 4686.409; thres = 1495.678; cost_ratio = 1.076; [0]
+ Iteration 35; cost = 74256.000 (29740.000); p_cost = 74256.000; accept = 0.116; avg_delta = 1.679; dp = 4638.722; thres = 1455.321; cost_ratio = 1.166; [0]
+ Iteration 36; cost = 63341.000 (29740.000); p_cost = 63341.000; accept = 0.111; avg_delta = -1.822; dp = 5208.061; thres = 1416.394; cost_ratio = 0.853; [0]
+ Iteration 37; cost = 65104.000 (29740.000); p_cost = 65104.000; accept = 0.104; avg_delta = 0.312; dp = 4798.525; thres = 1379.397; cost_ratio = 1.028; [0]
+ Iteration 38; cost = 69932.000 (29740.000); p_cost = 69932.000; accept = 0.106; avg_delta = 0.842; dp = 5558.565; thres = 1344.292; cost_ratio = 1.074; [0]
+ Iteration 39; cost = 64389.000 (29740.000); p_cost = 64389.000; accept = 0.103; avg_delta = -0.996; dp = 4194.667; thres = 1309.878; cost_ratio = 0.921; [0]
+ Iteration 40; cost = 61707.000 (29740.000); p_cost = 61707.000; accept = 0.098; avg_delta = -0.505; dp = 4919.718; thres = 1276.765; cost_ratio = 0.958; [0]
+ Iteration 41; cost = 58307.000 (29740.000); p_cost = 58307.000; accept = 0.100; avg_delta = -0.629; dp = 5178.357; thres = 1245.080; cost_ratio = 0.945; [0]
+ Iteration 42; cost = 52194.000 (29740.000); p_cost = 52194.000; accept = 0.088; avg_delta = -1.279; dp = 4739.920; thres = 1213.971; cost_ratio = 0.895; [0]
+ Iteration 43; cost = 60968.000 (29740.000); p_cost = 60968.000; accept = 0.086; avg_delta = 1.885; dp = 5104.237; thres = 1184.966; cost_ratio = 1.168; [0]
+ Iteration 44; cost = 56962.000 (29740.000); p_cost = 56962.000; accept = 0.087; avg_delta = -0.855; dp = 4303.193; thres = 1156.890; cost_ratio = 0.934; [0]
+ Iteration 45; cost = 51061.000 (29740.000); p_cost = 51061.000; accept = 0.083; avg_delta = -1.312; dp = 3988.868; thres = 1129.417; cost_ratio = 0.896; [0]
+ Iteration 46; cost = 63584.000 (29740.000); p_cost = 63584.000; accept = 0.084; avg_delta = 2.766; dp = 6068.231; thres = 1102.934; cost_ratio = 1.245; [0]
+ Iteration 47; cost = 49988.000 (29740.000); p_cost = 49988.000; accept = 0.079; avg_delta = -3.160; dp = 4881.907; thres = 1077.021; cost_ratio = 0.786; [0]
+ Iteration 48; cost = 52064.000 (29740.000); p_cost = 52064.000; accept = 0.078; avg_delta = 0.489; dp = 4273.821; thres = 1052.082; cost_ratio = 1.042; [0]
+ Iteration 49; cost = 45016.000 (29740.000); p_cost = 45016.000; accept = 0.074; avg_delta = -1.766; dp = 3348.161; thres = 1027.803; cost_ratio = 0.865; [0]
+ Iteration 50; cost = 46202.000 (29740.000); p_cost = 46202.000; accept = 0.071; avg_delta = 0.310; dp = 2694.236; thres = 1004.455; cost_ratio = 1.026; [0]
+ Iteration 51; cost = 50274.000 (29740.000); p_cost = 50274.000; accept = 0.069; avg_delta = 1.091; dp = 4686.673; thres = 981.857; cost_ratio = 1.088; [0]
+ Iteration 52; cost = 46593.000 (29740.000); p_cost = 46593.000; accept = 0.074; avg_delta = -0.921; dp = 2915.941; thres = 959.886; cost_ratio = 0.927; [0]
+ Iteration 53; cost = 47935.000 (29740.000); p_cost = 47935.000; accept = 0.073; avg_delta = 0.339; dp = 2720.899; thres = 938.075; cost_ratio = 1.029; [0]
+ Iteration 54; cost = 42570.000 (29740.000); p_cost = 42570.000; accept = 0.063; avg_delta = -1.581; dp = 2917.378; thres = 916.801; cost_ratio = 0.888; [0]
+ Iteration 55; cost = 41135.000 (29740.000); p_cost = 41135.000; accept = 0.061; avg_delta = -0.437; dp = 3711.626; thres = 896.665; cost_ratio = 0.966; [0]
+ Iteration 56; cost = 34826.000 (29740.000); p_cost = 34826.000; accept = 0.058; avg_delta = -2.003; dp = 2548.313; thres = 877.085; cost_ratio = 0.847; [0]
+ Iteration 57; cost = 33687.000 (29740.000); p_cost = 33687.000; accept = 0.063; avg_delta = -0.332; dp = 3672.831; thres = 858.059; cost_ratio = 0.967; [0]
+ Iteration 58; cost = 38991.000 (29740.000); p_cost = 38991.000; accept = 0.060; avg_delta = 1.641; dp = 2812.837; thres = 839.180; cost_ratio = 1.157; [0]
+ Iteration 59; cost = 42257.000 (29740.000); p_cost = 42257.000; accept = 0.062; avg_delta = 0.972; dp = 2739.238; thres = 820.900; cost_ratio = 1.084; [0]
+ Iteration 60; cost = 31025.000 (29740.000); p_cost = 31025.000; accept = 0.058; avg_delta = -3.590; dp = 3204.583; thres = 802.902; cost_ratio = 0.734; [0]
+ Iteration 61; cost = 33192.000 (29740.000); p_cost = 33192.000; accept = 0.055; avg_delta = 0.733; dp = 1028.097; thres = 785.503; cost_ratio = 1.070; [0]
+ Iteration 62; cost = 31083.000 (29740.000); p_cost = 31083.000; accept = 0.051; avg_delta = -0.759; dp = 484.984; thres = 768.624; cost_ratio = 0.936; [0]
+ Iteration 63; cost = 31083.000 (29740.000); p_cost = 31083.000; accept = 0.052; avg_delta = 0.000; dp = -nan; thres = 752.241; cost_ratio = 1.000; [1]
+ Iteration 64; cost = 31083.000 (29740.000); p_cost = 31083.000; accept = 0.051; avg_delta = 0.000; dp = -nan; thres = 736.166; cost_ratio = 1.000; [2]
+ final cost = 31083 
+-> Final cost: Width=43; Gate Mismatches=2; WL=82; Rt. Density=5; Nr. Gaps=6
+   PMOS: MCL3#2-MCL3#3-MCL3#0-MCL3#1-MCL0#2-MCL0#1-MCL0#0-MCL1#0-MCL1#1-MCL2#1-MCL2#0-MCL4#5-MCL4#0-MCL4#1-MCL4#2-MCL4#3-MCL4#4-MCL5#0-MCL5#1-
+   NMOS: MCL3#6-MCL3#7-MCL3#4-MCL3#5-MCL0#5-MCL0#4-MCL0#3-MCL1#2-MCL1#3-MCL2#3-MCL2#2-MCL4#11-MCL4#6-MCL4#7-MCL4#8-MCL4#9-MCL4#10-MCL5#2-MCL5#3-
+-> Placing transistors...
+-> Routing cell...
+-> Routing finished in 30 attempts after 1.089 s
+ ( initial cost = 54445 num reps = 54150 problem size = 361 )  Iteration 1; cost = 125960.000 (54445.000); p_cost = 125960.000; accept = 1.000; avg_delta = 1.321; dp = 9278.076; thres = 99999.000; cost_ratio = 2.314; [0]
+ Iteration 2; cost = 125253.000 (54445.000); p_cost = 125253.000; accept = 1.000; avg_delta = -0.013; dp = 9189.858; thres = 47999.520; cost_ratio = 0.994; [0]
+ Iteration 3; cost = 123909.000 (54445.000); p_cost = 123909.000; accept = 0.988; avg_delta = -0.025; dp = 9340.786; thres = 23039.770; cost_ratio = 0.989; [0]
+ Iteration 4; cost = 119856.000 (54445.000); p_cost = 119856.000; accept = 0.844; avg_delta = -0.089; dp = 9524.110; thres = 11332.310; cost_ratio = 0.967; [0]
+ Iteration 5; cost = 124991.000 (54445.000); p_cost = 124991.000; accept = 0.618; avg_delta = 0.154; dp = 9290.619; thres = 7070.270; cost_ratio = 1.043; [0]
+ Iteration 6; cost = 128896.000 (54445.000); p_cost = 128896.000; accept = 0.489; avg_delta = 0.147; dp = 8704.194; thres = 5580.220; cost_ratio = 1.031; [0]
+ Iteration 7; cost = 112225.000 (54445.000); p_cost = 112225.000; accept = 0.411; avg_delta = -0.748; dp = 8374.270; thres = 4800.300; cost_ratio = 0.871; [0]
+ Iteration 8; cost = 120475.000 (54445.000); p_cost = 120475.000; accept = 0.356; avg_delta = 0.428; dp = 8888.049; thres = 4298.226; cost_ratio = 1.074; [0]
+ Iteration 9; cost = 98327.000 (54445.000); p_cost = 98327.000; accept = 0.316; avg_delta = -1.294; dp = 7911.595; thres = 3940.242; cost_ratio = 0.816; [0]
+ Iteration 10; cost = 97641.000 (54445.000); p_cost = 97641.000; accept = 0.297; avg_delta = -0.043; dp = 8395.622; thres = 3664.603; cost_ratio = 0.993; [0]
+ Iteration 11; cost = 99822.000 (54445.000); p_cost = 99822.000; accept = 0.273; avg_delta = 0.148; dp = 8294.323; thres = 3429.817; cost_ratio = 1.022; [0]
+ Iteration 12; cost = 91669.000 (54445.000); p_cost = 91669.000; accept = 0.249; avg_delta = -0.604; dp = 8207.808; thres = 3233.478; cost_ratio = 0.918; [0]
+ Iteration 13; cost = 90484.000 (54445.000); p_cost = 90484.000; accept = 0.229; avg_delta = -0.095; dp = 8443.763; thres = 3068.322; cost_ratio = 0.987; [0]
+ Iteration 14; cost = 93277.000 (54445.000); p_cost = 93277.000; accept = 0.222; avg_delta = 0.232; dp = 7624.057; thres = 2926.377; cost_ratio = 1.031; [0]
+ Iteration 15; cost = 98280.000 (54445.000); p_cost = 98280.000; accept = 0.213; avg_delta = 0.434; dp = 7186.757; thres = 2795.513; cost_ratio = 1.054; [0]
+ Iteration 16; cost = 91283.000 (54445.000); p_cost = 91283.000; accept = 0.202; avg_delta = -0.640; dp = 8573.878; thres = 2676.188; cost_ratio = 0.929; [0]
+ Iteration 17; cost = 85419.000 (54445.000); p_cost = 85419.000; accept = 0.192; avg_delta = -0.563; dp = 7344.934; thres = 2568.147; cost_ratio = 0.936; [0]
+ Iteration 18; cost = 84520.000 (54445.000); p_cost = 84520.000; accept = 0.183; avg_delta = -0.091; dp = 7571.513; thres = 2469.246; cost_ratio = 0.989; [0]
+ Iteration 19; cost = 77301.000 (54445.000); p_cost = 77301.000; accept = 0.178; avg_delta = -0.748; dp = 7343.651; thres = 2378.426; cost_ratio = 0.915; [0]
+ Iteration 20; cost = 87377.000 (54445.000); p_cost = 87377.000; accept = 0.171; avg_delta = 1.086; dp = 7159.958; thres = 2293.051; cost_ratio = 1.130; [0]
+ Iteration 21; cost = 100675.000 (54445.000); p_cost = 100675.000; accept = 0.169; avg_delta = 1.452; dp = 6905.587; thres = 2213.546; cost_ratio = 1.152; [0]
+ Iteration 22; cost = 64672.000 (54445.000); p_cost = 64672.000; accept = 0.162; avg_delta = -4.111; dp = 6408.872; thres = 2137.612; cost_ratio = 0.642; [0]
+ Iteration 23; cost = 71422.000 (54445.000); p_cost = 71422.000; accept = 0.152; avg_delta = 0.821; dp = 6086.636; thres = 2066.908; cost_ratio = 1.104; [0]
+ Iteration 24; cost = 80623.000 (54445.000); p_cost = 80623.000; accept = 0.148; avg_delta = 1.148; dp = 6262.460; thres = 2001.755; cost_ratio = 1.129; [0]
+ Iteration 25; cost = 61754.000 (54445.000); p_cost = 61754.000; accept = 0.148; avg_delta = -2.353; dp = 6234.854; thres = 1939.776; cost_ratio = 0.766; [0]
+ Iteration 26; cost = 67060.000 (54445.000); p_cost = 67060.000; accept = 0.147; avg_delta = 0.668; dp = 6515.154; thres = 1879.711; cost_ratio = 1.086; [0]
+ Iteration 27; cost = 82071.000 (54445.000); p_cost = 82071.000; accept = 0.139; avg_delta = 1.992; dp = 6209.281; thres = 1821.863; cost_ratio = 1.224; [0]
+ Iteration 28; cost = 76603.000 (54445.000); p_cost = 76603.000; accept = 0.133; avg_delta = -0.757; dp = 5410.551; thres = 1767.783; cost_ratio = 0.933; [0]
+ Iteration 29; cost = 83832.000 (54445.000); p_cost = 83832.000; accept = 0.133; avg_delta = 1.006; dp = 6081.449; thres = 1716.701; cost_ratio = 1.094; [0]
+ Iteration 30; cost = 68442.000 (54445.000); p_cost = 68442.000; accept = 0.130; avg_delta = -2.184; dp = 6897.447; thres = 1667.255; cost_ratio = 0.816; [0]
+ Iteration 31; cost = 71414.000 (54445.000); p_cost = 71414.000; accept = 0.125; avg_delta = 0.440; dp = 5205.916; thres = 1619.787; cost_ratio = 1.043; [0]
+ Iteration 32; cost = 71608.000 (54445.000); p_cost = 71608.000; accept = 0.116; avg_delta = 0.031; dp = 5999.730; thres = 1574.796; cost_ratio = 1.003; [0]
+ Iteration 33; cost = 71493.000 (54445.000); p_cost = 71493.000; accept = 0.118; avg_delta = -0.018; dp = 5347.936; thres = 1532.659; cost_ratio = 0.998; [0]
+ Iteration 34; cost = 67076.000 (54445.000); p_cost = 67076.000; accept = 0.115; avg_delta = -0.707; dp = 4673.246; thres = 1491.254; cost_ratio = 0.938; [0]
+ Iteration 35; cost = 67152.000 (54445.000); p_cost = 67152.000; accept = 0.113; avg_delta = 0.012; dp = 4857.922; thres = 1451.509; cost_ratio = 1.001; [0]
+ Iteration 36; cost = 61975.000 (54445.000); p_cost = 61975.000; accept = 0.110; avg_delta = -0.871; dp = 4350.029; thres = 1413.172; cost_ratio = 0.923; [0]
+ Iteration 37; cost = 74272.000 (54445.000); p_cost = 74272.000; accept = 0.108; avg_delta = 2.096; dp = 4326.346; thres = 1376.392; cost_ratio = 1.198; [0]
+ Iteration 38; cost = 59717.000 (54445.000); p_cost = 59717.000; accept = 0.105; avg_delta = -2.566; dp = 4664.536; thres = 1340.788; cost_ratio = 0.804; [0]
+ Iteration 39; cost = 67716.000 (54445.000); p_cost = 67716.000; accept = 0.103; avg_delta = 1.434; dp = 4527.332; thres = 1306.617; cost_ratio = 1.134; [0]
+ Iteration 40; cost = 60909.000 (54445.000); p_cost = 60909.000; accept = 0.102; avg_delta = -1.238; dp = 4901.919; thres = 1273.552; cost_ratio = 0.899; [0]
+ Iteration 41; cost = 55952.000 (54445.000); p_cost = 55952.000; accept = 0.099; avg_delta = -0.925; dp = 5642.764; thres = 1241.514; cost_ratio = 0.919; [0]
+ Iteration 42; cost = 53702.000 (53702.000); p_cost = 53702.000; accept = 0.091; avg_delta = -0.455; dp = 6191.337; thres = 1210.604; cost_ratio = 0.960; [0]
+ Iteration 43; cost = 60101.000 (53702.000); p_cost = 60101.000; accept = 0.092; avg_delta = 1.278; dp = 4618.102; thres = 1181.352; cost_ratio = 1.119; [0]
+ Iteration 44; cost = 55797.000 (53702.000); p_cost = 55797.000; accept = 0.089; avg_delta = -0.896; dp = 3376.117; thres = 1152.675; cost_ratio = 0.928; [0]
+ Iteration 45; cost = 51144.000 (51144.000); p_cost = 51144.000; accept = 0.086; avg_delta = -1.003; dp = 4293.959; thres = 1125.085; cost_ratio = 0.917; [0]
+ Iteration 46; cost = 56206.000 (51144.000); p_cost = 56206.000; accept = 0.082; avg_delta = 1.134; dp = 4284.259; thres = 1098.455; cost_ratio = 1.099; [0]
+ Iteration 47; cost = 55024.000 (51144.000); p_cost = 55024.000; accept = 0.079; avg_delta = -0.276; dp = 4015.181; thres = 1072.755; cost_ratio = 0.979; [0]
+ Iteration 48; cost = 50360.000 (50360.000); p_cost = 50360.000; accept = 0.080; avg_delta = -1.072; dp = 5451.396; thres = 1047.947; cost_ratio = 0.915; [0]
+ Iteration 49; cost = 44367.000 (44367.000); p_cost = 44367.000; accept = 0.077; avg_delta = -1.430; dp = 3170.191; thres = 1023.609; cost_ratio = 0.881; [0]
+ Iteration 50; cost = 39268.000 (39268.000); p_cost = 39268.000; accept = 0.072; avg_delta = -1.303; dp = 4512.131; thres = 1000.071; cost_ratio = 0.885; [0]
+ Iteration 51; cost = 44107.000 (39268.000); p_cost = 44107.000; accept = 0.071; avg_delta = 1.266; dp = 3693.808; thres = 977.457; cost_ratio = 1.123; [0]
+ Iteration 52; cost = 47403.000 (39268.000); p_cost = 47403.000; accept = 0.069; avg_delta = 0.883; dp = 3514.155; thres = 955.473; cost_ratio = 1.075; [0]
+ Iteration 53; cost = 43642.000 (39268.000); p_cost = 43642.000; accept = 0.070; avg_delta = -0.991; dp = 3119.046; thres = 934.094; cost_ratio = 0.921; [0]
+ Iteration 54; cost = 33632.000 (33632.000); p_cost = 33632.000; accept = 0.063; avg_delta = -2.945; dp = 4331.373; thres = 913.117; cost_ratio = 0.771; [0]
+ Iteration 55; cost = 33010.000 (33010.000); p_cost = 33010.000; accept = 0.055; avg_delta = -0.208; dp = 1374.116; thres = 893.056; cost_ratio = 0.982; [0]
+ Iteration 56; cost = 36446.000 (33010.000); p_cost = 36446.000; accept = 0.058; avg_delta = 1.094; dp = 1439.345; thres = 873.829; cost_ratio = 1.104; [0]
+ Iteration 57; cost = 32281.000 (32281.000); p_cost = 32281.000; accept = 0.057; avg_delta = -1.342; dp = 1500.400; thres = 854.883; cost_ratio = 0.886; [0]
+ Iteration 58; cost = 34557.000 (32281.000); p_cost = 34557.000; accept = 0.056; avg_delta = 0.757; dp = 1300.134; thres = 836.382; cost_ratio = 1.071; [0]
+ Iteration 59; cost = 33804.000 (32281.000); p_cost = 33804.000; accept = 0.056; avg_delta = -0.247; dp = 1993.342; thres = 818.365; cost_ratio = 0.978; [0]
+ Iteration 60; cost = 32079.000 (32079.000); p_cost = 32079.000; accept = 0.052; avg_delta = -0.610; dp = 847.535; thres = 800.705; cost_ratio = 0.949; [0]
+ Iteration 61; cost = 31275.000 (31275.000); p_cost = 31275.000; accept = 0.052; avg_delta = -0.288; dp = 217.222; thres = 783.599; cost_ratio = 0.975; [0]
+ Iteration 62; cost = 30867.000 (30867.000); p_cost = 30867.000; accept = 0.051; avg_delta = -0.148; dp = 164.556; thres = 766.883; cost_ratio = 0.987; [0]
+ Iteration 63; cost = 32507.000 (30867.000); p_cost = 32507.000; accept = 0.053; avg_delta = 0.570; dp = 726.005; thres = 750.550; cost_ratio = 1.053; [0]
+ Iteration 64; cost = 31770.000 (30867.000); p_cost = 31770.000; accept = 0.052; avg_delta = -0.264; dp = 833.501; thres = 734.480; cost_ratio = 0.977; [0]
+ Iteration 65; cost = 31665.000 (30867.000); p_cost = 31665.000; accept = 0.053; avg_delta = -0.037; dp = 500.216; thres = 718.816; cost_ratio = 0.997; [0]
+ Iteration 66; cost = 31661.000 (30867.000); p_cost = 31661.000; accept = 0.054; avg_delta = -0.001; dp = 846.194; thres = 703.443; cost_ratio = 1.000; [0]
+ Iteration 67; cost = 31465.000 (30867.000); p_cost = 31465.000; accept = 0.051; avg_delta = -0.071; dp = 327.796; thres = 688.357; cost_ratio = 0.994; [0]
+ Iteration 68; cost = 32055.000 (30867.000); p_cost = 32055.000; accept = 0.052; avg_delta = 0.208; dp = 505.327; thres = 673.700; cost_ratio = 1.019; [0]
+ Iteration 69; cost = 31645.000 (30867.000); p_cost = 31645.000; accept = 0.053; avg_delta = -0.142; dp = 585.258; thres = 659.300; cost_ratio = 0.987; [0]
+ Iteration 70; cost = 31037.000 (30867.000); p_cost = 31037.000; accept = 0.052; avg_delta = -0.215; dp = 555.031; thres = 645.176; cost_ratio = 0.981; [0]
+ Iteration 71; cost = 31148.000 (30867.000); p_cost = 31148.000; accept = 0.050; avg_delta = 0.041; dp = 47.240; thres = 631.395; cost_ratio = 1.004; [0]
+ Iteration 72; cost = 31259.000 (30867.000); p_cost = 31259.000; accept = 0.052; avg_delta = 0.039; dp = 282.577; thres = 617.965; cost_ratio = 1.004; [0]
+ Iteration 73; cost = 32289.000 (30867.000); p_cost = 32289.000; accept = 0.050; avg_delta = 0.379; dp = 279.569; thres = 604.762; cost_ratio = 1.033; [0]
+ Iteration 74; cost = 31473.000 (30867.000); p_cost = 31473.000; accept = 0.051; avg_delta = -0.296; dp = 473.529; thres = 591.904; cost_ratio = 0.975; [0]
+ Iteration 75; cost = 31259.000 (30867.000); p_cost = 31259.000; accept = 0.050; avg_delta = -0.079; dp = 48.940; thres = 579.296; cost_ratio = 0.993; [0]
+ Iteration 76; cost = 31259.000 (30867.000); p_cost = 31259.000; accept = 0.049; avg_delta = 0.000; dp = 0.030; thres = 566.982; cost_ratio = 1.000; [1]
+ Iteration 77; cost = 31259.000 (30867.000); p_cost = 31259.000; accept = 0.051; avg_delta = 0.000; dp = 184.130; thres = 554.974; cost_ratio = 1.000; [2]
+ final cost = 31259 
+-> Routing cell...
+-> Routing finished in 39 attempts after 1.146 s
+ ( initial cost = 54445 num reps = 54150 problem size = 361 )  Iteration 1; cost = 133024.000 (54445.000); p_cost = 133024.000; accept = 1.000; avg_delta = 1.451; dp = 9225.087; thres = 99999.000; cost_ratio = 2.443; [0]
+ Iteration 2; cost = 122989.000 (54445.000); p_cost = 122989.000; accept = 1.000; avg_delta = -0.185; dp = 9262.716; thres = 47999.520; cost_ratio = 0.925; [0]
+ Iteration 3; cost = 144649.000 (54445.000); p_cost = 144649.000; accept = 0.989; avg_delta = 0.404; dp = 9256.386; thres = 23040.656; cost_ratio = 1.176; [0]
+ Iteration 4; cost = 131506.000 (54445.000); p_cost = 131506.000; accept = 0.848; avg_delta = -0.286; dp = 9328.771; thres = 11301.193; cost_ratio = 0.909; [0]
+ Iteration 5; cost = 122502.000 (54445.000); p_cost = 122502.000; accept = 0.609; avg_delta = -0.273; dp = 9318.342; thres = 7015.907; cost_ratio = 0.932; [0]
+ Iteration 6; cost = 118300.000 (54445.000); p_cost = 118300.000; accept = 0.485; avg_delta = -0.160; dp = 9038.319; thres = 5576.003; cost_ratio = 0.966; [0]
+ Iteration 7; cost = 117163.000 (54445.000); p_cost = 117163.000; accept = 0.408; avg_delta = -0.051; dp = 8754.391; thres = 4809.462; cost_ratio = 0.990; [0]
+ Iteration 8; cost = 121023.000 (54445.000); p_cost = 121023.000; accept = 0.354; avg_delta = 0.201; dp = 8600.796; thres = 4312.906; cost_ratio = 1.033; [0]
+ Iteration 9; cost = 101056.000 (54445.000); p_cost = 101056.000; accept = 0.326; avg_delta = -1.132; dp = 8608.087; thres = 3956.328; cost_ratio = 0.835; [0]
+ Iteration 10; cost = 102460.000 (54445.000); p_cost = 102460.000; accept = 0.295; avg_delta = 0.088; dp = 8940.446; thres = 3667.468; cost_ratio = 1.014; [0]
+ Iteration 11; cost = 103242.000 (54445.000); p_cost = 103242.000; accept = 0.270; avg_delta = 0.053; dp = 8981.431; thres = 3434.822; cost_ratio = 1.008; [0]
+ Iteration 12; cost = 104116.000 (54445.000); p_cost = 104116.000; accept = 0.252; avg_delta = 0.064; dp = 8014.757; thres = 3240.592; cost_ratio = 1.008; [0]
+ Iteration 13; cost = 89187.000 (54445.000); p_cost = 89187.000; accept = 0.235; avg_delta = -1.175; dp = 8183.423; thres = 3072.852; cost_ratio = 0.857; [0]
+ Iteration 14; cost = 109846.000 (54445.000); p_cost = 109846.000; accept = 0.225; avg_delta = 1.694; dp = 7327.768; thres = 2926.842; cost_ratio = 1.232; [0]
+ Iteration 15; cost = 87958.000 (54445.000); p_cost = 87958.000; accept = 0.206; avg_delta = -1.965; dp = 7250.247; thres = 2794.095; cost_ratio = 0.801; [0]
+ Iteration 16; cost = 80685.000 (54445.000); p_cost = 80685.000; accept = 0.202; avg_delta = -0.667; dp = 7221.329; thres = 2679.097; cost_ratio = 0.917; [0]
+ Iteration 17; cost = 88001.000 (54445.000); p_cost = 88001.000; accept = 0.195; avg_delta = 0.693; dp = 7580.130; thres = 2571.119; cost_ratio = 1.091; [0]
+ Iteration 18; cost = 88961.000 (54445.000); p_cost = 88961.000; accept = 0.184; avg_delta = 0.096; dp = 7366.291; thres = 2470.889; cost_ratio = 1.011; [0]
+ Iteration 19; cost = 88407.000 (54445.000); p_cost = 88407.000; accept = 0.174; avg_delta = -0.059; dp = 6611.988; thres = 2379.591; cost_ratio = 0.994; [0]
+ Iteration 20; cost = 79651.000 (54445.000); p_cost = 79651.000; accept = 0.170; avg_delta = -0.949; dp = 7578.542; thres = 2295.847; cost_ratio = 0.901; [0]
+ Iteration 21; cost = 75482.000 (54445.000); p_cost = 75482.000; accept = 0.167; avg_delta = -0.462; dp = 7477.768; thres = 2216.586; cost_ratio = 0.948; [0]
+ Iteration 22; cost = 80286.000 (54445.000); p_cost = 80286.000; accept = 0.163; avg_delta = 0.543; dp = 7222.641; thres = 2141.461; cost_ratio = 1.064; [0]
+ Iteration 23; cost = 87572.000 (54445.000); p_cost = 87572.000; accept = 0.160; avg_delta = 0.843; dp = 6593.802; thres = 2070.058; cost_ratio = 1.091; [0]
+ Iteration 24; cost = 92744.000 (54445.000); p_cost = 92744.000; accept = 0.156; avg_delta = 0.611; dp = 5929.856; thres = 2002.318; cost_ratio = 1.059; [0]
+ Iteration 25; cost = 76463.000 (54445.000); p_cost = 76463.000; accept = 0.148; avg_delta = -2.029; dp = 6265.570; thres = 1937.795; cost_ratio = 0.824; [0]
+ Iteration 26; cost = 71108.000 (54445.000); p_cost = 71108.000; accept = 0.142; avg_delta = -0.697; dp = 6541.420; thres = 1877.769; cost_ratio = 0.930; [0]
+ Iteration 27; cost = 73000.000 (54445.000); p_cost = 73000.000; accept = 0.137; avg_delta = 0.255; dp = 6131.533; thres = 1821.323; cost_ratio = 1.027; [0]
+ Iteration 28; cost = 75539.000 (54445.000); p_cost = 75539.000; accept = 0.135; avg_delta = 0.346; dp = 6347.597; thres = 1767.798; cost_ratio = 1.035; [0]
+ Iteration 29; cost = 81604.000 (54445.000); p_cost = 81604.000; accept = 0.133; avg_delta = 0.844; dp = 5909.047; thres = 1716.215; cost_ratio = 1.080; [0]
+ Iteration 30; cost = 72494.000 (54445.000); p_cost = 72494.000; accept = 0.136; avg_delta = -1.237; dp = 5551.757; thres = 1666.795; cost_ratio = 0.888; [0]
+ Iteration 31; cost = 74538.000 (54445.000); p_cost = 74538.000; accept = 0.125; avg_delta = 0.302; dp = 6460.997; thres = 1618.038; cost_ratio = 1.028; [0]
+ Iteration 32; cost = 72428.000 (54445.000); p_cost = 72428.000; accept = 0.124; avg_delta = -0.315; dp = 5361.206; thres = 1573.039; cost_ratio = 0.972; [0]
+ Iteration 33; cost = 74113.000 (54445.000); p_cost = 74113.000; accept = 0.118; avg_delta = 0.263; dp = 5498.268; thres = 1529.552; cost_ratio = 1.023; [0]
+ Iteration 34; cost = 64594.000 (54445.000); p_cost = 64594.000; accept = 0.120; avg_delta = -1.468; dp = 6083.679; thres = 1488.248; cost_ratio = 0.872; [0]
+ Iteration 35; cost = 65504.000 (54445.000); p_cost = 65504.000; accept = 0.116; avg_delta = 0.144; dp = 5739.858; thres = 1447.814; cost_ratio = 1.014; [0]
+ Iteration 36; cost = 68506.000 (54445.000); p_cost = 68506.000; accept = 0.110; avg_delta = 0.503; dp = 5714.144; thres = 1409.034; cost_ratio = 1.046; [0]
+ Iteration 37; cost = 67977.000 (54445.000); p_cost = 67977.000; accept = 0.108; avg_delta = -0.091; dp = 5323.529; thres = 1372.298; cost_ratio = 0.992; [0]
+ Iteration 38; cost = 56019.000 (54445.000); p_cost = 56019.000; accept = 0.106; avg_delta = -2.090; dp = 4900.281; thres = 1336.896; cost_ratio = 0.824; [0]
+ Iteration 39; cost = 63444.000 (54445.000); p_cost = 63444.000; accept = 0.101; avg_delta = 1.351; dp = 5108.460; thres = 1302.697; cost_ratio = 1.133; [0]
+ Iteration 40; cost = 59107.000 (54445.000); p_cost = 59107.000; accept = 0.100; avg_delta = -0.803; dp = 4669.798; thres = 1269.936; cost_ratio = 0.932; [0]
+ Iteration 41; cost = 52264.000 (52264.000); p_cost = 52264.000; accept = 0.091; avg_delta = -1.385; dp = 4865.466; thres = 1238.222; cost_ratio = 0.884; [0]
+ Iteration 42; cost = 62553.000 (52264.000); p_cost = 62553.000; accept = 0.086; avg_delta = 2.207; dp = 4625.819; thres = 1208.305; cost_ratio = 1.197; [0]
+ Iteration 43; cost = 54208.000 (52264.000); p_cost = 54208.000; accept = 0.091; avg_delta = -1.696; dp = 5327.130; thres = 1179.663; cost_ratio = 0.867; [0]
+ Iteration 44; cost = 45280.000 (45280.000); p_cost = 45280.000; accept = 0.086; avg_delta = -1.921; dp = 5418.691; thres = 1151.200; cost_ratio = 0.835; [0]
+ Iteration 45; cost = 61195.000 (45280.000); p_cost = 61195.000; accept = 0.089; avg_delta = 3.319; dp = 4485.800; thres = 1123.936; cost_ratio = 1.351; [0]
+ Iteration 46; cost = 61159.000 (45280.000); p_cost = 61159.000; accept = 0.083; avg_delta = -0.008; dp = 4957.957; thres = 1097.050; cost_ratio = 0.999; [0]
+ Iteration 47; cost = 60121.000 (45280.000); p_cost = 60121.000; accept = 0.082; avg_delta = -0.235; dp = 4339.594; thres = 1071.294; cost_ratio = 0.983; [0]
+ Iteration 48; cost = 47410.000 (45280.000); p_cost = 47410.000; accept = 0.080; avg_delta = -2.934; dp = 5102.995; thres = 1046.290; cost_ratio = 0.789; [0]
+ Iteration 49; cost = 45120.000 (45120.000); p_cost = 45120.000; accept = 0.069; avg_delta = -0.612; dp = 4050.592; thres = 1022.016; cost_ratio = 0.952; [0]
+ Iteration 50; cost = 47650.000 (45120.000); p_cost = 47650.000; accept = 0.061; avg_delta = 0.772; dp = 2369.205; thres = 999.133; cost_ratio = 1.056; [0]
+ Iteration 51; cost = 43093.000 (43093.000); p_cost = 43093.000; accept = 0.071; avg_delta = -1.189; dp = 2149.557; thres = 977.319; cost_ratio = 0.904; [0]
+ Iteration 52; cost = 51732.000 (43093.000); p_cost = 51732.000; accept = 0.069; avg_delta = 2.309; dp = 3600.052; thres = 955.325; cost_ratio = 1.200; [0]
+ Iteration 53; cost = 40316.000 (40316.000); p_cost = 40316.000; accept = 0.071; avg_delta = -2.985; dp = 3543.517; thres = 933.938; cost_ratio = 0.779; [0]
+ Iteration 54; cost = 38096.000 (38096.000); p_cost = 38096.000; accept = 0.067; avg_delta = -0.615; dp = 4048.361; thres = 912.929; cost_ratio = 0.945; [0]
+ Iteration 55; cost = 45154.000 (38096.000); p_cost = 45154.000; accept = 0.067; avg_delta = 1.938; dp = 2987.657; thres = 892.646; cost_ratio = 1.185; [0]
+ Iteration 56; cost = 40467.000 (38096.000); p_cost = 40467.000; accept = 0.067; avg_delta = -1.299; dp = 3219.521; thres = 872.775; cost_ratio = 0.896; [0]
+ Iteration 57; cost = 33202.000 (33202.000); p_cost = 33202.000; accept = 0.058; avg_delta = -2.296; dp = 1927.162; thres = 853.381; cost_ratio = 0.820; [0]
+ Iteration 58; cost = 33903.000 (33202.000); p_cost = 33903.000; accept = 0.056; avg_delta = 0.232; dp = 1786.717; thres = 834.856; cost_ratio = 1.021; [0]
+ Iteration 59; cost = 35729.000 (33202.000); p_cost = 35729.000; accept = 0.058; avg_delta = 0.583; dp = 2042.677; thres = 816.856; cost_ratio = 1.054; [0]
+ Iteration 60; cost = 35296.000 (33202.000); p_cost = 35296.000; accept = 0.055; avg_delta = -0.147; dp = 1617.132; thres = 799.154; cost_ratio = 0.988; [0]
+ Iteration 61; cost = 31469.000 (31469.000); p_cost = 31469.000; accept = 0.055; avg_delta = -1.288; dp = 2414.973; thres = 781.982; cost_ratio = 0.892; [0]
+ Iteration 62; cost = 32067.000 (31469.000); p_cost = 32067.000; accept = 0.052; avg_delta = 0.211; dp = 644.956; thres = 765.164; cost_ratio = 1.019; [0]
+ Iteration 63; cost = 32586.000 (31469.000); p_cost = 32586.000; accept = 0.055; avg_delta = 0.174; dp = 1592.001; thres = 748.810; cost_ratio = 1.016; [0]
+ Iteration 64; cost = 32178.000 (31469.000); p_cost = 32178.000; accept = 0.053; avg_delta = -0.141; dp = 1431.527; thres = 732.693; cost_ratio = 0.987; [0]
+ Iteration 65; cost = 31582.000 (31469.000); p_cost = 31582.000; accept = 0.054; avg_delta = -0.203; dp = 687.437; thres = 716.991; cost_ratio = 0.981; [0]
+ Iteration 66; cost = 32210.000 (31469.000); p_cost = 32210.000; accept = 0.051; avg_delta = 0.226; dp = 676.634; thres = 701.602; cost_ratio = 1.020; [0]
+ Iteration 67; cost = 32210.000 (31469.000); p_cost = 32210.000; accept = 0.053; avg_delta = 0.000; dp = 0.035; thres = 686.645; cost_ratio = 1.000; [1]
+ Iteration 68; cost = 32210.000 (31469.000); p_cost = 32210.000; accept = 0.053; avg_delta = 0.000; dp = 0.035; thres = 671.949; cost_ratio = 1.000; [2]
+ Iteration 69; cost = 33204.000 (31469.000); p_cost = 33204.000; accept = 0.052; avg_delta = 0.351; dp = 259.006; thres = 657.581; cost_ratio = 1.031; [0]
+ Iteration 70; cost = 31790.000 (31469.000); p_cost = 31790.000; accept = 0.053; avg_delta = -0.495; dp = 447.496; thres = 643.532; cost_ratio = 0.957; [0]
+ Iteration 71; cost = 31790.000 (31469.000); p_cost = 31790.000; accept = 0.051; avg_delta = 0.000; dp = 0.057; thres = 629.766; cost_ratio = 1.000; [1]
+ Iteration 72; cost = 31790.000 (31469.000); p_cost = 31790.000; accept = 0.052; avg_delta = 0.000; dp = 0.057; thres = 616.367; cost_ratio = 1.000; [2]
+ Iteration 73; cost = 31580.000 (31469.000); p_cost = 31580.000; accept = 0.052; avg_delta = -0.074; dp = 104.746; thres = 603.192; cost_ratio = 0.993; [0]
+ Iteration 74; cost = 31580.000 (31469.000); p_cost = 31580.000; accept = 0.052; avg_delta = 0.000; dp = 0.018; thres = 590.299; cost_ratio = 1.000; [1]
+ Iteration 75; cost = 31580.000 (31469.000); p_cost = 31580.000; accept = 0.051; avg_delta = 0.000; dp = 0.018; thres = 577.690; cost_ratio = 1.000; [2]
+ Iteration 76; cost = 31582.000 (31469.000); p_cost = 31582.000; accept = 0.052; avg_delta = 0.001; dp = 61.085; thres = 565.385; cost_ratio = 1.000; [0]
+ Iteration 77; cost = 31796.000 (31469.000); p_cost = 31796.000; accept = 0.051; avg_delta = 0.078; dp = 104.598; thres = 553.324; cost_ratio = 1.007; [0]
+ Iteration 78; cost = 31796.000 (31469.000); p_cost = 31796.000; accept = 0.051; avg_delta = 0.000; dp = -nan; thres = 541.540; cost_ratio = 1.000; [1]
+ Iteration 79; cost = 30722.000 (30722.000); p_cost = 30722.000; accept = 0.051; avg_delta = -0.388; dp = 473.429; thres = 529.998; cost_ratio = 0.966; [0]
+ Iteration 80; cost = 30510.000 (30510.000); p_cost = 30510.000; accept = 0.052; avg_delta = -0.075; dp = 192.475; thres = 518.704; cost_ratio = 0.993; [0]
+ Iteration 81; cost = 30831.000 (30510.000); p_cost = 30831.000; accept = 0.051; avg_delta = 0.116; dp = 135.158; thres = 507.624; cost_ratio = 1.011; [0]
+ Iteration 82; cost = 31047.000 (30510.000); p_cost = 31047.000; accept = 0.053; avg_delta = 0.075; dp = 173.051; thres = 496.810; cost_ratio = 1.007; [0]
+ Iteration 83; cost = 30944.000 (30510.000); p_cost = 30944.000; accept = 0.053; avg_delta = -0.036; dp = 26.212; thres = 486.177; cost_ratio = 0.997; [0]
+ Iteration 84; cost = 30354.000 (30354.000); p_cost = 30354.000; accept = 0.052; avg_delta = -0.209; dp = 187.473; thres = 475.774; cost_ratio = 0.981; [0]
+ Iteration 85; cost = 30354.000 (30354.000); p_cost = 30354.000; accept = 0.051; avg_delta = 0.000; dp = -nan; thres = 465.613; cost_ratio = 1.000; [1]
+ Iteration 86; cost = 30562.000 (30354.000); p_cost = 30562.000; accept = 0.053; avg_delta = 0.073; dp = 96.073; thres = 455.690; cost_ratio = 1.007; [0]
+ Iteration 87; cost = 30548.000 (30354.000); p_cost = 30548.000; accept = 0.053; avg_delta = -0.005; dp = 6.646; thres = 445.946; cost_ratio = 1.000; [0]
+ Iteration 88; cost = 30348.000 (30348.000); p_cost = 30348.000; accept = 0.052; avg_delta = -0.071; dp = 99.605; thres = 436.395; cost_ratio = 0.993; [0]
+ Iteration 89; cost = 30148.000 (30148.000); p_cost = 30148.000; accept = 0.052; avg_delta = -0.071; dp = 63.337; thres = 427.079; cost_ratio = 0.993; [0]
+ Iteration 90; cost = 29940.000 (29940.000); p_cost = 29940.000; accept = 0.052; avg_delta = -0.074; dp = 96.716; thres = 417.964; cost_ratio = 0.993; [0]
+ Iteration 91; cost = 29940.000 (29940.000); p_cost = 29940.000; accept = 0.050; avg_delta = 0.000; dp = -nan; thres = 409.043; cost_ratio = 1.000; [1]
+ Iteration 92; cost = 29940.000 (29940.000); p_cost = 29940.000; accept = 0.052; avg_delta = 0.000; dp = -nan; thres = 400.347; cost_ratio = 1.000; [2]
+ final cost = 29940 
+-> Routing cell...
+-> Routing finished in 11 attempts after 0.553 s
+-> New best transistor ordering found with cost: 9434
+ ( initial cost = 54445 num reps = 54150 problem size = 361 )  Iteration 1; cost = 144308.000 (54445.000); p_cost = 144308.000; accept = 1.000; avg_delta = 1.660; dp = 9289.797; thres = 99999.000; cost_ratio = 2.651; [0]
+ Iteration 2; cost = 133738.000 (54445.000); p_cost = 133738.000; accept = 1.000; avg_delta = -0.195; dp = 9226.654; thres = 47999.520; cost_ratio = 0.927; [0]
+ Iteration 3; cost = 134245.000 (54445.000); p_cost = 134245.000; accept = 0.987; avg_delta = 0.009; dp = 9293.183; thres = 23039.770; cost_ratio = 1.004; [0]
+ Iteration 4; cost = 130576.000 (54445.000); p_cost = 130576.000; accept = 0.849; avg_delta = -0.080; dp = 9514.055; thres = 11346.179; cost_ratio = 0.973; [0]
+ Iteration 5; cost = 117051.000 (54445.000); p_cost = 117051.000; accept = 0.609; avg_delta = -0.410; dp = 9319.707; thres = 7033.529; cost_ratio = 0.896; [0]
+ Iteration 6; cost = 127407.000 (54445.000); p_cost = 127407.000; accept = 0.481; avg_delta = 0.397; dp = 8900.395; thres = 5587.556; cost_ratio = 1.088; [0]
+ Iteration 7; cost = 125485.000 (54445.000); p_cost = 125485.000; accept = 0.412; avg_delta = -0.086; dp = 8876.963; thres = 4828.845; cost_ratio = 0.985; [0]
+ Iteration 8; cost = 102227.000 (54445.000); p_cost = 102227.000; accept = 0.353; avg_delta = -1.218; dp = 8497.649; thres = 4321.766; cost_ratio = 0.815; [0]
+ Iteration 9; cost = 100023.000 (54445.000); p_cost = 100023.000; accept = 0.316; avg_delta = -0.129; dp = 8817.795; thres = 3966.767; cost_ratio = 0.978; [0]
+ Iteration 10; cost = 96921.000 (54445.000); p_cost = 96921.000; accept = 0.287; avg_delta = -0.199; dp = 8391.763; thres = 3689.481; cost_ratio = 0.969; [0]
+ Iteration 11; cost = 87890.000 (54445.000); p_cost = 87890.000; accept = 0.268; avg_delta = -0.622; dp = 8873.811; thres = 3463.528; cost_ratio = 0.907; [0]
+ Iteration 12; cost = 106155.000 (54445.000); p_cost = 106155.000; accept = 0.256; avg_delta = 1.316; dp = 8386.681; thres = 3269.570; cost_ratio = 1.208; [0]
+ Iteration 13; cost = 90677.000 (54445.000); p_cost = 90677.000; accept = 0.233; avg_delta = -1.225; dp = 7715.988; thres = 3096.723; cost_ratio = 0.854; [0]
+ Iteration 14; cost = 78943.000 (54445.000); p_cost = 78943.000; accept = 0.220; avg_delta = -0.984; dp = 7942.516; thres = 2950.555; cost_ratio = 0.871; [0]
+ Iteration 15; cost = 89597.000 (54445.000); p_cost = 89597.000; accept = 0.211; avg_delta = 0.932; dp = 7644.416; thres = 2820.009; cost_ratio = 1.135; [0]
+ Iteration 16; cost = 88516.000 (54445.000); p_cost = 88516.000; accept = 0.204; avg_delta = -0.098; dp = 8070.288; thres = 2700.731; cost_ratio = 0.988; [0]
+ Iteration 17; cost = 97125.000 (54445.000); p_cost = 97125.000; accept = 0.204; avg_delta = 0.781; dp = 7501.486; thres = 2590.790; cost_ratio = 1.097; [0]
+ Iteration 18; cost = 91205.000 (54445.000); p_cost = 91205.000; accept = 0.183; avg_delta = -0.597; dp = 7711.189; thres = 2485.295; cost_ratio = 0.939; [0]
+ Iteration 19; cost = 76086.000 (54445.000); p_cost = 76086.000; accept = 0.181; avg_delta = -1.546; dp = 7600.144; thres = 2393.860; cost_ratio = 0.834; [0]
+ Iteration 20; cost = 79596.000 (54445.000); p_cost = 79596.000; accept = 0.169; avg_delta = 0.384; dp = 7058.686; thres = 2306.947; cost_ratio = 1.046; [0]
+ Iteration 21; cost = 75946.000 (54445.000); p_cost = 75946.000; accept = 0.172; avg_delta = -0.392; dp = 6539.313; thres = 2228.010; cost_ratio = 0.954; [0]
+ Iteration 22; cost = 77764.000 (54445.000); p_cost = 77764.000; accept = 0.162; avg_delta = 0.207; dp = 7856.560; thres = 2150.520; cost_ratio = 1.024; [0]
+ Iteration 23; cost = 68642.000 (54445.000); p_cost = 68642.000; accept = 0.155; avg_delta = -1.086; dp = 6584.609; thres = 2079.119; cost_ratio = 0.883; [0]
+ Iteration 24; cost = 68881.000 (54445.000); p_cost = 68881.000; accept = 0.149; avg_delta = 0.030; dp = 7044.467; thres = 2012.509; cost_ratio = 1.003; [0]
+ Iteration 25; cost = 86052.000 (54445.000); p_cost = 86052.000; accept = 0.146; avg_delta = 2.170; dp = 5622.154; thres = 1949.782; cost_ratio = 1.249; [0]
+ Iteration 26; cost = 79677.000 (54445.000); p_cost = 79677.000; accept = 0.144; avg_delta = -0.817; dp = 6133.159; thres = 1889.974; cost_ratio = 0.926; [0]
+ Iteration 27; cost = 73442.000 (54445.000); p_cost = 73442.000; accept = 0.140; avg_delta = -0.822; dp = 5763.356; thres = 1832.532; cost_ratio = 0.922; [0]
+ Iteration 28; cost = 79753.000 (54445.000); p_cost = 79753.000; accept = 0.132; avg_delta = 0.882; dp = 6182.109; thres = 1777.884; cost_ratio = 1.086; [0]
+ Iteration 29; cost = 74421.000 (54445.000); p_cost = 74421.000; accept = 0.126; avg_delta = -0.779; dp = 7213.000; thres = 1726.798; cost_ratio = 0.933; [0]
+ Iteration 30; cost = 72855.000 (54445.000); p_cost = 72855.000; accept = 0.128; avg_delta = -0.226; dp = 6094.597; thres = 1678.453; cost_ratio = 0.979; [0]
+ Iteration 31; cost = 70181.000 (54445.000); p_cost = 70181.000; accept = 0.125; avg_delta = -0.394; dp = 4955.535; thres = 1631.111; cost_ratio = 0.963; [0]
+ Iteration 32; cost = 63769.000 (54445.000); p_cost = 63769.000; accept = 0.129; avg_delta = -0.915; dp = 5812.903; thres = 1585.681; cost_ratio = 0.909; [0]
+ Iteration 33; cost = 67637.000 (54445.000); p_cost = 67637.000; accept = 0.121; avg_delta = 0.592; dp = 5516.389; thres = 1540.692; cost_ratio = 1.061; [0]
+ Iteration 34; cost = 68485.000 (54445.000); p_cost = 68485.000; accept = 0.114; avg_delta = 0.137; dp = 6173.791; thres = 1498.645; cost_ratio = 1.013; [0]
+ Iteration 35; cost = 77907.000 (54445.000); p_cost = 77907.000; accept = 0.119; avg_delta = 1.467; dp = 5460.813; thres = 1458.890; cost_ratio = 1.138; [0]
+ Iteration 36; cost = 74176.000 (54445.000); p_cost = 74176.000; accept = 0.113; avg_delta = -0.610; dp = 6345.495; thres = 1419.455; cost_ratio = 0.952; [0]
+ Iteration 37; cost = 72738.000 (54445.000); p_cost = 72738.000; accept = 0.112; avg_delta = -0.238; dp = 4662.643; thres = 1381.998; cost_ratio = 0.981; [0]
+ Iteration 38; cost = 67340.000 (54445.000); p_cost = 67340.000; accept = 0.103; avg_delta = -0.967; dp = 6006.751; thres = 1345.761; cost_ratio = 0.926; [0]
+ Iteration 39; cost = 60131.000 (54445.000); p_cost = 60131.000; accept = 0.097; avg_delta = -1.373; dp = 5880.693; thres = 1311.695; cost_ratio = 0.893; [0]
+ Iteration 40; cost = 60056.000 (54445.000); p_cost = 60056.000; accept = 0.097; avg_delta = -0.014; dp = 4578.534; thres = 1279.294; cost_ratio = 0.999; [0]
+ Iteration 41; cost = 62276.000 (54445.000); p_cost = 62276.000; accept = 0.097; avg_delta = 0.421; dp = 4872.972; thres = 1247.640; cost_ratio = 1.037; [0]
+ Iteration 42; cost = 58790.000 (54445.000); p_cost = 58790.000; accept = 0.096; avg_delta = -0.670; dp = 3950.332; thres = 1216.772; cost_ratio = 0.944; [0]
+ Iteration 43; cost = 70227.000 (54445.000); p_cost = 70227.000; accept = 0.091; avg_delta = 2.324; dp = 4486.922; thres = 1186.820; cost_ratio = 1.195; [0]
+ Iteration 44; cost = 52275.000 (52275.000); p_cost = 52275.000; accept = 0.090; avg_delta = -3.675; dp = 5842.183; thres = 1158.183; cost_ratio = 0.744; [0]
+ Iteration 45; cost = 55790.000 (52275.000); p_cost = 55790.000; accept = 0.085; avg_delta = 0.760; dp = 5552.347; thres = 1130.306; cost_ratio = 1.067; [0]
+ Iteration 46; cost = 57827.000 (52275.000); p_cost = 57827.000; accept = 0.080; avg_delta = 0.467; dp = 4845.460; thres = 1103.579; cost_ratio = 1.037; [0]
+ Iteration 47; cost = 48474.000 (48474.000); p_cost = 48474.000; accept = 0.081; avg_delta = -2.129; dp = 3670.758; thres = 1077.932; cost_ratio = 0.838; [0]
+ Iteration 48; cost = 48131.000 (48131.000); p_cost = 48131.000; accept = 0.073; avg_delta = -0.086; dp = 3388.956; thres = 1052.826; cost_ratio = 0.993; [0]
+ Iteration 49; cost = 54070.000 (48131.000); p_cost = 54070.000; accept = 0.075; avg_delta = 1.455; dp = 4156.526; thres = 1028.936; cost_ratio = 1.123; [0]
+ Iteration 50; cost = 54284.000 (48131.000); p_cost = 54284.000; accept = 0.079; avg_delta = 0.050; dp = 5178.795; thres = 1005.434; cost_ratio = 1.004; [0]
+ Iteration 51; cost = 50562.000 (48131.000); p_cost = 50562.000; accept = 0.071; avg_delta = -0.967; dp = 3786.120; thres = 982.221; cost_ratio = 0.931; [0]
+ Iteration 52; cost = 45712.000 (45712.000); p_cost = 45712.000; accept = 0.074; avg_delta = -1.212; dp = 3529.609; thres = 960.093; cost_ratio = 0.904; [0]
+ Iteration 53; cost = 44167.000 (44167.000); p_cost = 44167.000; accept = 0.070; avg_delta = -0.407; dp = 2350.073; thres = 938.269; cost_ratio = 0.966; [0]
+ Iteration 54; cost = 35612.000 (35612.000); p_cost = 35612.000; accept = 0.070; avg_delta = -2.251; dp = 3881.293; thres = 917.196; cost_ratio = 0.806; [0]
+ Iteration 55; cost = 44203.000 (35612.000); p_cost = 44203.000; accept = 0.062; avg_delta = 2.558; dp = 4397.451; thres = 896.593; cost_ratio = 1.241; [0]
+ Iteration 56; cost = 35719.000 (35612.000); p_cost = 35719.000; accept = 0.066; avg_delta = -2.363; dp = 2985.073; thres = 876.937; cost_ratio = 0.808; [0]
+ Iteration 57; cost = 32867.000 (32867.000); p_cost = 32867.000; accept = 0.055; avg_delta = -0.958; dp = 830.630; thres = 857.470; cost_ratio = 0.920; [0]
+ Iteration 58; cost = 30140.000 (30140.000); p_cost = 30140.000; accept = 0.056; avg_delta = -0.903; dp = 1433.519; thres = 839.025; cost_ratio = 0.917; [0]
+ Iteration 59; cost = 31544.000 (30140.000); p_cost = 31544.000; accept = 0.053; avg_delta = 0.486; dp = 757.701; thres = 820.941; cost_ratio = 1.047; [0]
+ Iteration 60; cost = 32168.000 (30140.000); p_cost = 32168.000; accept = 0.054; avg_delta = 0.213; dp = 764.692; thres = 803.355; cost_ratio = 1.020; [0]
+ Iteration 61; cost = 30744.000 (30140.000); p_cost = 30744.000; accept = 0.055; avg_delta = -0.476; dp = 1152.023; thres = 786.112; cost_ratio = 0.956; [0]
+ Iteration 62; cost = 31944.000 (30140.000); p_cost = 31944.000; accept = 0.051; avg_delta = 0.431; dp = 425.588; thres = 769.192; cost_ratio = 1.039; [0]
+ Iteration 63; cost = 32756.000 (30140.000); p_cost = 32756.000; accept = 0.055; avg_delta = 0.273; dp = 755.968; thres = 752.792; cost_ratio = 1.025; [0]
+ Iteration 64; cost = 31328.000 (30140.000); p_cost = 31328.000; accept = 0.052; avg_delta = -0.506; dp = 547.777; thres = 736.602; cost_ratio = 0.956; [0]
+ Iteration 65; cost = 31200.000 (30140.000); p_cost = 31200.000; accept = 0.054; avg_delta = -0.044; dp = 829.068; thres = 720.869; cost_ratio = 0.996; [0]
+ Iteration 66; cost = 31531.000 (30140.000); p_cost = 31531.000; accept = 0.051; avg_delta = 0.119; dp = 97.422; thres = 705.414; cost_ratio = 1.011; [0]
+ Iteration 67; cost = 30320.000 (30140.000); p_cost = 30320.000; accept = 0.053; avg_delta = -0.422; dp = 743.564; thres = 690.382; cost_ratio = 0.962; [0]
+ Iteration 68; cost = 31043.000 (30140.000); p_cost = 31043.000; accept = 0.051; avg_delta = 0.263; dp = 439.427; thres = 675.606; cost_ratio = 1.024; [0]
+ Iteration 69; cost = 30750.000 (30140.000); p_cost = 30750.000; accept = 0.053; avg_delta = -0.103; dp = 591.445; thres = 661.223; cost_ratio = 0.991; [0]
+ Iteration 70; cost = 30544.000 (30140.000); p_cost = 30544.000; accept = 0.053; avg_delta = -0.072; dp = 122.623; thres = 647.081; cost_ratio = 0.993; [0]
+ Iteration 71; cost = 30750.000 (30140.000); p_cost = 30750.000; accept = 0.053; avg_delta = 0.072; dp = 94.386; thres = 633.242; cost_ratio = 1.007; [0]
+ Iteration 72; cost = 30544.000 (30140.000); p_cost = 30544.000; accept = 0.052; avg_delta = -0.073; dp = 94.335; thres = 619.690; cost_ratio = 0.993; [0]
+ Iteration 73; cost = 29633.000 (29633.000); p_cost = 29633.000; accept = 0.052; avg_delta = -0.325; dp = 477.609; thres = 606.464; cost_ratio = 0.970; [0]
+ Iteration 74; cost = 29841.000 (29633.000); p_cost = 29841.000; accept = 0.050; avg_delta = 0.076; dp = 103.908; thres = 593.521; cost_ratio = 1.007; [0]
+ Iteration 75; cost = 29948.000 (29633.000); p_cost = 29948.000; accept = 0.053; avg_delta = 0.037; dp = 53.471; thres = 580.896; cost_ratio = 1.004; [0]
+ Iteration 76; cost = 30148.000 (29633.000); p_cost = 30148.000; accept = 0.052; avg_delta = 0.072; dp = 95.448; thres = 568.471; cost_ratio = 1.007; [0]
+ Iteration 77; cost = 30148.000 (29633.000); p_cost = 30148.000; accept = 0.051; avg_delta = 0.000; dp = 0.031; thres = 556.347; cost_ratio = 1.000; [1]
+ Iteration 78; cost = 30148.000 (29633.000); p_cost = 30148.000; accept = 0.051; avg_delta = 0.000; dp = 0.031; thres = 544.495; cost_ratio = 1.000; [2]
+ final cost = 30148 
+-> Routing cell...
+-> Routing finished in 18 attempts after 0.74 s
+-> Final cost: Width=43; Gate Mismatches=2; WL=84; Rt. Density=5; Nr. Gaps=6
+   PMOS: MCL4#0-MCL4#1-MCL4#2-MCL4#3-MCL4#4-MCL5#0-MCL5#1-MCL4#5-MCL2#0-MCL2#1-MCL0#2-MCL0#1-MCL0#0-MCL1#0-MCL1#1-MCL3#1-MCL3#0-MCL3#3-MCL3#2-
+   NMOS: MCL4#6-MCL4#7-MCL4#8-MCL4#9-MCL4#10-MCL5#2-MCL5#3-MCL4#11-MCL2#2-MCL2#3-MCL0#5-MCL0#4-MCL0#3-MCL1#2-MCL1#3-MCL3#5-MCL3#4-MCL3#7-MCL3#6-
+-> start real routing
+-> Routing cell...
+-> Routing finished in 11 attempts after 0.554 s
+
+-> Cost before optimization:9434
+-> Optimizing routing graph...-> high cost does not need optimize
+exit optimization
+
+-> Cost before optimization:9434
+-> Optimizing routing graph...-> high cost does not need optimize
+exit optimization
+-> Compacting layout...
+-> Calling LP Solver (46120 variables, 71669 constraints)
+-> Running command: "/opt/gurobi950/linux64/bin/gurobi_cl" TimeLimit=3600 ResultFile=ILPmodel.sol ILPmodel.lp
+-> To interrupt earlier and get the current best solution, type in a terminal: kill -2 [gurobi process]
+-> * and H means new feasible solution found:Set parameter Username
+Set parameter TimeLimit to value 3600
+Set parameter LogFile to value "gurobi.log"
+Academic license - for non-commercial use only - expires 2022-05-31
+Using license file /home/zslwyuan-laptop/.gurobi/gurobi.lic
+
+Gurobi Optimizer version 9.5.0 build v9.5.0rc5 (linux64)
+Copyright (c) 2021, Gurobi Optimization, LLC
+
+         of a constant term in the left-hand side of a constraint.
+
+Read LP format model from file ILPmodel.lp
+Reading time = 0.12 seconds
+: 71670 rows, 28269 columns, 272924 nonzeros
+Thread count: 6 physical cores, 12 logical processors, using up to 12 threads
+Optimize a model with 71670 rows, 28269 columns and 272924 nonzeros
+Model fingerprint: 0xdc09f151
+
+Model fingerprint: 0xdc09f151
+Variable types: 0 continuous, 28269 integer (20720 binary)
+Coefficient statistics:
+  Matrix range     [7e-01, 1e+05]
+  Objective range  [1e+00, 5e+03]
+  Bounds range     [1e+00, 1e+00]
+  RHS range        [1e+00, 2e+04]
+Presolve removed 17772 rows and 5592 columns
+Presolve time: 0.43s
+Presolved: 53898 rows, 22677 columns, 164323 nonzeros
+Variable types: 0 continuous, 22677 integer (18226 binary)
+
+Deterministic concurrent LP optimizer: primal and dual simplex (primal and dual model)
+Showing first log only...
+
+Root relaxation presolve removed 247 rows and 84 columns
+Root relaxation presolved: 53651 rows, 22756 columns, 163990 nonzeros
+
+Concurrent spin time: 0.06s
+
+Solved with dual simplex (dual model)
+
+Root relaxation: objective 9.051952e+06, 11600 iterations, 0.60 seconds (0.44 work units)
+
+    Nodes    |    Current Node    |     Objective Bounds      |     Work
+ Expl Unexpl |  Obj  Depth IntInf | Incumbent    BestBd   Gap | It/Node Time
+
+     0     0 9052451.20    0 1065          - 9052451.20      -     -    3s
+     0     0 9053684.83    0 2753          - 9053684.83      -     -    7s
+     0     0 9053688.65    0 2258          - 9053688.65      -     -    7s
+     0     0 9053688.65    0 2258          - 9053688.65      -     -    7s
+     0     0 9054897.06    0 3260          - 9054897.06      -     -    8s
+     0     0 9054907.44    0 2706          - 9054907.44      -     -    8s
+     0     0 9054907.50    0 2725          - 9054907.50      -     -    8s
+     0     0 9054941.01    0 2944          - 9054941.01      -     -    9s
+     0     0 9054951.47    0 3718          - 9054951.47      -     -   10s
+     0     0 9054961.49    0 3595          - 9054961.49      -     -   10s
+     0     0 9054961.49    0 3598          - 9054961.49      -     -   10s
+     0     0 9054964.57    0 2936          - 9054964.57      -     -   11s
+     0     0 9054970.60    0 2826          - 9054970.60      -     -   11s
+     0     0 9054971.75    0 2800          - 9054971.75      -     -   11s
+     0     0 9055020.38    0 2327          - 9055020.38      -     -   11s
+     0     0 9055022.28    0 2399          - 9055022.28      -     -   11s
+     0     0 9055022.35    0 2429          - 9055022.35      -     -   11s
+     0     0 9055029.71    0 2478          - 9055029.71      -     -   12s
+     0     0 9055029.71    0 2506          - 9055029.71      -     -   12s
+     0     0 9055031.53    0 2417          - 9055031.53      -     -   13s
+     0     0 9055031.53    0 2402          - 9055031.53      -     -   13s
+     0     0 9055032.34    0 2448          - 9055032.34      -     -   13s
+     0     0 9055032.34    0 2455          - 9055032.34      -     -   13s
+     0     0 9055032.34    0 2458          - 9055032.34      -     -   14s
+     0     0 9055032.34    0 2119          - 9055032.34      -     -   15s
+     0     0 9055095.20    0 2079          - 9055095.20      -     -   19s
+H    0     0                    9073850.0000 9055095.20  0.21%     -   23s
+H    0     0                    9067743.0000 9055095.20  0.14%     -   24s
+     0     0 9056104.33    0  667 9067743.00 9056104.33  0.13%     -   25s
+     0     0 9056647.32    0 2339 9067743.00 9056647.32  0.12%     -   26s
+H    0     0                    9065456.0000 9056647.32  0.10%     -   26s
+     0     0 9056698.95    0 1533 9065456.00 9056698.95  0.10%     -   26s
+     0     0 9056702.83    0 1644 9065456.00 9056702.83  0.10%     -   26s
+     0     0 9056706.16    0 1684 9065456.00 9056706.16  0.10%     -   26s
+     0     0 9056715.96    0 1729 9065456.00 9056715.96  0.10%     -   26s
+     0     0 9056718.67    0 1684 9065456.00 9056718.67  0.10%     -   26s
+     0     0 9056937.87    0 3082 9065456.00 9056937.87  0.09%     -   27s
+H    0     0                    9065340.0000 9056937.87  0.09%     -   27s
+     0     0 9056965.19    0 3055 9065340.00 9056965.19  0.09%     -   28s
+     0     0 9056965.39    0 3057 9065340.00 9056965.39  0.09%     -   28s
+     0     0 9057009.63    0 3334 9065340.00 9057009.63  0.09%     -   28s
+H    0     0                    9065258.0000 9057009.63  0.09%     -   28s
+     0     0 9057016.26    0 3362 9065258.00 9057016.26  0.09%     -   29s
+     0     0 9057016.48    0 3105 9065258.00 9057016.48  0.09%     -   29s
+H    0     0                    9064637.0000 9057016.48  0.08%     -   30s
+     0     0 9057045.85    0 3107 9064637.00 9057045.85  0.08%     -   30s
+H    0     0                    9064407.0000 9057045.85  0.08%     -   30s
+     0     0 9057049.50    0 3092 9064407.00 9057049.50  0.08%     -   30s
+     0     0 9057049.50    0 3096 9064407.00 9057049.50  0.08%     -   30s
+     0     0 9057055.89    0 3091 9064407.00 9057055.89  0.08%     -   31s
+H    0     0                    9064257.0000 9057055.89  0.08%     -   31s
+     0     0 9057055.90    0 3097 9064257.00 9057055.90  0.08%     -   31s
+     0     0 9057055.94    0 3098 9064257.00 9057055.94  0.08%     -   31s
+H    0     0                    9064243.0000 9057055.94  0.08%     -   31s
+H    0     0                    9062661.0000 9057055.94  0.06%     -   31s
+     0     0 9057055.94    0 3098 9062661.00 9057055.94  0.06%     -   31s
+     0     0 9057055.94    0 3099 9062661.00 9057055.94  0.06%     -   31s
+H    0     0                    9062655.0000 9057055.94  0.06%     -   31s
+H    0     0                    9062162.0000 9057055.94  0.06%     -   32s
+     0     0 9057055.96    0 2896 9062162.00 9057055.96  0.06%     -   32s
+H    0     0                    9061657.0000 9057055.96  0.05%     -   33s
+     0     0 9057055.96    0 2834 9061657.00 9057055.96  0.05%     -   33s
+H    0     0                    9059802.0000 9057056.30  0.03%     -   35s
+     0     2 9057056.30    0 2834 9059802.00 9057056.30  0.03%     -   35s
+   911  1170 9057825.82    9 1877 9059802.00 9057281.44  0.03%  15.2   40s
+H 1057  1155                    9059770.0000 9057281.44  0.03%  14.4   40s
+H 2082  1539                    9059375.0000 9057322.84  0.02%  12.9   44s
+  2083  1521 9058657.00  228 2079 9059375.00 9057322.84  0.02%  12.9   45s
+  2088  1524 9057739.50   58 3066 9059375.00 9057322.84  0.02%  12.8   50s
+  2101  1533 9057809.43   40 3314 9059375.00 9057486.68  0.02%  12.8   55s
+  2109  1538 9057598.98    9 3428 9059375.00 9057598.98  0.02%  12.7   60s
+  2117  1544 9058573.82  136 3471 9059375.00 9057606.48  0.02%  12.7   65s
+  2130  1557 9057683.93   18 2933 9059375.00 9057664.02  0.02%  21.3   70s
+  2415  1846 9058526.38   41 1565 9059375.00 9057669.52  0.02%  24.3   75s
+H 2592  1742                    9059027.0000 9057669.52  0.01%  24.1   77s
+H 2663  1644                    9058773.0000 9057669.52  0.01%  24.1   77s
+  3072  2244 9058656.49   98  209 9058773.00 9057744.37  0.01%  23.5   83s
+  3709  2511 9058142.61   21 1843 9058773.00 9057744.37  0.01%  21.5   86s
+  4744  2816 9058536.18   34  848 9058773.00 9057765.60  0.01%  20.2   90s
+H 5097  2604                    9058769.0000 9057797.30  0.01%  20.3   90s
+
+Cutting planes:
+  Learned: 5
+  Gomory: 198
+  Cover: 5
+  Implied bound: 58
+  Projected implied bound: 1
+  Clique: 2
+  MIR: 162
+  StrongCG: 4
+  Flow cover: 190
+  Zero half: 1
+  Mod-K: 1
+  RLT: 36
+  Relax-and-lift: 15
+
+Explored 5490 nodes (153336 simplex iterations) in 93.75 seconds (78.44 work units)
+Thread count was 12 (of 12 available processors)
+
+Solution count 10: 9.05877e+06 9.05877e+06 9.05903e+06 ... 9.06166e+06
+
+Optimal solution found (tolerance 1.00e-04)
+
+Optimal solution found (tolerance 1.00e-04)
+Best objective 9.058769000000e+06, best bound 9.057911437799e+06, gap 0.0095%
+
+Wrote result file 'ILPmodel.sol'
+
+Wrote result file 'ILPmodel.sol'
+
+-> Cell Size (W x H): 4.4 x 3.2
+-> Total generation time for cell COMPLEX27: 499s
+-> Saving GDSII Technology Mapping File: ./outputs/multiplier//GDSIILTable.txt
+-> Saving layout COMPLEX27 to file: ./outputs/multiplier//COMPLEX27.gds
