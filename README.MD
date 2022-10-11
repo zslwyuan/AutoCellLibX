@@ -1,5 +1,4 @@
-# AutoCellLibX:
-Automated Standard Cell Library Extension Based on Pattern Mining
+# AutoCellLibX: Automated Standard Cell Library Extension Based on Pattern Mining
 
 ## Introduction
 
