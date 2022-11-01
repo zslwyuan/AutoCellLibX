@@ -22,10 +22,7 @@ If you are curious about more details or some parts of the implementation confus
 
 ## License
 
-This project is developed by [Reconfiguration Computing Systems Lab](https://eeweiz.home.ece.ust.hk/), Hong Kong University of Science and Technology (HKUST). Tingyuan Liang (tliang@connect.ust.hk), Jingsong Chen, Lei Li, and Wei Zhang (eeweiz@ust.hk) are the major contributors of this project.
-
-For non-commercial usage of this open-source project, users should comply the Apache License attached in the root directory.
-For commercial usage of this open-source project, users must contact project supervisor (Wei ZHANG, eeweiz@ust.hk) for authorization.
+This project is developed by [Reconfiguration Computing Systems Lab](https://eeweiz.home.ece.ust.hk/), Hong Kong University of Science and Technology (HKUST). Tingyuan Liang (tliang@connect.ust.hk), Jingsong Chen, Lei Li, and Wei Zhang (eeweiz@ust.hk) are the major contributors of this project. Users should comply the Apache License attached in the root directory.
 
 ## Publications
 
