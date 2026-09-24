@@ -1,4 +1,4 @@
-import gdspy
+import gdstk
 
 from os import listdir
 from os.path import isfile, join
@@ -14,9 +14,13 @@ def loadOrignalGSCL45nmGDS():
 
     gsclName2GDSSize = dict()
     for name in stdCellNames:
-        gdsii = gdspy.GdsLibrary(
-            infile='./originalGSCL45StdCells/'+name+'.gds')
-        gsclName2GDSSize[name] = gdsii.cells[name].area(True)[(6, 0)]
+        gdsii = gdstk.read_gds('./originalGSCL45StdCells/'+name+'.gds')
+        curCell = None
+        for tmpCell in gdsii.cells:
+            if (tmpCell.name == name):
+                curCell = tmpCell
+                break
+        gsclName2GDSSize[name] = curCell.area(((6, 0),))[(6, 0)]
 
     return gsclName2GDSSize
 

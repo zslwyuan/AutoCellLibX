@@ -1,13 +1,19 @@
-import gdspy
-
-from os import listdir
-from os.path import isfile, join
 import os
+
+# MinGW runtime DLLs (wxWidgets etc.) for Astran.exe
+if ("PATH" in os.environ):
+    os.environ["PATH"] = "C:\\msys64\\mingw64\\bin;" + os.environ["PATH"]
+else:
+    os.environ["PATH"] = "C:\\msys64\\mingw64\\bin"
+
+# Open-source replacement of Gurobi's command-line solver (gurobi_cl):
+# a wrapper around python-mip + COIN-OR CBC.  See D:\aclx-tools\gurobi_cl.py
+GUROBI_CL = "D:/aclx-tools/gurobi_cl.cmd"
 
 
 def loadAstranArea(GDSPath, typeName):
-    gdsFiles = [f for f in listdir(GDSPath) if isfile(
-        join(GDSPath, f)) and f.find(".gds") >= 0]
+    gdsFiles = [f for f in os.listdir(GDSPath) if os.path.isfile(
+        os.path.join(GDSPath, f)) and f.find(".gds") >= 0]
     for gdsFile in gdsFiles:
         if (typeName+".gds" != gdsFile):
             continue
@@ -29,21 +35,18 @@ def runAstranForNetlist(AstranPath, gurobiPath, technologyPath, spiceNetlistPath
 load technology \"technologyPath\"
 load netlist \"spiceNetlistPath\"
 cellgen select complexName
-cellgen autoflow nTrack
+cellgen autoflow
 export layout complexName commandDir/complexName.gds
 exit
     """
 
-    for nTrack in [5, 3, 4, 6]:
-        commands = commands_tmplate.replace("gurobiPath", gurobiPath).replace("technologyPath", technologyPath).replace(
-            "spiceNetlistPath", spiceNetlistPath).replace("complexName", complexName).replace("commandDir", commandDir).replace("nTrack", str(nTrack))
+    commands = commands_tmplate.replace("gurobiPath", gurobiPath).replace("technologyPath", technologyPath).replace(
+        "spiceNetlistPath", spiceNetlistPath).replace("complexName", complexName).replace("commandDir", commandDir)
 
-        outputFile = open(commandDir+"/"+complexName+".run", 'w')
-        print(commands, file=outputFile)
-        outputFile.close()
+    outputFile = open(commandDir+"/"+complexName+".run", 'w')
+    print(commands, file=outputFile)
+    outputFile.close()
 
-        os.system(AstranPath+"/bin/Astran --shell " +
-                  commandDir+"/"+complexName+".run > " +
-                  commandDir+"/"+complexName+".Astranlog")
-        if (os.path.exists(commandDir+'/'+complexName+'.gds')):
-            return
+    os.system(AstranPath+"/bin/Astran --shell " +
+              commandDir+"/"+complexName+".run > " +
+              commandDir+"/"+complexName+".Astranlog")

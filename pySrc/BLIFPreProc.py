@@ -4,7 +4,6 @@ from globalVariables import *
 from BLIFGraphUtil import *
 import networkx as nx
 import numpy as np
-import tensorflow as tf
 import networkx as nx
 import time
 from liberty.parser import parse_liberty
@@ -422,7 +421,7 @@ def convertBLIFGraphIntoDataset(BLIFGraph, stdCellTypesForFeature, maxNumType=36
 
         g.label = labelsListForNode
         edges = [list((pair[0], pair[1], 1)) for pair in g.g.edges()]
-        g.edge_mat = tf.transpose(tf.constant(edges))
+        g.edge_mat = np.array(edges).T
 
     # add node feature based on node type
     for g in g_list:
@@ -431,7 +430,7 @@ def convertBLIFGraphIntoDataset(BLIFGraph, stdCellTypesForFeature, maxNumType=36
         node_features[range(len(g.node_tags)), [
             tag for tag in g.node_tags]] = 1
 
-        g.node_features = tf.constant(node_features)
+        g.node_features = np.array(node_features)
 
     print("# data: %d" % len(node_features))
 

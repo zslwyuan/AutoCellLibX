@@ -21,14 +21,15 @@ def main():
     os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
     # ASTRANBuildPath = ""  # empty when Astran is unavailable.
     # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    ASTRANBuildPath = "../tools/astran/Astran/build"
+    ASTRANBuildPath = "D:/astran/Astran/build"
 
     benchmarks = ["sqrt",
                   "voter", "arbiter", "cavlc", "div",
                   "int2float", "max", "priority", "sin",
                   "square", "BoomBranchPredictor",
                   "GemminiLoopMatmul", "GemminiLoopConv", "DCache", "BoomRegisterFile", "GemminiMesh", ]
-    benchmarks = ["adder",  "ctrl", "i2c", "multiplier", "router"]
+    # benchmarks = ["adder",  "ctrl", "i2c", "multiplier", "router"]
+    benchmarks = ["adder"]
 
     stdType2GSCLArea = loadOrignalGSCL45nmGDS()
     topThr = 5
@@ -63,8 +64,8 @@ def main():
                     continue
                 if (os.path.exists('./originalAstranStdCells/'+oriStdCellType+'.gds')):
                     continue
-                runAstranForNetlist(AstranPath=ASTRANBuildPath, gurobiPath="/opt/gurobi950/linux64/bin/gurobi_cl",
-                                    technologyPath="../tools/astran/Astran/build/Work/tech_freePDK45.rul",
+                runAstranForNetlist(AstranPath=ASTRANBuildPath, gurobiPath=GUROBI_CL,
+                                    technologyPath="D:/astran/Astran/build/Work/tech_freePDK45.rul",
                                     spiceNetlistPath='../stdCelllib/cellsAstranFriendly.sp',
                                     complexName=oriStdCellType, commandDir='./originalAstranStdCells/')
         stdType2AstranArea = loadAstranGDS()
@@ -129,8 +130,8 @@ def main():
                                                str(patternTraceId)+'.gds')):
                             if (len(tmpClusterSeq.patternClusters[0].cellIdsContained) < 11):
                                 try:
-                                    runAstranForNetlist(AstranPath=ASTRANBuildPath, gurobiPath="/opt/gurobi950/linux64/bin/gurobi_cl",
-                                                        technologyPath="../tools/astran/Astran/build/Work/tech_freePDK45.rul",
+                                    runAstranForNetlist(AstranPath=ASTRANBuildPath, gurobiPath=GUROBI_CL,
+                                                        technologyPath="D:/astran/Astran/build/Work/tech_freePDK45.rul",
                                                         spiceNetlistPath=outputPath+'/COMPLEX' +
                                                         str(patternTraceId) +
                                                         '.sp',

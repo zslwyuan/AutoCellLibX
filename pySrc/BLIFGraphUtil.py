@@ -161,7 +161,10 @@ def drawColorfulFigureForGraphWithAttributes(tmp_graph, colorArrtibute='type', s
     else:
         f = plt.figure(figsize=figsize)
 
-    pos = nx.drawing.nx_agraph.graphviz_layout(tmp_graph, prog=prog)
+    try:
+        pos = nx.drawing.nx_agraph.graphviz_layout(tmp_graph, prog=prog)
+    except Exception:
+        pos = nx.spring_layout(tmp_graph, seed=1)
 
     groups1 = set(nx.get_node_attributes(tmp_graph, colorArrtibute).values())
     mapping1 = dict(zip(sorted(groups1), count()))
