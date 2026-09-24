@@ -75,11 +75,15 @@ def _parse_terms(text):
             i += 1
         else:
             if not math.isfinite(coef):
-                # ASTRAN occasionally emits a non-finite coefficient (e.g.
-                # "y184_width - inf x184_width", a numeric overflow).  CBC
-                # rejects inf/nan outright; guard with a big-M so the model
-                # stays solvable.
-                coef = 1e9
+                # ASTRAN emits "inf" coefficients from a numeric overflow in its
+                # bound rules (e.g. "y184_width - inf x184_width").  An infinite
+                # coefficient means "no bound", so drop the term.  Clamping it to
+                # a big-M instead makes the model numerically hostile: CBC then
+                # reports NO_SOLUTION_FOUND, which silently voids the compaction
+                # and leaves the cell much larger than it should be.
+                i += 2 if (i + 1 < len(toks) and toks[i + 1] not in ("+", "-")) else 1
+                sign = 1.0
+                continue
             if i + 1 < len(toks) and toks[i + 1] not in ("+", "-"):
                 terms.append((sign * coef, toks[i + 1]))   # coefficient * variable
                 i += 2
@@ -237,7 +241,8 @@ def main():
     if ok:
         print("Optimal solution found, objective %g" % model.objective_value)
     else:
-        print("Unable to solve problem to optimality (%s), writing best solution" % status)
+        print("WARNING: no usable LP solution (%s) -- compaction is skipped "
+              "and the cell will be laid out larger than necessary" % status)
     return 0
 
 
