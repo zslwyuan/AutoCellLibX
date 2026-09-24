@@ -130,6 +130,10 @@ is only in the code is effectively undocumented.
 - **A pipeline run does not delete obsolete outputs.** Rerunning with a
   different pattern set leaves orphan `COMPLEX*` files behind, so clear the
   benchmark output directory before a regeneration you intend to commit.
+- **The growth-export must use the grown pattern's own `clusterTypeId`.**
+  Exporting with `len(clusterSeqs)` as the id collides with ids already dumped
+  and silently overwrote `COMPLEX9.sp` while its `.gds` kept the old layout —
+  the dataset tests catch exactly this class of mismatch.
 - **Do not call `Model.read()` on the generated LP** (see invariant 3).
 - **`build/bin/Astran.exe` looks like malware to 360 Total Security**
   (`HEUR/QVM…Malware.Gen`, from its `_popen` use). It is a false positive; add

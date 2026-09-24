@@ -382,3 +382,36 @@ cpt.insertConstraint("ZERO", "y"+metNode+"_width" + " + " + to_string(-tmp2) + "
    - C++:`insertVia` 最小面积块加 `A > 0 && W > 0` 守卫;`insertDistanceRuleInteligent`/`createTrack` 的表达式串改走真正的辅助变量,或在写出器里显式展开表达式;
    - PDK:补全 `tech_freePDK45.rul` 的 `A1M1`(当前为 0);
    - 求解器:大单元用真实 Gurobi 或放宽时限(环境变量 `GUROBI_CL_TIME_LIMIT` 已支持)。
+
+### 5.8 第四轮:数据集定稿(2026-09-25)
+
+以全部修复(§5.1–§5.7)端到端重跑 adder 后定稿。本轮又发现并修复两处,并产出最终数字。
+
+**(1) CBC"解得快、证得慢":求解时间预算改为两段式**
+
+尊重 ASTRAN 的 `TimeLimit` 后,CBC 在 ASTRAN 的大 M 模型(见 §6.5)上陷入"已找到良好可行解但无法在 2% 容差内证明最优"的长时间搜索:单个 8971 变量模型 20 分钟仍未返回。改为两段式预算:
+
+- 第一段 `GUROBI_CL_TIME_LIMIT`(默认 300 s)取到可行解即停;
+- 仅当**一个解都没有**(`NO_SOLUTION_FOUND`)才追加至多 900 s 继续搜索。
+
+实测同一 COMPLEX1 模型目标值仍为 7.38475e6(与上游 Gurobi 一致),耗时约 5 分钟。结论:对 CBC,**"被截断的可行解"就是可接受结果**(压缩作用于已合法版图,只影响压多紧);要可证明最优请用 Gurobi。
+
+**(2) 生长导出与已用 id 冲突(`main.py`)**
+
+生长新图案后,`exportSpiceNetlist(newSeq, subckts, len(clusterSeqs), ...)` 用 `len(clusterSeqs)` 当 id 写网表——该值与已 dump 图案的 `clusterTypeId` 会**撞车**,静默覆盖已有 `COMPLEX*.sp`。实测:6 单元生长图案把 `COMPLEX9.sp` 覆盖成 38 管网表,而 `COMPLEX9.gds/.Astranlog` 仍是 26 管的 4 单元版图(数据集一致性测试抓住)。修复:改用 `newSeqOfClusters[0].patternClusters[0].clusterTypeId`。`COMPLEX9.sp` 已按确定性的首轮生长回放重建(26 管、图案码一致、端口为插入序),与版图恢复匹配。
+
+**(3) 最终 adder 结果(基准与产物同高 H=2.6)**
+
+| 单元 | 尺寸 (W×H) | 晶体管 | 图案码 |
+|---|---|---|---|
+| COMPLEX0 | 2.4 × 2.6 | 14 | `[NAND2X1,NAND2X1,OR2X1]` |
+| COMPLEX1 | 4.2 × 2.6 | 30 | `[XNOR2X1,XOR2X1,OAI21X1]` |
+| COMPLEX9 | 3.6 × 2.6 | 26 | `[NAND2X1,NAND2X1,OR2X1]+XNOR2X1_c0o0` |
+| COMPLEX10 | 3.8 × 2.6 | 32 | `[NAND2X1,NAND2X1,OR2X1]+XNOR2X1_c0o0+OAI21X1_c2o0` |
+
+`bestRecord-adder`:**节省 106.2(ASTRAN 同高基准的 13.25%;GSCL LEF 的 11.44%)**,选定单元 COMPLEX10(59 次出现,5 单元)。内部自洽:原 5 单元宽度合计 5.6,合并后 3.8,1.8 × 59 = 106.2。
+
+**未完成(已记录)**:
+- 6 单元生长图案(COMPLEX11):求解在两段预算内未终止,由 0×0 防护排除,相关半成品产物已清理;
+- 因在 COMPLEX11 阶段手动停止,`bestRecord-seperateadder`(phase 2 的逐图案记录)未生成;
+- 行高仍为 2.6 vs GSCL45 的 2.47(见 §5.5/§5.7(2));`originalAstranStdCells/` 已全部按 2.6 重生成(16 个单元,含本轮的 CLKBUF1/DFFNEGX1/DFFPOSX1/MUX2X1/NOR3X1)。

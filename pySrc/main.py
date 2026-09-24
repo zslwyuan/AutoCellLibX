@@ -213,9 +213,14 @@ def main():
             newSeqOfClusters, patternNum = growASeqOfClusters(
                 BLIFGraph, clusterSeq, clusterNum, patternNum, paintPattern=True)
 
-            # export the SPICE netlist of the complex of cells
-            exportSpiceNetlist(newSeqOfClusters[0], subckts, len(
-                clusterSeqs), outputPath)
+            # Export the grown netlist under the grown pattern's own id.
+            # len(clusterSeqs) collides with ids already used by dumped
+            # patterns and silently overwrites their .sp files (observed: the
+            # grown 6-cell pattern overwrote COMPLEX9.sp while COMPLEX9.gds
+            # remained the 4-cell layout).
+            exportSpiceNetlist(newSeqOfClusters[0], subckts,
+                               newSeqOfClusters[0].patternClusters[0].clusterTypeId,
+                               outputPath)
 
             clusterSeqs = clusterSeqs[1:]
             clusterSeqs += newSeqOfClusters
@@ -337,9 +342,12 @@ def main():
                 newSeqOfClusters, patternNum = growASeqOfClusters_BasedOn(
                     BLIFGraph, clusterSeq, clusterNum, patternNum,  paintPattern=True, targetPatternTrace=targetPatternTrace)
 
-                # export the SPICE netlist of the complex of cells
-                exportSpiceNetlist(newSeqOfClusters[0], subckts, len(
-                    clusterSeqs), outputPath)
+                # export the SPICE netlist of the complex of cells (under the
+                # grown pattern's own id; see the phase-1 loop for why
+                # len(clusterSeqs) must not be used)
+                exportSpiceNetlist(newSeqOfClusters[0], subckts,
+                                   newSeqOfClusters[0].patternClusters[0].clusterTypeId,
+                                   outputPath)
 
                 clusterSeqs = clusterSeqs[1:]
                 clusterSeqs += newSeqOfClusters
