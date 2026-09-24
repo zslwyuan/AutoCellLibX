@@ -23,6 +23,10 @@ def main():
     parser.add_argument("cells", nargs="+", help="cell names, e.g. COMPLEX1")
     parser.add_argument("--dir", default="outputs/adder",
                         help="directory holding the .sp/.gds files")
+    parser.add_argument("--netlist", default=None,
+                        help="shared netlist for every cell (default: "
+                             "<dir>/<cell>.sp); originalAstranStdCells selects "
+                             "cells by name from one shared library file")
     args = parser.parse_args()
 
     outdir = os.path.abspath(args.dir)
@@ -30,7 +34,7 @@ def main():
         parser.error("no such directory: %s" % outdir)
 
     for name in args.cells:
-        sp = os.path.join(outdir, name + ".sp")
+        sp = args.netlist or os.path.join(outdir, name + ".sp")
         if not os.path.exists(sp):
             print("[regen] skip %s: no %s" % (name, sp))
             continue
