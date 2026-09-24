@@ -45,3 +45,23 @@ def test_astran_runs_invx1_smoke(in_pysrc, tmp_path):
     # the ASTRAN log must report a cell size
     log = open(os.path.join(outdir, "INVX1.Astranlog")).read()
     assert "-> Cell Size (W x H):" in log
+
+
+def test_astran_runs_nor3x1_gap_ordering_smoke(in_pysrc, tmp_path):
+    """NOR3X1 has unequal P/N counts (6 P, 3 N), which pads the transistor
+    ordering with link == -1 GAP slots and produces single-transistor series
+    legs; both used to read trans[-1] in seriesFolding/route() and crash."""
+    from Astran import (ASTRAN_BUILD_PATH, ASTRAN_TECHNOLOGY, GUROBI_CL,
+                        runAstranForNetlist)
+
+    netlist = os.path.abspath("../stdCelllib/cellsAstranFriendly.sp")
+    outdir = str(tmp_path)
+
+    runAstranForNetlist(AstranPath=ASTRAN_BUILD_PATH, gurobiPath=GUROBI_CL,
+                        technologyPath=ASTRAN_TECHNOLOGY,
+                        spiceNetlistPath=netlist,
+                        complexName="NOR3X1", commandDir=outdir)
+
+    log = open(os.path.join(outdir, "NOR3X1.Astranlog")).read()
+    assert "-> Cell Size (W x H):" in log
+    assert "WARNING" not in log, log  # no solver failure / skipped compaction

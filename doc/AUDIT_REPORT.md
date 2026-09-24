@@ -415,3 +415,21 @@ cpt.insertConstraint("ZERO", "y"+metNode+"_width" + " + " + to_string(-tmp2) + "
 - 6 单元生长图案(COMPLEX11):求解在两段预算内未终止,由 0×0 防护排除,相关半成品产物已清理;
 - 因在 COMPLEX11 阶段手动停止,`bestRecord-seperateadder`(phase 2 的逐图案记录)未生成;
 - 行高仍为 2.6 vs GSCL45 的 2.47(见 §5.5/§5.7(2));`originalAstranStdCells/` 已全部按 2.6 重生成(16 个单元,含本轮的 CLKBUF1/DFFNEGX1/DFFPOSX1/MUX2X1/NOR3X1)。
+
+### 5.9 第五轮:补齐基线单元时的 ASTRAN 崩溃(2026-09-25)
+
+重生成 `NOR3X1` 时暴露 ASTRAN 三处**上游遗留**缺陷(前几轮未触发,因为 adder 用到的单元 P/N 数量恰好相等)。
+
+**(1) 单管"串联腿"折叠读 `trans[-1]`(`cellnetlst.cpp: seriesFolding`)**
+
+折叠只对 P/N 数量不等的单元触发:短的一侧会被 `link=-1` 的 GAP 占位补齐(见下)。而 `seriesFolding` 对**长度为 1 的串联序列**(如 NOR3X1 的并联 PMOS 对、NMOS 腿)会走"首晶体管"分支并读取 `transToFolding[i+1]`——该处是 `-1` 哨兵,`trans[-1]` 越界。上游在 release 构建下是静默 UB(腿上的晶体管被悄悄丢弃)。修复:长度 1 的腿直接在**真实 drain/source 网**之间拆分(两端不加后缀,否则腿悬空、晶体管从单元里消失)。
+
+**(2) 路由用 GAP 槽位的宽度读 `trans[-1]`(`autocell2.cpp: route`)**
+
+P/N 数量不等时,`transPlacement` 用 `link=-1` 的 GAP 条目把两条 ordering 补齐到等长(`cellnetlst.cpp` `transPlacement`),而 `route()` 对**每个**槽位读 `getTrans(link).width`——GAP 槽位即 `trans[-1]`。共 4 处(两条 track 范围 while 循环 + 两条 next-track while 循环)。修复:link==-1 时按宽度 0 处理(GAP 不占扩散宽度,语义正确)。
+
+**(3) MSYS2 自带 python 遮蔽求解器包装(环境问题)**
+
+为装 gdb 而 `pacman -S mingw-w64-x86_64-gdb` 时,依赖把 `mingw-w64-x86_64-python`(3.14,无 python-mip)装进了 `C:\msys64\mingw64\bin`。`Astran.py` 把该目录置于 PATH 之前(ASTRAN 运行期 DLL 需要),于是 `gurobi_cl.cmd` 里的裸 `python` 解析到 MSYS2 解释器 → `ModuleNotFoundError: No module named 'mip'`,压缩静默失效。修复:`Astran.py` 把**当前流程所用的解释器目录**放在 PATH 最前(mingw64 其次),DLL 仍能解析、求解器包装始终用带 mip 的 python。
+
+**验证**:`NOR3X1` 修复后 1.4 × 2.6、48 s、OPTIMAL(objective 2.86e6);16 个基线单元全部 H=2.6;44 单元 + 3 集成测试全通过。

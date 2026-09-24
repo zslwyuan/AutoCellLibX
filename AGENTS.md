@@ -134,6 +134,17 @@ is only in the code is effectively undocumented.
   Exporting with `len(clusterSeqs)` as the id collides with ids already dumped
   and silently overwrote `COMPLEX9.sp` while its `.gds` kept the old layout —
   the dataset tests catch exactly this class of mismatch.
+- **Unequal P/N counts are an ASTRAN landmine.** When a cell has different
+  PMOS/NMOS counts, `transPlacement` pads the shorter ordering with `link=-1`
+  GAP entries; any code reading `getTrans(ordering[i].link)` must skip them
+  (`route()` had four such unguarded reads → `trans[-1]`), and single-element
+  series in `seriesFolding` must fold between the real nets. NOR3X1 (P6/N3)
+  crashed on both until fixed.
+- **MSYS2's own python shadows the solver wrapper.** Installing any mingw
+  package that pulls `mingw-w64-x86_64-python` puts a python.exe (no python-mip)
+  into `C:\msys64\mingw64\bin`, and `gurobi_cl.cmd` calls bare `python`.
+  `Astran.py` now puts the flow interpreter first on PATH; keep that ordering
+  if you touch it.
 - **Do not call `Model.read()` on the generated LP** (see invariant 3).
 - **`build/bin/Astran.exe` looks like malware to 360 Total Security**
   (`HEUR/QVM…Malware.Gen`, from its `_popen` use). It is a false positive; add

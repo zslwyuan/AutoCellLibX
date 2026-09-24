@@ -253,15 +253,23 @@ void AutoCell::route(bool hPoly, bool increaseIntTracks, int reduceVRt, bool opt
     for (int x = 0; x < currentNetList.getOrderingP().size(); x++) {
         int p;
         for (p = center + 1; trackPos[p] < pDif_iniY; ++p);
-        for (; increaseIntTracks && p<trackPos.size()-1 && trackPos[p] < pDif_endY - currentRules->getIntValue(currentNetList.getTrans(currentNetList.getOrderingP()[x].link).width) && trackPos[p] < height - (supWidth + currentRules->getRule(S2M1M1)); ++p);
+        // The ordering is padded with link == -1 entries (GAP) when the P and
+        // N transistor counts differ; they have no transistor, so the
+        // width-based track adjustment must be skipped (the original code
+        // read trans[-1], which crashed for cells like NOR3X1 with P(6) N(3)).
+        if (currentNetList.getOrderingP()[x].link != -1) {
+            for (; increaseIntTracks && p<trackPos.size()-1 && trackPos[p] < pDif_endY - currentRules->getIntValue(currentNetList.getTrans(currentNetList.getOrderingP()[x].link).width) && trackPos[p] < height - (supWidth + currentRules->getRule(S2M1M1)); ++p);
+        }
         diffPini.push_back(p);
     }
     
     for (int x = 0; x < currentNetList.getOrderingN().size(); x++) {
         int p;
         for (p = center - 1; p && (trackPos[p] > nDif_iniY); --p);
-        for (; p && increaseIntTracks && p>1 && trackPos[p] > nDif_endY + currentRules->getIntValue(currentNetList.getTrans(currentNetList.getOrderingN()[x].link).width)
-             && trackPos[p] > supWidth + currentRules->getRule(S2M1M1)+ currentRules->getRule(S2M1M1); --p);
+        if (currentNetList.getOrderingN()[x].link != -1) {
+            for (; p && increaseIntTracks && p>1 && trackPos[p] > nDif_endY + currentRules->getIntValue(currentNetList.getTrans(currentNetList.getOrderingN()[x].link).width)
+                 && trackPos[p] > supWidth + currentRules->getRule(S2M1M1)+ currentRules->getRule(S2M1M1); --p);
+        }
         diffNini.push_back(p);
     }
     
@@ -313,8 +321,12 @@ void AutoCell::route(bool hPoly, bool increaseIntTracks, int reduceVRt, bool opt
         //serch for first track above the transistor
         nDiffTrackEnd=nDiffTrackIni;
         pDiffTrackEnd=pDiffTrackIni;
-        while (nDiffTrackEnd && (trackPos[nDiffTrackEnd-1] >= trackPos[nDiffTrackIni] - currentRules->getIntValue(currentNetList.getTrans(eulerPathN_it->link).width))) nDiffTrackEnd--;
-        while (pDiffTrackEnd<trackPos.size()-1 && (trackPos[pDiffTrackEnd+1] <= trackPos[pDiffTrackIni] + currentRules->getIntValue(currentNetList.getTrans(eulerPathP_it->link).width))) pDiffTrackEnd++;
+        // GAP slots (link == -1) take no diffusion width; reading their width
+        // would index trans[-1] and crash (NOR3X1's P(6) N(3) pads the N side).
+        int nDiffW = (eulerPathN_it->link != -1) ? currentRules->getIntValue(currentNetList.getTrans(eulerPathN_it->link).width) : 0;
+        int pDiffW = (eulerPathP_it->link != -1) ? currentRules->getIntValue(currentNetList.getTrans(eulerPathP_it->link).width) : 0;
+        while (nDiffTrackEnd && (trackPos[nDiffTrackEnd-1] >= trackPos[nDiffTrackIni] - nDiffW)) nDiffTrackEnd--;
+        while (pDiffTrackEnd<trackPos.size()-1 && (trackPos[pDiffTrackEnd+1] <= trackPos[pDiffTrackIni] + pDiffW)) pDiffTrackEnd++;
         
         if (gapP || gapN || eulerPathP_it == currentNetList.getOrderingP().begin() || eulerPathN_it == currentNetList.getOrderingN().begin()) {
             lastElement = tmp;
@@ -392,7 +404,8 @@ void AutoCell::route(bool hPoly, bool increaseIntTracks, int reduceVRt, bool opt
             int tmp, proximo = static_cast<int>(eulerPathP_it - currentNetList.getOrderingP().begin());
             pDiffTrackIni=min(pDiffTrackIni, diffPini[proximo]);
             tmp=pDiffTrackIni;
-            while ((tmp<trackPos.size()-1) && (trackPos[tmp+1] <= trackPos[diffPini[proximo]] + currentRules->getIntValue(currentNetList.getTrans(eulerPathP_it->link).width))){
+            int pNextW = (eulerPathP_it->link != -1) ? currentRules->getIntValue(currentNetList.getTrans(eulerPathP_it->link).width) : 0;
+            while ((tmp<trackPos.size()-1) && (trackPos[tmp+1] <= trackPos[diffPini[proximo]] + pNextW)){
                 ++tmp;
             }
             pDiffTrackEnd=max(pDiffTrackEnd, tmp);
@@ -405,7 +418,8 @@ void AutoCell::route(bool hPoly, bool increaseIntTracks, int reduceVRt, bool opt
             int tmp, proximo = static_cast<int>(eulerPathN_it - currentNetList.getOrderingN().begin());;
             nDiffTrackIni=max(nDiffTrackIni, diffNini[proximo]);
             tmp=nDiffTrackIni;
-            while (tmp && (trackPos[tmp-1] >= trackPos[diffNini[proximo]] - currentRules->getIntValue(currentNetList.getTrans(eulerPathN_it->link).width)))
+            int nNextW = (eulerPathN_it->link != -1) ? currentRules->getIntValue(currentNetList.getTrans(eulerPathN_it->link).width) : 0;
+            while (tmp && (trackPos[tmp-1] >= trackPos[diffNini[proximo]] - nNextW))
                 --tmp;
             nDiffTrackEnd=min(nDiffTrackEnd, tmp);
         }

@@ -869,9 +869,23 @@ bool CellNetlst::seriesFolding(int numSequence, int numTrans, int numLegs, int b
             indexProxTrans = (i+1 < this->totalTrans) ? this->transToFolding[numSequence][i+1] : -1;
             indexPrevTrans = (i > 0) ? this->transToFolding[numSequence][i-1] : -1;
             widthTrans = trans[indexTrans].width/legs;
-            /*Testa o primeiro transistor da sequencia, pois ou o dreno ou a fonte dele
-             deve possuir a mesma conexão que a serie original*/
-            if (i == 0){
+            if (numTrans == 0){
+                // Single-transistor leg: both ends are shared points of the
+                // parallel structure, so the folded legs connect straight
+                // between the real drain/source nets.  Suffixing either end
+                // (as the first/last branches do) would leave the legs
+                // dangling and silently drop the transistor from the cell;
+                // the original code read transToFolding[i+1] == -1 here and
+                // indexed trans[-1], surviving only as undefined behaviour.
+                string auxName = this->trans[indexTrans].name+"_"+to_string(numLegs);
+                this->insertTrans(auxName, getNetName(this->trans[indexTrans].drain),
+                                  getNetName(this->trans[indexTrans].gate),
+                                  getNetName(this->trans[indexTrans].source),
+                                  this->trans[indexTrans].type,
+                                  this->trans[indexTrans].length, widthTrans);
+            } else if (i == 0){
+                /*Testa o primeiro transistor da sequencia, pois ou o dreno ou a fonte dele
+                 deve possuir a mesma conexão que a serie original*/
                 //Teste para o primeiro transistor da serie
                 if (this->trans[indexTrans].drain == this->trans[indexProxTrans].source){
                     //O transistor da ponto estah conectado ao outro transistor da serie pelo dreno
@@ -939,5 +953,4 @@ bool CellNetlst::seriesFolding(int numSequence, int numTrans, int numLegs, int b
     }
     return true;
 }
-
 
