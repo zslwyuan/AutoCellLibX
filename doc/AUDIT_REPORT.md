@@ -153,14 +153,30 @@ exit
 - **后果**:`main.py` 第二轮以 `patternNum = len(clusterSeqs)` 作为新模式的 `clusterTypeId` 起点,而初始 `clusterTypeId` 已跳号 → **新旧模式编号可能冲突**,使生长中的"同类型模式"判断(依赖 `clusterTypeId` 比较)出错。
 - **修复**:改为仅有簇时递增,与另一函数一致。
 
-### 3.4 附加稳健性修复
+### 3.4 附加修复(测试体系发现)
 
 | 文件 | 修复 |
 |---|---|
 | `BLIFPreProc.convertBLIFGraphIntoDataset` | `node_features` 列数由固定 `maxNumType=36` 改为 `max(maxNumType, len(feat_dict))`,消除单元类型数 >36 时的 `IndexError`(此前越界检查被注释) |
 | `main.py`(两处) | 访问 `clusterSeqs[0]` 前增加 `len(clusterSeqs) == 0` 保护,避免空序列列表导致的 `IndexError` |
+| `spice.SPSubcircuit.__init__` | `interfaces` 从**未剥离换行**的 `texts[0]` 提取(而 `self.texts` 已剥离),导致最后一个引脚名带 `"\n"`(实测 `AND2X1` 的接口为 `['Y','B','VCC','GND','A\n']`);改为从 `self.texts[0]` 提取,`internalSignals` 同步改用 `self.texts` |
 
-### 3.5 修复后的验证结果(adder)
+### 3.5 测试体系与验证
+
+**项目合并**:ASTRAN 源码与 LP 求解器包装已 vendored 进本仓库(`tools/astran/`、`tools/gurobi_cl/`),`pySrc/Astran.py` 集中定义项目内路径,项目自包含。
+
+**测试套件**(`tests/`,pytest,分层):
+
+| 层 | 内容 | 数量 |
+|---|---|---|
+| unit | 数据结构/排序、liberty+BLIF 解析与构图、子图编码对齐、初始聚类与 pattern-id 稠密性、生长方向对称性、SPICE 解析/导出、面积读取 | 31 |
+| integration(`slow`) | ASTRAN 二进制存在性、INVX1 端到端生成 GDS、挖掘→生长→SPICE 导出 | 3 |
+
+- 关键回归用例:多输出驱动的编码错位(合成 FAX1 场景)、输出侧同类模式吸收(合成双实例场景)、`_BasedOn` 的 pattern-id 空洞。
+- 运行:`python -m pytest`(仅快速用例,31 passed)/ `python -m pytest -m slow`(3 passed)。
+- 详见 `BUILDING.md`。
+
+### 3.6 修复后的全流程验证(adder)
 
 - 全流程闭环正常:`COMPLEX0/1/9/10` 的 SPICE/GDS/日志/可视化 + `bestRecord-adder` + `bestRecord-seperateadder` 均生成;
 - `bestRecord-adder`(原面积度量):
@@ -177,6 +193,8 @@ exit
 
 1. **ASTRAN 算法**:存在确凿缺陷——最紧要的是**我方为适配 CBC 所打的 compaction 补丁破坏了 ILP 表达式语义**(§1.1),应回退并重新验证;另有 `router.cpp` 越界等原版缺陷(§1.2)。
 2. **Layout 生成配置**:**不合理**。核心是**单元高度三方不一致**(目标库 2.47 / 上游基准 3.2 / 本机产物 2.6),叠加**层映射不一致**与**面积度量不当**。当前生成的复杂单元在物理上无法直接与 GSCL45 库集成;面积对比的绝对值不可靠。需显式配置 ASTRAN circuit 参数、统一层映射与面积度量。
-3. **Pattern 算法**:修复了 3 处确凿错误(编码错位、生长方向不对称、labelId 不一致)+ 2 处稳健性缺陷,已通过 adder 全流程验证。
+3. **Pattern 算法**:修复了 3 处确凿错误(编码错位、生长方向不对称、labelId 不一致)+ 4 处缺陷(特征维度越界、空序列保护、SPICE 接口换行),已通过 adder 全流程与测试套件验证。
 
-> 本次仅实施了第 3 部分的代码修复(在 `pySrc/`);第 1、2 部分按"分析"交付,其修复涉及 ASTRAN 源码与工艺配置,建议单独立项并重新标定。
+**工程化交付**:ASTRAN 与 AutoCellLibX 已合并为单一项目管理(`tools/astran`、`tools/gurobi_cl` vendored,路径集中于 `pySrc/Astran.py`,`BUILDING.md` 说明构建/运行/测试);建立分层测试体系(unit 31 + integration 3,含针对上述每个 bug 的回归用例)。
+
+> 本次实施:第 3 部分的代码修复 + 项目合并 + 测试体系;第 1、2 部分按"分析"交付,其修复涉及 ASTRAN 源码与工艺配置,建议单独立项并重新标定。

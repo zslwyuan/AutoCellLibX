@@ -69,8 +69,22 @@ D:\AutoCellLibX
 │   ├── gscl45nm.lef / .tlf / .db / gds2_encounter.map / gpdk45nm.m
 │   ├── gscl45nmVfiles.zip
 │   └── sky130_fd_sc_hd__tt_025C_1v80.lib  # SkyWater 130nm 库(备用,约 13MB)
-└── tools/                     # README.md 说明:"Install ASTRAN here"
+├── tests/                     # pytest 测试体系(unit + integration)
+│   ├── conftest.py            # 共享 fixture(cwd=pySrc、路径常量)
+│   ├── unit/                  # 7 个单元测试文件(31 用例)
+│   └── integration/           # ASTRAN 冒烟 + 挖掘→生长→导出(slow)
+├── tools/                     # 项目内 vendored 工具(与主项目合并管理)
+│   ├── astran/                # ASTRAN 源码 + nbproject 构建 + Work 工艺文件
+│   │   ├── src/ nbproject/ Makefile
+│   │   ├── build/Work/        # tech_freePDK45.rul 等运行必需文件
+│   │   ├── bin/wx-config      # wxWidgets 3.2 编译标志 shim
+│   │   └── build_astran.sh    # 构建脚本 → build/bin/Astran(.exe)
+│   └── gurobi_cl/             # gurobi_cl 兼容求解器包装(python-mip + COIN-OR CBC)
+├── BUILDING.md                # 构建/运行/测试说明
+└── pytest.ini                 # pytest 配置(默认跳过 slow 用例)
 ```
+
+> 说明:ASTRAN 与求解器包装已 vendored 进本仓库(`tools/`),Python 代码、ASTRAN 源码、测试作为**单一项目管理**。工具路径统一由 `pySrc/Astran.py` 从仓库根解析(`ASTRAN_BUILD_PATH`/`ASTRAN_TECHNOLOGY`/`GUROBI_CL`)。
 
 ---
 
@@ -101,11 +115,12 @@ D:\AutoCellLibX
 | `cntThr` | 30 | 模式出现次数下限 |
 | 单元数上限 | 11 | 单个复杂单元含单元数上限 |
 
-**当前配置差异(相对上游)**:
-- `ASTRANBuildPath = "D:/astran/Astran/build"`(原为 `../tools/astran/Astran/build`);
-- `technologyPath = "D:/astran/Astran/build/Work/tech_freePDK45.rul"`;
-- 求解器使用开源包装 `GUROBI_CL = "D:/aclx-tools/gurobi_cl.cmd"`(替代 Gurobi `gurobi_cl`);
+**当前配置(项目自包含,相对上游)**:
+- `ASTRANBuildPath = ASTRAN_BUILD_PATH` = `<repo>/tools/astran/build`(ASTRAN 已 vendored);
+- `technologyPath = ASTRAN_TECHNOLOGY` = `<repo>/tools/astran/build/Work/tech_freePDK45.rul`;
+- 求解器 `GUROBI_CL` = `<repo>/tools/gurobi_cl/gurobi_cl.cmd`(python-mip + CBC,替代 Gurobi `gurobi_cl`);
 - benchmark 列表当前只启用 `["adder"]`。
+- 上述常量均定义于 `pySrc/Astran.py`,由仓库根解析,与 cwd 无关。
 
 ### 3.2 `BLIFPreProc.py` — 数据预处理与初始聚类
 
@@ -156,7 +171,7 @@ D:\AutoCellLibX
 
 ### 3.6 `Astran.py` — ASTRAN 版图综合
 
-- 模块级设置:把 `C:\msys64\mingw64\bin` 加入 PATH(MinGW 运行库,供 Astran.exe 使用);定义开源 Gurobi 替代 `GUROBI_CL = "D:/aclx-tools/gurobi_cl.cmd"`(python-mip + COIN-OR CBC 的 `gurobi_cl` 包装)。
+- 模块级设置:把 `C:\msys64\mingw64\bin` 加入 PATH(MinGW 运行库,供 Astran.exe 使用);定义项目内路径常量 `ASTRAN_BUILD_PATH`/`ASTRAN_TECHNOLOGY`/`GUROBI_CL`(均在 `<repo>/tools/` 下,vendored)。`GUROBI_CL` 是 python-mip + COIN-OR CBC 的 `gurobi_cl` 兼容包装。
 - `loadAstranArea(GDSPath, typeName)`:从 `.Astranlog` 解析 `-> Cell Size (W x H):` 行,面积 = 宽 × 0.8 × 3.2(单位换算系数)。
 - `runAstranForNetlist()`:生成 ASTRAN shell 命令脚本(`set lpsolve`/`load technology`/`load netlist`/`cellgen select`/`cellgen autoflow`/`export layout`),写 `.run` 文件后调用 `Astran --shell` 执行。**本地修改**:由多轨道循环 `for nTrack in [5,3,4,6]` 改为单次 `cellgen autoflow`(无 nTrack 参数)。
 

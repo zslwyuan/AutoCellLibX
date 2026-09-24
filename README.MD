@@ -78,11 +78,20 @@ Some related resultant files are provided in "pySrc/outputs" and below is an exa
 
 Below is a hiearchy tree of this project. As for the details, please refer to the class information and collaboration diagram in the Doxygen documentation and trace the implementation, e.g., AMFPlacer, GlobalPlacer, and PlacementInfo.
 ```
-├── benchmarks  // benchmark information from various domain
-├── doc         // documentation-related materials
-└── pySrc       // source code of the project
-└── stdCelllib  // information of related PDK and standard cell libraries
+├── benchmark   // benchmark designs (BLIF netlists + synthesis scripts)
+├── doc         // documentation: project analysis + audit reports
+├── pySrc       // AutoCellLibX Python flow (pattern mining, growth, layout flow)
+├── stdCelllib  // FreePDK45 (GSCL45) PDK and standard cell libraries
+├── tests       // pytest test suite (unit + integration)
+└── tools       // vendored ASTRAN sources + gurobi_cl-compatible LP solver
 ```
+
+The repository is **self-contained**: ASTRAN is vendored under `tools/astran/`
+and the LP-solver wrapper under `tools/gurobi_cl/`. See
+[BUILDING.md](BUILDING.md) for building ASTRAN, running the flow and the test
+suite, and [doc/PROJECT_ANALYSIS.md](doc/PROJECT_ANALYSIS.md) /
+[doc/AUDIT_REPORT.md](doc/AUDIT_REPORT.md) for the technical analysis.
+
 Below is the call graph of the project for your reference:
 
 <p align="center">

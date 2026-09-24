@@ -1,0 +1,17 @@
+#!/bin/sh
+# Custom wx-config shim for building ASTRAN with MSYS2 MinGW64 wxWidgets 3.2.
+# The real wx-config resolves /mingw64 via cygpath against the invoking shell's
+# root, which points at Git's mingw64 (no dev package) when called from Git Bash.
+# Place this in a directory earlier in PATH than the real wx-config.
+args="$*"
+case "$args" in
+  *--cppflags*)
+    echo "-IC:/msys64/mingw64/lib/wx/include/msw-unicode-3.2 -IC:/msys64/mingw64/include/wx-3.2 -DWXUSINGDLL -D__WXMSW__"
+    ;;
+  *--libs*)
+    echo "-LC:/msys64/mingw64/lib -lwx_mswu_xrc-3.2 -lwx_mswu_html-3.2 -lwx_mswu_qa-3.2 -lwx_mswu_core-3.2 -lwx_baseu_xml-3.2 -lwx_baseu_net-3.2 -lwx_baseu-3.2"
+    ;;
+  *)
+    echo ""
+    ;;
+esac

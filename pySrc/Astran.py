@@ -6,9 +6,17 @@ if ("PATH" in os.environ):
 else:
     os.environ["PATH"] = "C:\\msys64\\mingw64\\bin"
 
+# ASTRAN and the LP-solver wrapper are vendored under <repo>/tools so the
+# project is self-contained.  Resolve everything relative to this file so the
+# paths stay valid regardless of the current working directory.
+_REPO_DIR = os.path.normpath(os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), ".."))
+ASTRAN_BUILD_PATH = os.path.join(_REPO_DIR, "tools", "astran", "build")
+ASTRAN_TECHNOLOGY = os.path.join(
+    ASTRAN_BUILD_PATH, "Work", "tech_freePDK45.rul")
 # Open-source replacement of Gurobi's command-line solver (gurobi_cl):
-# a wrapper around python-mip + COIN-OR CBC.  See D:\aclx-tools\gurobi_cl.py
-GUROBI_CL = "D:/aclx-tools/gurobi_cl.cmd"
+# a wrapper around python-mip + COIN-OR CBC.
+GUROBI_CL = os.path.join(_REPO_DIR, "tools", "gurobi_cl", "gurobi_cl.cmd")
 
 
 def loadAstranArea(GDSPath, typeName):

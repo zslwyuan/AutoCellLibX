@@ -11,10 +11,12 @@ class SPSubcircuit(object):
         self.internalSignals = []
         self.texts = [line.replace('\n', '') for line in texts]
 
-        for interface in texts[0].split(" ")[2:]:
+        # Parse the interface names from the newline-normalised header; using
+        # the raw ``texts[0]`` left a trailing "\n" on the last pin name.
+        for interface in self.texts[0].split(" ")[2:]:
             self.interfaces.append(interface)
 
-        for line in texts[1:-1]:
+        for line in self.texts[1:-1]:
             if (line.find('M') == 0):
                 eles = line.split(' ')[1:5]
                 for ele in eles:

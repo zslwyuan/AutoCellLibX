@@ -21,7 +21,7 @@ def main():
     os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
     # ASTRANBuildPath = ""  # empty when Astran is unavailable.
     # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    ASTRANBuildPath = "D:/astran/Astran/build"
+    ASTRANBuildPath = ASTRAN_BUILD_PATH  # <repo>/tools/astran/build (vendored)
 
     benchmarks = ["sqrt",
                   "voter", "arbiter", "cavlc", "div",
@@ -65,7 +65,7 @@ def main():
                 if (os.path.exists('./originalAstranStdCells/'+oriStdCellType+'.gds')):
                     continue
                 runAstranForNetlist(AstranPath=ASTRANBuildPath, gurobiPath=GUROBI_CL,
-                                    technologyPath="D:/astran/Astran/build/Work/tech_freePDK45.rul",
+                                    technologyPath=ASTRAN_TECHNOLOGY,
                                     spiceNetlistPath='../stdCelllib/cellsAstranFriendly.sp',
                                     complexName=oriStdCellType, commandDir='./originalAstranStdCells/')
         stdType2AstranArea = loadAstranGDS()
@@ -131,7 +131,7 @@ def main():
                             if (len(tmpClusterSeq.patternClusters[0].cellIdsContained) < 11):
                                 try:
                                     runAstranForNetlist(AstranPath=ASTRANBuildPath, gurobiPath=GUROBI_CL,
-                                                        technologyPath="D:/astran/Astran/build/Work/tech_freePDK45.rul",
+                                                        technologyPath=ASTRAN_TECHNOLOGY,
                                                         spiceNetlistPath=outputPath+'/COMPLEX' +
                                                         str(patternTraceId) +
                                                         '.sp',

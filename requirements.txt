@@ -1,7 +1,13 @@
+# AutoCellLibX runtime + test dependencies
 tqdm
 numpy
 networkx
 easydict
 blifparser
-gdspy
 liberty-parser
+gdstk            # GDSII reading (replaces gdspy, which has no Windows/py3.11 wheel)
+matplotlib
+scikit-learn
+lark
+mip              # python-mip: backs the vendored gurobi_cl-compatible LP solver
+pytest           # test suite (tests/)
