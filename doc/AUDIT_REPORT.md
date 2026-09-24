@@ -245,3 +245,33 @@ exit
 1. **与 GSCL45 行高精确对齐**:目标库行高 2.47um,本机 ASTRAN 产物 2.6um(默认 `rowheight 13 × vgrid 0.20`)。可用 `set rowheight`/`set vgrid` 标定(如 13×0.19),但会改变单元几何,需 DRC 复核,故未在本轮强制实施;
 2. **层映射统一**:ASTRAN 输出层号与 GSCL45 库不同,集成前需用 `set technology gdsii` 重映射或后处理;
 3. **基线重生成**:`originalAstranStdCells/` 仍为上游版本(H=3.2);若需与本机配置完全一致,可用 `tools/gurobi_cl` + 修复版 ASTRAN 重新生成(单次 compaction 约数十秒至 5 分钟,32 个单元约 1 小时)。
+
+### 5.6 第二轮追加修复:结果一致性(2026-09-24)
+
+在用修复后的 ASTRAN 重生成 `outputs/adder` 产物时,又发现两处会导致**结果数字失真**的缺陷,已修复。
+
+**(1) 布局缓存静默复用过期版图(`main.py` + `spice.py`)**
+
+`main.py` 原先只要 `COMPLEX<id>.gds` 存在就跳过版图生成。图案/聚类修复会改变 `COMPLEX<id>.sp`,但磁盘上旧的 `.gds` 仍在,于是被静默复用。实测:`COMPLEX1.sp` 已是 26 管拓扑(4 个单元),而它的 `.gds`/`.Astranlog` 仍是更早 30 管拓扑的产物——旧日志自证 `Number of transistors before folding: 30 -> P(15) N(15)`,面积数字因此对不上它所声称的网表(旧记录 3.6um 属于 30 管网表,而当前 26 管网表生成 6.6um)。
+
+修复:
+- `spice.py: exportSpiceNetlist` 仅在内容变化时写文件,使 `.sp` 的 mtime 成为可靠的"输入是否变化"信号;
+- 新增 `Astran.astranLayoutIsStale(gds, sp)`;`main.py` 改为"版图缺失**或**早于其网表即重生成"。
+
+**(2) 重复图案被重复导出并重复计入节省量(`main.py`)**
+
+`dumpedPaterns` 以图案轨迹 `patternExtensionTrace`(字符串)为键、值为 `clusterTypeId`(整型),但去重判断写成 `patternTraceId in dumpedPaterns.keys()`——拿整型值去查字符串键,恒为假,于是**从不去重**。同一图案在后续迭代里会以新的 id 被再次导出并再次计数:
+
+- `COMPLEX1` 与 `COMPLEX9` 的图案码完全相同(`[NAND2X1,NAND2X1,OR2X1]+XNOR2X1_c0o0`,各 60 次出现);
+- 两者 `.sp` 逐字节相同(仅 `.subckt` 名不同);
+- 但两者都写进 `saveArea`,`bestRecord-*` 也把它们列为两条 ⇒ **节省量被重复计数**。
+
+修复:改以轨迹判定,已导出即 `continue`。这样同时避免了为重复 id 去查找一份从未生成的版图(原判断若修正为按轨迹跳过,后文的 `loadAstranArea("COMPLEX"+id)` 会命中不存在的日志而断言失败,故必须整段跳过)。
+
+**(3) `outputs/adder` 快照自相矛盾(已重跑)**
+
+该目录是多次运行混合的产物:**`COMPLEX*` 的 id→图案映射随运行而变**。`bestRecord-adder` 记录 `COMPLEX1=[XNOR2X1,XOR2X1,OAI21X1]`、`COMPLEX9=[NAND2X1,NAND2X1,OR2X1]+XNOR2X1_c0o0`,而磁盘上的 `COMPLEX1.sp` 却是 `[NAND2X1,NAND2X1,OR2X1]+XNOR2X1_c0o0`。用修复后的流水线端到端重跑 adder 后,`<id> ↔ 图案 ↔ 网表 ↔ 版图 ↔ 面积` 自洽。
+
+**测试新增**:`tests/unit/test_layout_cache.py`(4 例,版图缓存判定)与 `tests/unit/test_spice.py::test_export_spice_netlist_only_writes_on_change`(网表写入幂等性);合计 36 个单元测试通过。
+
+**工具新增**:`pySrc/regenerate_cells.py`(按名重生成指定单元的版图,无需重跑挖掘流水线)。

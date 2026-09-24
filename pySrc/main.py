@@ -103,44 +103,52 @@ def main():
                 patternSubgraph = BLIFGraph.subgraph(
                     tmpClusterSeq.patternClusters[0].cellIdsContained)
 
-                if (not patternTraceId in dumpedPaterns.keys()):
-                    if (len(tmpClusterSeq.patternClusters[0].cellIdsContained) >= 11):
-                        continue
-                    print("dealing with pattern#", patternTraceId, " with ", len(
-                        tmpClusterSeq.patternClusters), " clusters (size=", len(tmpClusterSeq.patternClusters[0].cellIdsContained), ")")
+                # A pattern's trace is its identity: the same pattern can be
+                # produced again in a later iteration under a different
+                # clusterTypeId.  Skip it outright -- re-dumping it under a new
+                # id would double-count its occurrences in the reported area
+                # savings, and the area lookup below would then look for a
+                # layout for a duplicate id that was never generated.
+                if (tmpClusterSeq.patternExtensionTrace in dumpedPaterns.keys()):
+                    continue
+                if (len(tmpClusterSeq.patternClusters[0].cellIdsContained) >= 11):
+                    continue
+                print("dealing with pattern#", patternTraceId, " with ", len(
+                    tmpClusterSeq.patternClusters), " clusters (size=", len(tmpClusterSeq.patternClusters[0].cellIdsContained), ")")
 
-                    if (len(tmpClusterSeq.patternClusters[0].cellIdsContained)*len(tmpClusterSeq.patternClusters) < ratioThr * len(cells) and len(tmpClusterSeq.patternClusters) < cntThr):
-                        print("===Warning: the pattern is too small and bypassed. pattern: [", tmpClusterSeq.patternExtensionTrace, "]", len(
-                            tmpClusterSeq.patternClusters[0].cellIdsContained)*len(tmpClusterSeq.patternClusters), "<<<", len(cells))
-                        break
-                    dumpedPaterns[tmpClusterSeq.patternExtensionTrace] = patternTraceId
-                    detectedPatterns.append(
-                        tmpClusterSeq.patternExtensionTrace)
+                if (len(tmpClusterSeq.patternClusters[0].cellIdsContained)*len(tmpClusterSeq.patternClusters) < ratioThr * len(cells) and len(tmpClusterSeq.patternClusters) < cntThr):
+                    print("===Warning: the pattern is too small and bypassed. pattern: [", tmpClusterSeq.patternExtensionTrace, "]", len(
+                        tmpClusterSeq.patternClusters[0].cellIdsContained)*len(tmpClusterSeq.patternClusters), "<<<", len(cells))
+                    break
+                dumpedPaterns[tmpClusterSeq.patternExtensionTrace] = patternTraceId
+                detectedPatterns.append(
+                    tmpClusterSeq.patternExtensionTrace)
 
-                    drawColorfulFigureForGraphWithAttributes(
-                        patternSubgraph, save_to_file=outputPath+"/COMPLEX"+str(patternTraceId)+".png", withLabel=True, figsize=(20, 20))
+                drawColorfulFigureForGraphWithAttributes(
+                    patternSubgraph, save_to_file=outputPath+"/COMPLEX"+str(patternTraceId)+".png", withLabel=True, figsize=(20, 20))
 
-                    # export the SPICE netlist of the complex of cells
-                    exportSpiceNetlist(tmpClusterSeq, subckts, str(patternTraceId),
-                                       outputPath)
+                # export the SPICE netlist of the complex of cells
+                exportSpiceNetlist(tmpClusterSeq, subckts, str(patternTraceId),
+                                   outputPath)
 
-                    # if ASTRAN is available, run it to get the layout and area evaluation
-                    if (ASTRANBuildPath != ""):
-                        if (not os.path.exists(outputPath+'/COMPLEX' +
-                                               str(patternTraceId)+'.gds')):
-                            if (len(tmpClusterSeq.patternClusters[0].cellIdsContained) < 11):
-                                try:
-                                    runAstranForNetlist(AstranPath=ASTRANBuildPath, gurobiPath=GUROBI_CL,
-                                                        technologyPath=ASTRAN_TECHNOLOGY,
-                                                        spiceNetlistPath=outputPath+'/COMPLEX' +
-                                                        str(patternTraceId) +
-                                                        '.sp',
-                                                        complexName='COMPLEX'+str(patternTraceId), commandDir=outputPath)
-                                    loadAstranArea(
-                                        outputPath, "COMPLEX"+str(patternTraceId))
-                                except:
-                                    print("WARNING :", benchmarkName, " fails!")
-                                    benchmarkFailure = True
+                # if ASTRAN is available, run it to get the layout and area evaluation
+                if (ASTRANBuildPath != ""):
+                    gdsPath = outputPath+'/COMPLEX'+str(patternTraceId)+'.gds'
+                    spPath = outputPath+'/COMPLEX'+str(patternTraceId)+'.sp'
+                    if (astranLayoutIsStale(gdsPath, spPath)):
+                        if (len(tmpClusterSeq.patternClusters[0].cellIdsContained) < 11):
+                            try:
+                                runAstranForNetlist(AstranPath=ASTRANBuildPath, gurobiPath=GUROBI_CL,
+                                                    technologyPath=ASTRAN_TECHNOLOGY,
+                                                    spiceNetlistPath=outputPath+'/COMPLEX' +
+                                                    str(patternTraceId) +
+                                                    '.sp',
+                                                    complexName='COMPLEX'+str(patternTraceId), commandDir=outputPath)
+                                loadAstranArea(
+                                    outputPath, "COMPLEX"+str(patternTraceId))
+                            except:
+                                print("WARNING :", benchmarkName, " fails!")
+                                benchmarkFailure = True
 
                 if (benchmarkFailure):
                     break

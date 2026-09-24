@@ -158,6 +158,11 @@ def exportSpiceNetlist(cluserSeq, subckts, mergeCellTypeId,  outputDir):
     for cell in cellsInCluster:
         internalLines.append("*   "+cell.name)
 
-    outputSP = open(outputDir+"/"+mergeCellName+'.sp', 'w')
-    print('\n'.join(internalLines), file=outputSP)
-    outputSP.close()
+    # Write only when the content actually changes, so the netlist's mtime is a
+    # reliable "inputs changed" signal for the layout cache in main.py.
+    content = '\n'.join(internalLines) + '\n'
+    spPath = outputDir+"/"+mergeCellName+'.sp'
+    if ((not os.path.exists(spPath)) or (open(spPath).read() != content)):
+        outputSP = open(spPath, 'w')
+        outputSP.write(content)
+        outputSP.close()

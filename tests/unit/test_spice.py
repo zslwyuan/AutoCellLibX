@@ -60,3 +60,34 @@ def test_export_spice_netlist(in_pysrc, tmp_path):
     assert text.startswith(".subckt COMPLEX0")
     assert ".ends COMPLEX0" in text
     assert "* pattern code: " in text
+
+
+def test_export_spice_netlist_only_writes_on_change(in_pysrc, tmp_path):
+    """An unchanged netlist must not be rewritten.
+
+    main.py uses the netlist mtime to decide whether a cached ASTRAN layout is
+    stale, so re-running the pipeline must not touch an unchanged .sp file.
+    """
+    from BLIFPreProc import loadDataAndPreprocess
+    from BLIFGraphUtil import sortPatternClusterSeqs
+
+    G, cells, netlist, types, ds, ml, seqs, cn = loadDataAndPreprocess(
+        libFileName="../stdCelllib/gscl45nm.lib",
+        blifFileName="../benchmark/blif/adder.blif", startTime=0)
+    seqs = sortPatternClusterSeqs(seqs)
+    subs = loadSpiceSubcircuits("../stdCelllib/cellsAstranFriendly.sp")
+
+    out = os.path.join(str(tmp_path), "COMPLEX0.sp")
+    exportSpiceNetlist(seqs[0], subs, 0, str(tmp_path))
+    exportSpiceNetlist(seqs[0], subs, 0, str(tmp_path))
+
+    # Backdate the file, then re-export identical content: it must be left alone.
+    old = os.path.getmtime(out) - 100
+    os.utime(out, (old, old))
+    exportSpiceNetlist(seqs[0], subs, 0, str(tmp_path))
+    assert os.path.getmtime(out) == old
+
+    # Different content must be written through.
+    seqs[0].patternExtensionTrace = seqs[0].patternExtensionTrace + "+X"
+    exportSpiceNetlist(seqs[0], subs, 0, str(tmp_path))
+    assert os.path.getmtime(out) != old

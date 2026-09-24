@@ -69,3 +69,20 @@ exit
     os.system(AstranPath+"/bin/Astran --shell " +
               commandDir+"/"+complexName+".run > " +
               commandDir+"/"+complexName+".Astranlog")
+
+
+def astranLayoutIsStale(gdsPath, netlistPath):
+    """Whether a cached ASTRAN layout must be regenerated.
+
+    A layout is stale when it is missing, or when the netlist it was built from
+    is newer than the layout file.  This guards the "skip when the .gds already
+    exists" cache in main.py: the pattern/cluster fixes can change a COMPLEX
+    netlist while an older layout is still on disk, and reusing that layout
+    silently reports an area that does not belong to the current netlist.
+    """
+    if (not os.path.exists(gdsPath)):
+        return True
+    if (os.path.exists(netlistPath) and
+            os.path.getmtime(gdsPath) < os.path.getmtime(netlistPath)):
+        return True
+    return False
