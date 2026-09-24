@@ -28,6 +28,7 @@ separate ASTRAN checkout to keep in sync.
 | `BUILDING.md` | environment, ASTRAN build, run and test commands |
 | `doc/PROJECT_ANALYSIS.md` | directory/module/flow analysis |
 | `doc/AUDIT_REPORT.md` | algorithm + config audit and the repair record |
+| `doc/LESSONS_LEARNED.md` | why these defects were hard to see, and the debugging moves that found them |
 | `PROGRESS_Windows_Setup.md` | Windows/MSYS2 bring-up notes |
 
 Record non-trivial findings and every behavioural fix in
@@ -85,6 +86,19 @@ is only in the code is effectively undocumented.
    caused by a code/netlist change — not by run-to-run noise. Use that when
    bisecting a surprising area change.
 
+9. **The Python flow must be deterministic too.** Never let set/dict iteration
+   order reach an output. `exportSpiceNetlist` builds the port list from an
+   insertion-ordered mapping for exactly this reason: with a plain `set` the
+   exported netlist changed on every process (`PYTHONHASHSEED`), which defeated
+   the layout cache and made results irreproducible.
+   `tests/unit/test_determinism.py` enforces it.
+
+10. **An area comparison requires a matched row height.** Width is an area proxy
+    only at a fixed height, so the ASTRAN baseline (`pySrc/originalAstranStdCells`)
+    and the generated complexes must both go through `runAstranForNetlist` with
+    the same geometry constants. Comparing 3.2 µm baselines against 2.6 µm
+    complexes once flipped a candidate from +6.5 % to −19.5 %.
+
 ## Pitfalls that have already bitten
 
 - **Don't run two ASTRAN cells concurrently.** The LP is written as
@@ -94,8 +108,21 @@ is only in the code is effectively undocumented.
   plus one or more compaction solves, ~5–10 min per cell. The adapter caps a
   solve at 300 s and uses a 2 % relative gap; this only trades shrink quality
   for time, since compaction acts on an already-legal layout.
-- **Non-finite coefficients.** ASTRAN occasionally emits `- inf x…`; the
-  adapter clamps them to 1e9 to keep the model solvable.
+- **Non-finite coefficients.** ASTRAN emits pairs of expression-definition
+  constraints, one with coefficient `0.000000` and its twin with `inf`. The
+  adapter **drops** the term (`inf` means "no bound"). Never clamp it to a
+  big-M: `astranExpr = y + 1e9·x` is a different constraint, and CBC then
+  reports `NO_SOLUTION_FOUND`.
+- **A failed solve is silent.** On `NO_SOLUTION_FOUND` the adapter writes an
+  all-zero solution, so ASTRAN skips compaction and the cell comes out far too
+  wide. Grep the logs for "compaction is skipped" when a cell looks oversized.
+- **`.subckt` port order changes the layout**, not just its formatting —
+  reordering the pins moves ASTRAN's placement (COMPLEX0: 2.4 µm in insertion
+  order versus 2.0 µm in the old hash order). Keep it deterministic, and treat
+  a change of ordering as a change of result.
+- **A pipeline run does not delete obsolete outputs.** Rerunning with a
+  different pattern set leaves orphan `COMPLEX*` files behind, so clear the
+  benchmark output directory before a regeneration you intend to commit.
 - **Do not call `Model.read()` on the generated LP** (see invariant 3).
 - **`build/bin/Astran.exe` looks like malware to 360 Total Security**
   (`HEUR/QVM…Malware.Gen`, from its `_popen` use). It is a false positive; add

@@ -222,7 +222,7 @@ exit
 原实现依赖 CBC 的 CoinLpIO 直接读 LP,但 ASTRAN 会把**表达式**放在变量槽位(如 `x0b + RELAXATION`),CoinLpIO 报 `Invalid column names` 并**回退到默认列名**,导致所有列与模型脱节(实测 `.sol` 中不含 `width`/`height`,版图退化为 0×0)。改为:
 
 1. **自行解析 CPLEX-LP** 并用 python-mip API 建模(变量名完整保留,表达式按线性组合正确展开);
-2. **big-M 防护**:ASTRAN 偶发输出非有限系数(如 `- inf x184_width`,数值溢出),替换为 1e9 以保证可解;
+2. **非有限系数处理**:ASTRAN 偶发输出非有限系数(如 `- inf x184_width`,数值溢出),**丢弃该项**(按"无该约束"语义)。曾一度改为替换成 big-M(1e9),但那会把 ASTRAN 本意为 0 的系数变成巨系数,使模型数值病态、CBC 返回 `NO_SOLUTION_FOUND`、压缩被静默跳过(详见 §5.7);
 3. **FEASIBLE 判定**:带 gap 容差时 CBC 返回 FEASIBLE(非 OPTIMAL),此类解同样写出;
 4. 放松相对 gap(0.02)并加每次求解时间上限(300s)——压缩作用于**已合法的布局**,收紧 gap 只影响压缩程度、不影响合法性。
 
@@ -262,16 +262,54 @@ exit
 
 `dumpedPaterns` 以图案轨迹 `patternExtensionTrace`(字符串)为键、值为 `clusterTypeId`(整型),但去重判断写成 `patternTraceId in dumpedPaterns.keys()`——拿整型值去查字符串键,恒为假,于是**从不去重**。同一图案在后续迭代里会以新的 id 被再次导出并再次计数:
 
-- `COMPLEX1` 与 `COMPLEX9` 的图案码完全相同(`[NAND2X1,NAND2X1,OR2X1]+XNOR2X1_c0o0`,各 60 次出现);
-- 两者 `.sp` 逐字节相同(仅 `.subckt` 名不同);
-- 但两者都写进 `saveArea`,`bestRecord-*` 也把它们列为两条 ⇒ **节省量被重复计数**。
+- 磁盘上 `COMPLEX1.sp` 与 `COMPLEX9.sp` 的图案码完全相同(`[NAND2X1,NAND2X1,OR2X1]+XNOR2X1_c0o0`,各 60 次出现),`.sp` 逐字节相同(仅 `.subckt` 名不同)——同一图案以两个 id 同时存在;
+- 去重失效时,同一图案会在后续迭代以新 id 再次进入 `saveArea` 与 `bestRecord-*`,节省量随之重复计数。
 
 修复:改以轨迹判定,已导出即 `continue`。这样同时避免了为重复 id 去查找一份从未生成的版图(原判断若修正为按轨迹跳过,后文的 `loadAstranArea("COMPLEX"+id)` 会命中不存在的日志而断言失败,故必须整段跳过)。
 
 **(3) `outputs/adder` 快照自相矛盾(已重跑)**
 
-该目录是多次运行混合的产物:**`COMPLEX*` 的 id→图案映射随运行而变**。`bestRecord-adder` 记录 `COMPLEX1=[XNOR2X1,XOR2X1,OAI21X1]`、`COMPLEX9=[NAND2X1,NAND2X1,OR2X1]+XNOR2X1_c0o0`,而磁盘上的 `COMPLEX1.sp` 却是 `[NAND2X1,NAND2X1,OR2X1]+XNOR2X1_c0o0`。用修复后的流水线端到端重跑 adder 后,`<id> ↔ 图案 ↔ 网表 ↔ 版图 ↔ 面积` 自洽。
+该目录是多次运行混合的产物:**`COMPLEX*` 的 id→图案映射随运行而变**(根因见 §5.7(3) 的 hash 顺序不确定性)。`bestRecord-adder` 记录 `COMPLEX1=[XNOR2X1,XOR2X1,OAI21X1]`、`COMPLEX9=[NAND2X1,NAND2X1,OR2X1]+XNOR2X1_c0o0`,而磁盘上的 `COMPLEX1.sp` 却是 `[NAND2X1,NAND2X1,OR2X1]+XNOR2X1_c0o0`。用修复后的流水线端到端重跑 adder 后,`<id> ↔ 图案 ↔ 网表 ↔ 版图 ↔ 面积` 自洽。
 
 **测试新增**:`tests/unit/test_layout_cache.py`(4 例,版图缓存判定)与 `tests/unit/test_spice.py::test_export_spice_netlist_only_writes_on_change`(网表写入幂等性);合计 36 个单元测试通过。
 
 **工具新增**:`pySrc/regenerate_cells.py`(按名重生成指定单元的版图,无需重跑挖掘流水线)。
+
+### 5.7 第三轮修复:数值、行高与可复现性(2026-09-24)
+
+以修复后的流水线端到端重跑 adder 时,又发现三处会直接改变结果数字的缺陷。
+
+**(1) `inf` 系数被 big-M 化 ⇒ 压缩被静默跳过(`tools/gurobi_cl/gurobi_cl.py`)**
+
+ASTRAN 会成对写出同一表达式的定义约束,其中一条系数是 `0.000000`、其孪生约束却是 `inf`(数值溢出):
+
+```
+Cexpr6793: astranExpr6793 - y186_width - 0.000000 x186_width = 0
+Cexpr6794: astranExpr6794 - y186_width - inf x186_width = 0
+```
+
+把 `inf` 夹成 `1e9`,等于把约束改成 `astranExpr6794 = y186_width + 1e9·x186_width`——既不是 ASTRAN 的本意,又使模型数值病态:CBC 报 `NO_SOLUTION_FOUND`,适配层随即写出全零解,压缩整段失效,单元被放得极宽。
+
+修复:非有限系数按"无该约束"语义**丢弃该项**(此处即退化成与孪生约束一致的 `astranExpr6794 - y186_width = 0`)。同一份 COMPLEX1 模型对比:
+
+| 处理方式 | CBC 目标值 |
+|---|---|
+| 夹成 big-M 1e9(修复前) | 1.71022e+07 |
+| 丢弃该项(修复后) | 7.38475e+06 |
+| 上游真实 Gurobi(参考) | 7.38831e+06 |
+
+修复后与上游最优几乎一致,说明压缩真正生效。失败路径的日志也改为明确写出 `compaction is skipped`,不再假称写入了 best solution。
+
+**(2) 面积比较的基准行高不匹配(已按同高重生成)**
+
+先前 `outputs/adder` 的增益是在"**基准 H=3.2 × 产物 H=2.6**"下算出的:GSCL45 LEF 的单元高度是 **2.47**(见 `stdCelllib/gscl45nm.lef` 的 `SIZE … BY 2.47`),而 `originalAstranStdCells/` 里的 ASTRAN 基准是上游**另一套** ASTRAN(日志自证 Linux + `/opt/gurobi950` + `cellsHeight=16`)以 **H=3.2** 生成的,本仓库无法复现。行高不同则"面积 ∝ 宽度"不成立,比较无意义——实测 `COMPLEX9` 因此从 +6.5% 翻成 −19.5%。
+
+修复:用 vendored 工具链、**同一套几何常量**重生成 `originalAstranStdCells/`(H=2.6),使基准与产物同高,整条结果可用本仓库复现。与 GSCL45 仍有 2.6 vs 2.47 的残余差异(约 5%);如需完全对齐,把 `Astran.ASTRAN_VGRID` 调为 0.19(13×0.19=2.47)后重做 DRC 复核即可。
+
+**(3) 流水线不可复现(`PYTHONHASHSEED`)**
+
+`exportSpiceNetlist` 用普通 `set` 汇总复杂单元的端口,再 `list(set)` 输出,端口顺序因此取决于**进程级 hash 顺序**:每次运行导出的 `.sp` 内容都不同。后果有二:让"按网表内容判定版图缓存"永远失效(每次重跑都重生成全部单元);以及结果不可复现——`COMPLEX*` 的 id↔图案映射在不同运行间漂移(即 §5.6(3) 快照自相矛盾)正是源于此。
+
+修复:改用**插入有序映射**(dict)汇总端口,并在 `PYTHONHASHSEED` = 0/1/7 下验证图案序列与网表 md5 完全一致。新增 `tests/unit/test_determinism.py`(子进程比对不同种子的网表哈希)。
+
+**测试新增(本轮)**:`tests/unit/test_determinism.py`、`tests/unit/test_astran_commands.py`、`tests/unit/test_dataset_consistency.py`(图案唯一性 + 日志与网表晶体管数一致)。
