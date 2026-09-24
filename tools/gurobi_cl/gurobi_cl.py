@@ -217,11 +217,16 @@ def main():
 
     # Compaction runs on an already-legal layout, so a loose relative gap only
     # reduces how aggressively a cell is shrunk -- it never makes the result
-    # illegal.  A loose gap plus a per-solve time cap keeps large ILPs from
-    # dominating the runtime.  Set gap to 0.0 for provable optimality.
+    # illegal.  Honour ASTRAN's TimeLimit rather than imposing a short cap:
+    # with a 300 s cap CBC returns NO_SOLUTION_FOUND on large models, the
+    # adapter then writes an all-zero solution and ASTRAN emits a 0 x 0 cell.
+    # main.py detects and excludes such cells; set GUROBI_CL_TIME_LIMIT=<sec>
+    # to bound the runtime anyway.  Set gap to 0.0 for provable optimality.
     model.max_mip_gap = 0.02
+    solve_limit = int(os.environ.get("GUROBI_CL_TIME_LIMIT", str(timelimit)))
+    solve_limit = max(60, min(solve_limit, timelimit))
     try:
-        status = model.optimize(max_seconds=min(timelimit, 300))
+        status = model.optimize(max_seconds=solve_limit)
         ok = status in (mip.OptimizationStatus.OPTIMAL,
                         mip.OptimizationStatus.FEASIBLE)
     except Exception as e:  # noqa: BLE001
@@ -241,8 +246,8 @@ def main():
     if ok:
         print("Optimal solution found, objective %g" % model.objective_value)
     else:
-        print("WARNING: no usable LP solution (%s) -- compaction is skipped "
-              "and the cell will be laid out larger than necessary" % status)
+        print("WARNING: no usable LP solution (%s); the all-zero solution "
+              "written below will make ASTRAN emit a 0 x 0 cell" % status)
     return 0
 
 

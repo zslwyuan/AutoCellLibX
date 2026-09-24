@@ -144,8 +144,16 @@ def main():
                                                     str(patternTraceId) +
                                                     '.sp',
                                                     complexName='COMPLEX'+str(patternTraceId), commandDir=outputPath)
-                                loadAstranArea(
+                                newWidth = loadAstranArea(
                                     outputPath, "COMPLEX"+str(patternTraceId))
+                                # A failed LP solve makes ASTRAN read an
+                                # all-zero solution and emit a 0 x 0 cell;
+                                # counting it would report fake area savings.
+                                if (newWidth <= 0):
+                                    print("WARNING :", benchmarkName,
+                                          " COMPLEX"+str(patternTraceId),
+                                          " has zero width (solver failed); excluding the pattern")
+                                    benchmarkFailure = True
                             except:
                                 print("WARNING :", benchmarkName, " fails!")
                                 benchmarkFailure = True
