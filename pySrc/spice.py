@@ -122,10 +122,14 @@ def exportSpiceNetlist(cluserSeq, subckts, mergeCellTypeId,  outputDir):
                     "cl"+str(orderId)+"#"+inputPinName, "cl"+str(cell2orderId[predCell])+"#"+predPinName)
 
     # merge spice netlists
-    interfaceSet = set()
+    # A dict is used as an insertion-ordered set.  A plain set iterates in hash
+    # order, which changes between processes (PYTHONHASHSEED), so the exported
+    # netlist -- and with it the layout cache key -- was different on every run.
+    interfaceSet = {}
     internalSignals = []
     for spiceObj in spiceList:
-        interfaceSet = interfaceSet | set(spiceObj.interfaces)
+        for pin in spiceObj.interfaces:
+            interfaceSet[pin] = None
         internalSignals = internalSignals + spiceObj.internalSignals
 
     # remove internal signals from interfaces
@@ -137,7 +141,7 @@ def exportSpiceNetlist(cluserSeq, subckts, mergeCellTypeId,  outputDir):
                     allSuccCellsInternal = False
             if (allSuccCellsInternal):
                 assert("cl"+str(orderId)+"#"+outputPinName in interfaceSet)
-                interfaceSet.remove("cl"+str(orderId)+"#"+outputPinName)
+                del interfaceSet["cl"+str(orderId)+"#"+outputPinName]
 
     mergeCellName = "COMPLEX"+str(mergeCellTypeId)
     interfaceList = list(interfaceSet)
