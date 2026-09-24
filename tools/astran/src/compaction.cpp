@@ -305,23 +305,23 @@ void Compaction::insertLPMinVar( string v, int i ) {
  int val = constraints[i].val;
  
  if ( type == CP_MIN )
- f << "C" << i << ": " << v2 << " - " << v1 << " >= " << val << ";" << endl;
+ f << "C" << i << ": " << S(v2) << " - " << S(v1) << " >= " << val << ";" << endl;
  if ( type == CP_MAX )
- f << "C" << i << ": " << v2 << " - " << v1 << " <= " << val << ";" << endl;
+ f << "C" << i << ": " << S(v2) << " - " << S(v1) << " <= " << val << ";" << endl;
  else if ( type == CP_EQ )
- f << "C" << i << ": " << v2 << " - " << v1 << " = " << val << ";" << endl;
+ f << "C" << i << ": " << S(v2) << " - " << S(v1) << " = " << val << ";" << endl;
  else if ( type == CP_MIN_VAR_VAL )
- f << "C" << i << ": " << v2 << " - " << v1 << " >= " << val << " " << t << ";" << endl;
+ f << "C" << i << ": " << S(v2) << " - " << S(v1) << " >= " << val << " " << S(t) << ";" << endl;
  else if ( type == CP_MAX_VAR_VAL )
- f << "C" << i << ": " << v2 << " - " << v1 << " <= " << val << " " << t << ";" << endl;
+ f << "C" << i << ": " << S(v2) << " - " << S(v1) << " <= " << val << " " << S(t) << ";" << endl;
  else if ( type == CP_EQ_VAR_VAL )
- f << "C" << i << ": " << v2 << " - " << v1 << " = " << val << " " << t << ";" << endl;
+ f << "C" << i << ": " << S(v2) << " - " << S(v1) << " = " << val << " " << S(t) << ";" << endl;
  else if ( type == CP_MIN_VAR )
- f << "C" << i << ": " << v2 << " - " << v1 << " >= " << t << ";" << endl;
+ f << "C" << i << ": " << S(v2) << " - " << S(v1) << " >= " << S(t) << ";" << endl;
  else if ( type == CP_MAX_VAR )
- f << "C" << i << ": " << v2 << " - " << v1 << " <= " << t << ";" << endl;
+ f << "C" << i << ": " << S(v2) << " - " << S(v1) << " <= " << S(t) << ";" << endl;
  else if ( type == CP_EQ_VAR )
- f << "C" << i << ": " << v2 << " - " << v1 << " = " << t << ";" << endl;
+ f << "C" << i << ": " << S(v2) << " - " << S(v1) << " = " << S(t) << ";" << endl;
  else if ( type == CP_BIG_ZERO )
  f << "C" << i << ": " << v1 << " > 0;" << endl;
  else if ( type == CP_BIG_EQ_ZERO )
@@ -340,7 +340,7 @@ void Compaction::insertLPMinVar( string v, int i ) {
  for ( unsigned int i = 0; i < int_vars.size(); i++ ) {
  if ( i != 0 )
  f << ", ";
- f << int_vars[i];
+ f << S(int_vars[i]);
  }
  f << ";" << endl;
  }
@@ -350,7 +350,7 @@ void Compaction::insertLPMinVar( string v, int i ) {
  for ( unsigned int i = 0; i < bin_vars.size(); i++ ) {
  if ( i != 0 )
  f << ", ";
- f << bin_vars[i];
+ f << S(bin_vars[i]);
  }
  f << ";" << endl;
  }
@@ -360,7 +360,7 @@ void Compaction::insertLPMinVar( string v, int i ) {
  for ( unsigned int i = 0; i < sec_vars.size(); i++ ) {
  if ( i != 0 )
  f << ", ";
- f << sec_vars[i];
+ f << S(sec_vars[i]);
  }
  f << ";" << endl;
  }
@@ -418,13 +418,15 @@ int Compaction::solve(string lpSolverFile, int timeLimit) {
 	
 	string fn = lp_filename + ".lp";
 	
-	// Some variables are stored under names that are not plain identifiers,
-	// e.g. "x0b + RELAXATION" or "b0_17_1 + b0_17_2 + b0_17_3".  Gurobi's LP
-	// parser accepts such names as single variables, but open-source parsers
-	// (COIN-CBC/CoinLpIO, GLPK, ...) treat the embedded '+'/'-' as operators
-	// and produce a different (wrong) model.  Rename them to plain names when
-	// writing the LP file and translate the solution back on read.
+	// Some "variables" are stored under expression strings, e.g.
+	// "x0b + RELAXATION" or "b0_17_1 + b0_17_2 + b0_17_3".  ASTRAN relies on the
+	// LP reader expanding them, but CoinLpIO (CBC-style readers) reject such
+	// names ("Invalid column names").  Replace every expression by a fresh plain
+	// variable and emit an explicit definition constraint
+	//   freshVar - b0_17_1 - b0_17_2 - b0_17_3 = 0
+	// which is exactly equivalent and accepted by every LP reader.
 	map<string,string> renameMap;
+	vector<pair<string,string> > exprDefs;
 	{
 	    int renameIdx = 0;
 	    auto needRename = [](const string& s){
@@ -436,13 +438,12 @@ int Compaction::solve(string lpSolverFile, int timeLimit) {
 	    vector<string> allNames = lp_min_var;
 	    for (map<string,int>::iterator it = variables.begin(); it != variables.end(); ++it)
 	        allNames.push_back(it->first);
-	    for (size_t k = 0; k < int_vars.size(); ++k)  allNames.push_back(int_vars[k]);
-	    for (size_t k = 0; k < bin_vars.size(); ++k)  allNames.push_back(bin_vars[k]);
-	    for (size_t k = 0; k < sec_vars.size(); ++k)  allNames.push_back(sec_vars[k]);
-	    for (size_t k = 0; k < sos_vars.size(); ++k)  allNames.push_back(sos_vars[k]);
 	    for (size_t k = 0; k < allNames.size(); ++k)
-	        if (needRename(allNames[k]) && renameMap.count(allNames[k]) == 0)
-	            renameMap[allNames[k]] = "astranVar" + to_string(renameIdx++);
+	        if (needRename(allNames[k]) && renameMap.count(allNames[k]) == 0) {
+	            string fresh = "astranExpr" + to_string(renameIdx++);
+	            renameMap[allNames[k]] = fresh;
+	            exprDefs.push_back(make_pair(fresh, allNames[k]));
+	        }
 	}
 	vector<pair<string,string> > renameOrdered(renameMap.begin(), renameMap.end());
 	sort(renameOrdered.begin(), renameOrdered.end(),
@@ -482,13 +483,16 @@ int Compaction::solve(string lpSolverFile, int timeLimit) {
             }
         }
         for ( unsigned int i = 0; i < mergedMinVar.size(); i++ ) {    
-            if ( i != 0 ){
+            if ( i == 0 ){
+                if( mergedMinVal[i] < 0 )
+                    f << "- ";
+            } else {
                 if(mergedMinVal[i]>=0)
                     f << " + ";
                 else
                     f << " - ";                
             }
-            if ( mergedMinVal[i] != 1 )
+            if ( abs(mergedMinVal[i]) != 1 )
                 f << abs(mergedMinVal[i]) << " ";
             
             f << S(mergedMinVar[i]);
@@ -524,11 +528,11 @@ int Compaction::solve(string lpSolverFile, int timeLimit) {
             else if ( type == CP_EQ)
                 f << "C" << i << ": " << S(v2) << " - " << S(v1) << " = " << val << endl;
             else if ( type == CP_MIN_VAR_VAL )
-                f << "C" << i << ": " << S(v2) << " - " << val << " " << S(t) << " - " << S(v1) << " >= 0" << endl;
+                f << "C" << i << ": " << v2 << " - " << val << " " << S(t) << " - " << v1 << " >= 0" << endl;
             else if ( type == CP_MAX_VAR_VAL )
-                f << "C" << i << ": " << S(v2) << " - " << val << " " << S(t) << " - " << S(v1) << " <= 0" << endl;
+                f << "C" << i << ": " << v2 << " - " << val << " " << S(t) << " - " << v1 << " <= 0" << endl;
             else if ( type == CP_EQ_VAR_VAL )
-                f << "C" << i << ": " << S(v2) << " - " << val << " " << S(t) << " - " << S(v1) << " = 0" << endl;
+                f << "C" << i << ": " << v2 << " - " << val << " " << S(t) << " - " << v1 << " = 0" << endl;
             else if ( type == CP_MIN_VAR )
                 f << "C" << i << ": " << S(v2) << " - " << S(v1) << " - " << S(t) << " >= 0" << endl;
             else if ( type == CP_MAX_VAR )
@@ -536,27 +540,33 @@ int Compaction::solve(string lpSolverFile, int timeLimit) {
             else if ( type == CP_EQ_VAR )
                 f << "C" << i << ": " << S(v2) << " - " << S(v1) << " - " << S(t) << " = 0" << endl;
             else if ( type == CP_BIG_ZERO )
-                f << "C" << i << ": " << S(v1) << " > 0" << endl;
+                f << "C" << i << ": " << v1 << " > 0" << endl;
             else if ( type == CP_BIG_EQ_ZERO )
-                f << "C" << i << ": " << S(v1) << " >= 0" << endl;
+                f << "C" << i << ": " << v1 << " >= 0" << endl;
             else if ( type == CP_EQ_ZERO )
-                f << "C" << i << ": " << S(v1) << " = 0" << endl;
+                f << "C" << i << ": " << v1 << " = 0" << endl;
             else if ( type == CP_UPPER_BOUND )
-                f << "C" << i << ": " << S(v1) << " <= " << val << endl;
+                f << "C" << i << ": " << v1 << " <= " << val << endl;
             else if ( type == CP_LOWER_BOUND )
-                f << "C" << i << ": " << S(v1) << " >= " << val << endl;
+                f << "C" << i << ": " << v1 << " >= " << val << endl;
             
         }
         for ( unsigned int j = 0; j < ctrts.size(); j++ ) {
             f << "C" << i+j << ": " << S(ctrts[j]) << endl;
         }
+        for ( unsigned int j = 0; j < exprDefs.size(); j++ ) {
+            string neg = exprDefs[j].second;
+            for ( size_t c = 0; c < neg.size(); ++c )
+                if ( neg[c] == '+' ) neg[c] = '-';
+            f << "Cexpr" << j << ": " << exprDefs[j].first << " - " << neg << " = 0" << endl;
+        }
         
         if ( int_vars.size() > 0 ) {  
             f << "Generals" << endl; 
-            for (map<string,int>::iterator it = variables.begin();it != variables.end(); ++it){
-                if ( it != variables.begin() )
+            for ( unsigned int i = 0; i < int_vars.size(); i++ ) {
+                if ( i != 0 )
                     f << " ";
-                f << S(it->first);
+                f << int_vars[i];
             }
             f << endl;
         }
@@ -566,7 +576,7 @@ int Compaction::solve(string lpSolverFile, int timeLimit) {
             for ( unsigned int i = 0; i < bin_vars.size(); i++ ) {
                 if ( i != 0 )
                     f << " ";
-                f << S(bin_vars[i]);
+                f << bin_vars[i];
             }
             f << endl;
         }
@@ -576,7 +586,7 @@ int Compaction::solve(string lpSolverFile, int timeLimit) {
             for ( unsigned int i = 0; i < sec_vars.size(); i++ ) {
                 if ( i != 0 )
                     f << " ";
-                f << S(sec_vars[i]);
+                f << sec_vars[i];
             }
             f << endl;
         }
@@ -646,15 +656,14 @@ int Compaction::solve(string lpSolverFile, int timeLimit) {
 		s >> tmp;
 		v = round(tmp);
 		
-		// translate renamed (sanitized) variable names back to the original names
-		if (n.rfind("astranVar", 0) == 0) {
-			for (size_t k = 0; k < renameOrdered.size(); ++k) {
-				if (renameOrdered[k].second == n) {
-					n = renameOrdered[k].first;
-					break;
-				}
+		// translate fresh expression variables back to their expression names
+		for (size_t k = 0; k < renameOrdered.size(); ++k) {
+			if (renameOrdered[k].second == n) {
+				n = renameOrdered[k].first;
+				break;
 			}
 		}
+		
 		
 		map<string,int>::iterator i = variables.find( n );
 		if ( i != variables.end() ) {

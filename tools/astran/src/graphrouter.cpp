@@ -532,8 +532,9 @@ bool GraphRouter::lockArc(int n1, int n2, int net){
 
 void GraphRouter::reset(){
 	for(map<unsigned int,t_nets>::iterator nets_it=netlist.begin(); nets_it!=netlist.end(); nets_it++){
-		for(list<unsigned int>::iterator nodes_it=nets_it->second.nodes.begin(); nodes_it!=nets_it->second.nodes.end();nodes_it++)
-			if(graph[*nodes_it].source==2) nets_it->second.nodes.erase(nodes_it);
+		for(list<unsigned int>::iterator nodes_it=nets_it->second.nodes.begin(); nodes_it!=nets_it->second.nodes.end();)
+			if(graph[*nodes_it].source==2) nodes_it=nets_it->second.nodes.erase(nodes_it);
+			else nodes_it++;
 		(nets_it->second).netTree.clear();
 	}
 	for(int x=0; x<graph.size(); x++){

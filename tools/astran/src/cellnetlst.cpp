@@ -777,7 +777,8 @@ void CellNetlst::foldingSeries(float pSize, float nSize){
     
     try{
         this->totalTrans = static_cast<int>(trans.size());
-        numSeries = (static_cast<int>(totalTrans-(totalTrans*0.1)));
+        numSeries = static_cast<int>(totalTrans-(totalTrans*0.1));
+        if (numSeries < 1) numSeries = 1;
         this->transToFolding = new int*[numSeries];
         for (int i = 0; i < numSeries; i++){
             this->transToFolding[i] = new int[totalTrans];
@@ -865,8 +866,8 @@ bool CellNetlst::seriesFolding(int numSequence, int numTrans, int numLegs, int b
     for (;numLegs > 1;numLegs--){
         for (int i = 0; i <= numTrans ; i++) {
             indexTrans = this->transToFolding[numSequence][i];
-            indexProxTrans = this->transToFolding[numSequence][i+1];
-            indexPrevTrans = this->transToFolding[numSequence][i-1];
+            indexProxTrans = (i+1 < this->totalTrans) ? this->transToFolding[numSequence][i+1] : -1;
+            indexPrevTrans = (i > 0) ? this->transToFolding[numSequence][i-1] : -1;
             widthTrans = trans[indexTrans].width/legs;
             /*Testa o primeiro transistor da sequencia, pois ou o dreno ou a fonte dele
              deve possuir a mesma conexão que a serie original*/

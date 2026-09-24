@@ -144,6 +144,7 @@ void AutoCell::autoFlow(string lpSolverFile){
     time (&start);
     
     while(1){
+        nrTracks=2;   // restart the track search for every conservative retry
         while(1){
             cout << "-> Trying with " << nrTracks << " tracks and conservative = " << conservative << " ..." << endl;
             calcArea(nrTracks, conservative);
@@ -252,7 +253,7 @@ void AutoCell::route(bool hPoly, bool increaseIntTracks, int reduceVRt, bool opt
     for (int x = 0; x < currentNetList.getOrderingP().size(); x++) {
         int p;
         for (p = center + 1; trackPos[p] < pDif_iniY; ++p);
-        for (; increaseIntTracks && p<trackPos.size()-1 && trackPos[p] <pDif_endY-currentRules->getIntValue(currentNetList.getTrans(currentNetList.getOrderingP()[x].link).width && trackPos[p] < height - (supWidth + currentRules->getRule(S2M1M1))); ++p);
+        for (; increaseIntTracks && p<trackPos.size()-1 && trackPos[p] < pDif_endY - currentRules->getIntValue(currentNetList.getTrans(currentNetList.getOrderingP()[x].link).width) && trackPos[p] < height - (supWidth + currentRules->getRule(S2M1M1)); ++p);
         diffPini.push_back(p);
     }
     

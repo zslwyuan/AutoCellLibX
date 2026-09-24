@@ -135,7 +135,7 @@ void Placer::checkWL(){
 	CellNetlst *currentCell;
 	multimap<string,Pin>::iterator pin_it;
 	Circuit::Interface *currentInterface;
-	int minX, maxX, minY, maxY, x,y, wl=0;
+	int minX=0, maxX=0, minY=0, maxY=0, x,y, wl=0;
 	vector<Net>& nets=currentCircuit->getCellNetlst(currentCircuit->getTopCell())->getNets();
 	for(vector<Net>::iterator nets_it=nets.begin(); nets_it!=nets.end(); nets_it++){
 		if(nets_it->name!=currentCircuit->getVddNet() && nets_it->name!=currentCircuit->getGndNet()){
@@ -184,7 +184,7 @@ void Placer::autoFlip(){
 	CLayout *currentLayout;	
 	CellNetlst *currentCell;
 	multimap<string,Pin>::iterator pin_it;
-	int minX, maxX, minY, maxY, x,y, xMY;
+	int minX=0, maxX=0, minY=0, maxY=0, x,y, xMY;
 	map<string, int> netMinX, netMaxX, instanceMY;
 	vector<Net>& nets=currentCircuit->getCellNetlst(currentCircuit->getTopCell())->getNets();
 	for(vector<Net>::iterator nets_it=nets.begin(); nets_it!=nets.end(); nets_it++){

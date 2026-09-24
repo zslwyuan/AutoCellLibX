@@ -20,28 +20,39 @@ GUROBI_CL = os.path.join(_REPO_DIR, "tools", "gurobi_cl", "gurobi_cl.cmd")
 
 
 def loadAstranArea(GDSPath, typeName):
-    gdsFiles = [f for f in os.listdir(GDSPath) if os.path.isfile(
-        os.path.join(GDSPath, f)) and f.find(".gds") >= 0]
-    for gdsFile in gdsFiles:
-        if (typeName+".gds" != gdsFile):
-            continue
-        logFileName = GDSPath+gdsFile.replace(".gds", ".Astranlog")
-        logFile = open(logFileName, 'r')
-        lines = logFile.readlines()
-        logFile.close()
+    """Nominal cell width of a generated cell, read from its ASTRAN log.
 
-        for line in lines:
+    Width is used as the area proxy: cell area is proportional to width at a
+    fixed row height, so this compares the ASTRAN baseline (generated at
+    H=3.2um) and the locally generated cells (H=2.6um) consistently.  Same
+    metric as GDSIIAnalysis.loadAstranGDS / loadOrignalGSCL45nmGDS.
+    """
+    logFileName = os.path.join(GDSPath, typeName + ".Astranlog")
+    if (os.path.exists(logFileName)):
+        for line in open(logFileName, 'r'):
             if (line.find("-> Cell Size (W x H): ") >= 0):
-                return float(line.replace("-> Cell Size (W x H): ", "").split("x")[0])*0.8*3.2
+                return float(line.replace("-> Cell Size (W x H): ", "").split("x")[0])
 
     assert(False)
     return 123
 
 
 def runAstranForNetlist(AstranPath, gurobiPath, technologyPath, spiceNetlistPath, complexName, commandDir):
+    # The circuit parameters are set explicitly (instead of relying on the
+    # compiled-in defaults of Circuit::Circuit()) so that every generated cell
+    # uses a known, reproducible configuration.  Values below equal ASTRAN's
+    # defaults: row height = cellsHeight(13) x vGrid(0.20) = 2.6 um.
+    # To match a different target library's row height, change cellsHeight
+    # and/or vGrid here (e.g. 13 x 0.19 = 2.47 um for the GSCL45 site height)
+    # and re-validate the layouts.
     commands_tmplate = """set lpsolve \"gurobiPath\"
 load technology \"technologyPath\"
 load netlist \"spiceNetlistPath\"
+set rowheight 13
+set grid 0.20 0.20
+set supplysize 0.72
+set nwellpos 1.14
+set celltemplate \"Tapless\"
 cellgen select complexName
 cellgen autoflow
 export layout complexName commandDir/complexName.gds

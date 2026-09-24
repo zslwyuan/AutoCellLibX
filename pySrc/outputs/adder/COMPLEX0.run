@@ -1,8 +1,13 @@
-set lpsolve "D:/aclx-tools/gurobi_cl.cmd"
-load technology "D:/astran/Astran/build/Work/tech_freePDK45.rul"
-load netlist "./outputs/adder//COMPLEX0.sp"
+set lpsolve "D:\AutoCellLibX\tools\gurobi_cl\gurobi_cl.cmd"
+load technology "D:\AutoCellLibX\tools\astran\build\Work\tech_freePDK45.rul"
+load netlist "D:\AutoCellLibX\pySrc\outputs\adder/COMPLEX0.sp"
+set rowheight 13
+set grid 0.20 0.20
+set supplysize 0.72
+set nwellpos 1.14
+set celltemplate "Tapless"
 cellgen select COMPLEX0
 cellgen autoflow
-export layout COMPLEX0 ./outputs/adder//COMPLEX0.gds
+export layout COMPLEX0 D:\AutoCellLibX\pySrc\outputs\adder/COMPLEX0.gds
 exit
     

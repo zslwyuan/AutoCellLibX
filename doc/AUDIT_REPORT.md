@@ -198,3 +198,50 @@ exit
 **工程化交付**:ASTRAN 与 AutoCellLibX 已合并为单一项目管理(`tools/astran`、`tools/gurobi_cl` vendored,路径集中于 `pySrc/Astran.py`,`BUILDING.md` 说明构建/运行/测试);建立分层测试体系(unit 31 + integration 3,含针对上述每个 bug 的回归用例)。
 
 > 本次实施:第 3 部分的代码修复 + 项目合并 + 测试体系;第 1、2 部分按"分析"交付,其修复涉及 ASTRAN 源码与工艺配置,建议单独立项并重新标定。
+
+---
+
+## 五、全面修复记录(2026-09-24 第二轮)
+
+针对第一至四部分列出的问题做了全面修复,全部经编译与测试验证。
+
+### 5.1 ASTRAN 源码缺陷(全部修复,重新编译通过)
+
+| 位置 | 修复 |
+|---|---|
+| `compaction.cpp`(ILP 写出) | 表达式变量不再被塌缩。保留"重命名为纯变量"并**新增显式定义约束** `astranExprN - b0_17_1 - b0_17_2 = 0`,语义等价且被所有 LP 读取器接受;`Generals/Binary/Semi/SOS` 段回到 `int_vars/bin_vars/...`(不再遍历含表达式键的 `variables`);目标函数首项负号不再丢失 |
+| `router.cpp:110` | `rtLayers(5)` → `rtLayers(7)`(实际写入索引 0..6,原为堆越界写) |
+| `autocell2.cpp:255` | 修正 `getIntValue(...)` 实参中的 `&&` 笔误(PMOS 扩散轨道宽度与高度上界) |
+| `autocell2.cpp`(autoFlow) | 每次 conservative 重试复位 `nrTracks=2`,自适应 2→3→4 tracks 重新自洽 |
+| `graphrouter.cpp:533` | `list::erase` 改为使用返回值迭代,消除迭代器失效 |
+| `cellnetlst.cpp:780/866` | `numSeries` 下限 1(单管单元不再构造 0 行矩阵);折叠序列的首/尾下标加边界保护 |
+| `placer.cpp:187/155` | `minX/maxX/minY/maxY` 初始化为 0,消除空网读取未初始化值 |
+
+### 5.2 求解器适配层重写(`tools/gurobi_cl/gurobi_cl.py`)
+
+原实现依赖 CBC 的 CoinLpIO 直接读 LP,但 ASTRAN 会把**表达式**放在变量槽位(如 `x0b + RELAXATION`),CoinLpIO 报 `Invalid column names` 并**回退到默认列名**,导致所有列与模型脱节(实测 `.sol` 中不含 `width`/`height`,版图退化为 0×0)。改为:
+
+1. **自行解析 CPLEX-LP** 并用 python-mip API 建模(变量名完整保留,表达式按线性组合正确展开);
+2. **big-M 防护**:ASTRAN 偶发输出非有限系数(如 `- inf x184_width`,数值溢出),替换为 1e9 以保证可解;
+3. **FEASIBLE 判定**:带 gap 容差时 CBC 返回 FEASIBLE(非 OPTIMAL),此类解同样写出;
+4. 放松相对 gap(0.02)并加每次求解时间上限(300s)——压缩作用于**已合法的布局**,收紧 gap 只影响压缩程度、不影响合法性。
+
+### 5.3 Layout 生成配置
+
+| 项 | 修复 |
+|---|---|
+| 面积度量 | 三类单元(ASTRAN 基准 / ASTRAN 产物 / GSCL 库)统一为**标称宽度**作面积代理(同库行高固定 ⇒ 面积 ∝ 宽度),消除基准(3.2um)与产物(2.6um)行高不一致引入的偏差;GSCL 侧从 LEF `SIZE` 取宽度(不再用单个 GDS 层的图形面积) |
+| 工艺参数 | `.run` 脚本显式固化 `set rowheight/grid/supplysize/nwellpos/celltemplate`,不再依赖编译内置默认,配置可复现 |
+| 项目自包含 | ASTRAN 与求解器包装 vendored 至 `tools/`,路径集中于 `pySrc/Astran.py` |
+
+### 5.4 验证
+
+- ASTRAN 重新编译 0 错误;INVX1/COMPLEX0 端到端生成正常(COMPLEX0 修复后 `Cell Size 2 x 2.6`,较修复前 2.2 更窄,说明压缩约束真正生效);
+- 测试套件:31 unit + 3 integration 全通过;
+- 生成的 LP 已验证:定义约束正确、`width`/`height` 列完整、求解返回最优/可行解。
+
+### 5.5 仍未完成(需工艺标定,非代码缺陷)
+
+1. **与 GSCL45 行高精确对齐**:目标库行高 2.47um,本机 ASTRAN 产物 2.6um(默认 `rowheight 13 × vgrid 0.20`)。可用 `set rowheight`/`set vgrid` 标定(如 13×0.19),但会改变单元几何,需 DRC 复核,故未在本轮强制实施;
+2. **层映射统一**:ASTRAN 输出层号与 GSCL45 库不同,集成前需用 `set technology gdsii` 重映射或后处理;
+3. **基线重生成**:`originalAstranStdCells/` 仍为上游版本(H=3.2);若需与本机配置完全一致,可用 `tools/gurobi_cl` + 修复版 ASTRAN 重新生成(单次 compaction 约数十秒至 5 分钟,32 个单元约 1 小时)。

@@ -107,7 +107,7 @@ void Router::optimize(){
 }
 
 void Router::compactLayout(string lpSolverFile){
-	vector<layer_name> rtLayers(5);
+	vector<layer_name> rtLayers(7);   // MET1/VIA1/MET2/VIA2/MET3/VIA3/MET4 (idx 0..6)
 	rtLayers[0]=MET1;
 	rtLayers[1]=VIA1;
 	rtLayers[2]=MET2;
