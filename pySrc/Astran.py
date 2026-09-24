@@ -37,30 +37,55 @@ def loadAstranArea(GDSPath, typeName):
     return 123
 
 
-def runAstranForNetlist(AstranPath, gurobiPath, technologyPath, spiceNetlistPath, complexName, commandDir):
-    # The circuit parameters are set explicitly (instead of relying on the
-    # compiled-in defaults of Circuit::Circuit()) so that every generated cell
-    # uses a known, reproducible configuration.  Values below equal ASTRAN's
-    # defaults: row height = cellsHeight(13) x vGrid(0.20) = 2.6 um.
-    # To match a different target library's row height, change cellsHeight
-    # and/or vGrid here (e.g. 13 x 0.19 = 2.47 um for the GSCL45 site height)
-    # and re-validate the layouts.
-    commands_tmplate = """set lpsolve \"gurobiPath\"
-load technology \"technologyPath\"
-load netlist \"spiceNetlistPath\"
-set rowheight 13
-set grid 0.20 0.20
-set supplysize 0.72
-set nwellpos 1.14
-set celltemplate \"Tapless\"
-cellgen select complexName
-cellgen autoflow
-export layout complexName commandDir/complexName.gds
-exit
-    """
+# Cell geometry written into every ASTRAN run script.  Row height is
+# cellsHeight * vGrid = 13 * 0.20 = 2.6 um.  These are set explicitly instead
+# of relying on ASTRAN's compiled-in defaults so a run is reproducible.  To
+# target a different library's row height, change them here (e.g. 13 * 0.19 =
+# 2.47 um for the GSCL45 site height) and re-validate DRC on the layouts.
+ASTRAN_CELLS_HEIGHT = 13
+ASTRAN_HGRID = 0.20
+ASTRAN_VGRID = 0.20
+ASTRAN_SUPPLY_SIZE = 0.72
+ASTRAN_NWELL_POS = 1.14
+ASTRAN_CELL_TEMPLATE = "Tapless"
 
-    commands = commands_tmplate.replace("gurobiPath", gurobiPath).replace("technologyPath", technologyPath).replace(
-        "spiceNetlistPath", spiceNetlistPath).replace("complexName", complexName).replace("commandDir", commandDir)
+
+def buildAstranCommands(gurobiPath, technologyPath, spiceNetlistPath, complexName, commandDir):
+    """Build the ASTRAN shell-mode script for one cell (runs nothing)."""
+    script = """set lpsolve "@gurobiPath@"
+load technology "@technologyPath@"
+load netlist "@netlistPath@"
+set rowheight @cellsHeight@
+set grid @hGrid@ @vGrid@
+set supplysize @supplySize@
+set nwellpos @nwellPos@
+set celltemplate "@cellTemplate@"
+cellgen select @name@
+cellgen autoflow
+export layout @name@ @commandDir@/@name@.gds
+exit
+"""
+    substitutions = {
+        "gurobiPath": gurobiPath,
+        "technologyPath": technologyPath,
+        "netlistPath": spiceNetlistPath,
+        "cellsHeight": str(ASTRAN_CELLS_HEIGHT),
+        "hGrid": "%g" % ASTRAN_HGRID,
+        "vGrid": "%g" % ASTRAN_VGRID,
+        "supplySize": "%g" % ASTRAN_SUPPLY_SIZE,
+        "nwellPos": "%g" % ASTRAN_NWELL_POS,
+        "cellTemplate": ASTRAN_CELL_TEMPLATE,
+        "name": complexName,
+        "commandDir": commandDir,
+    }
+    for key, value in substitutions.items():
+        script = script.replace("@%s@" % key, value)
+    return script
+
+
+def runAstranForNetlist(AstranPath, gurobiPath, technologyPath, spiceNetlistPath, complexName, commandDir):
+    commands = buildAstranCommands(gurobiPath, technologyPath,
+                                   spiceNetlistPath, complexName, commandDir)
 
     outputFile = open(commandDir+"/"+complexName+".run", 'w')
     print(commands, file=outputFile)
