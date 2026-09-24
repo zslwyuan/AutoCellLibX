@@ -117,8 +117,12 @@ is only in the code is effectively undocumented.
   all-zero solution and ASTRAN emits a **0 × 0 cell**; `main.py` detects that
   and excludes the pattern from the reported savings (never count zero width).
   Grep the logs for "no usable LP solution" when a cell is missing or 0 × 0.
-  The solve honours ASTRAN's `TimeLimit`; bound it with
-  `GUROBI_CL_TIME_LIMIT=<sec>` if a run is too slow.
+- **CBC solves fast but proves slowly.** On ASTRAN's big-M models (M = 20000 µm)
+  CBC finds a good feasible solution quickly yet cannot close the 2 % gap, so
+  the adapter accepts the first-phase solution after
+  `GUROBI_CL_TIME_LIMIT` seconds (default 300) and only spends more time when
+  nothing was found at all. Do not raise the limit expecting tighter layouts;
+  for provable optimality use real Gurobi.
 - **`.subckt` port order changes the layout**, not just its formatting —
   reordering the pins moves ASTRAN's placement (COMPLEX0: 2.4 µm in insertion
   order versus 2.0 µm in the old hash order). Keep it deterministic, and treat

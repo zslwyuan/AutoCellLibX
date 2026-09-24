@@ -217,16 +217,20 @@ def main():
 
     # Compaction runs on an already-legal layout, so a loose relative gap only
     # reduces how aggressively a cell is shrunk -- it never makes the result
-    # illegal.  Honour ASTRAN's TimeLimit rather than imposing a short cap:
-    # with a 300 s cap CBC returns NO_SOLUTION_FOUND on large models, the
-    # adapter then writes an all-zero solution and ASTRAN emits a 0 x 0 cell.
-    # main.py detects and excludes such cells; set GUROBI_CL_TIME_LIMIT=<sec>
-    # to bound the runtime anyway.  Set gap to 0.0 for provable optimality.
+    # illegal.  CBC finds a good feasible solution on ASTRAN's big-M models but
+    # cannot prove optimality (the LP bound is too weak), so a short first phase
+    # accepts that solution; only when NOTHING was found does the search get the
+    # remaining budget.  This bounds the runtime while keeping the layouts
+    # legal.  For provable optimality use real Gurobi.  GUROBI_CL_TIME_LIMIT
+    # sets the first-phase length.
     model.max_mip_gap = 0.02
-    solve_limit = int(os.environ.get("GUROBI_CL_TIME_LIMIT", str(timelimit)))
-    solve_limit = max(60, min(solve_limit, timelimit))
+    phase1 = int(os.environ.get("GUROBI_CL_TIME_LIMIT", "300"))
+    phase1 = max(60, min(phase1, timelimit))
+    retry = min(max(timelimit - phase1, 0), 900)   # extended search when empty
     try:
-        status = model.optimize(max_seconds=solve_limit)
+        status = model.optimize(max_seconds=phase1)
+        if (status == mip.OptimizationStatus.NO_SOLUTION_FOUND and retry > 0):
+            status = model.optimize(max_seconds=retry)
         ok = status in (mip.OptimizationStatus.OPTIMAL,
                         mip.OptimizationStatus.FEASIBLE)
     except Exception as e:  # noqa: BLE001
@@ -244,7 +248,7 @@ def main():
                     f.write("%s %d\n" % (v.name, _round_away(v.x)))
 
     if ok:
-        print("Optimal solution found, objective %g" % model.objective_value)
+        print("Solver status %s, objective %g" % (status, model.objective_value))
     else:
         print("WARNING: no usable LP solution (%s); the all-zero solution "
               "written below will make ASTRAN emit a 0 x 0 cell" % status)
