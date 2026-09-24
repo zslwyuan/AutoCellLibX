@@ -313,3 +313,72 @@ Cexpr6794: astranExpr6794 - y186_width - inf x186_width = 0
 修复:改用**插入有序映射**(dict)汇总端口,并在 `PYTHONHASHSEED` = 0/1/7 下验证图案序列与网表 md5 完全一致。新增 `tests/unit/test_determinism.py`(子进程比对不同种子的网表哈希)。
 
 **测试新增(本轮)**:`tests/unit/test_determinism.py`、`tests/unit/test_astran_commands.py`、`tests/unit/test_dataset_consistency.py`(图案唯一性 + 日志与网表晶体管数一致)。
+
+## 六、求解异常根因分析:为什么会有这么多"求解异常"
+
+### 6.1 总体结论
+
+ASTRAN 的压缩**数学模型本身是成立的**:同一份 LP 文本,上游真实 Gurobi 与我们的 CBC(正确解析后)得到几乎一致的目标值(7.38831e6 vs 7.38475e6)。所有已观测的求解异常都来自**四类可定位的生成/写出层缺陷 + 两个我们自己的求解策略问题**,没有一个是"悬案"。逐条如下,均附代码级证据。
+
+### 6.2 缺陷一:线性表达式被写进"变量名"槽位(序列化缺陷,主因)
+
+约束生成器用字符串拼接构造"变量名",再走 `insertConstraint(v1, ...)` 的变量 API 进入 `variables` 表,LP 写出器把它们原样写到**列名**位置。证据(`tools/astran/src/autocell2.cpp`):
+
+```cpp
+// insertDistanceRuleInteligent:大M析取,RELAXATION 与 0/1 变量 b_1/b_2/b_3 配合
+cpt.insertConstraint("x" + lastX + "b + RELAXATION", "x" + currentX + "a2",
+                     CP_MIN, "b" + lastX + "_" + currentX + "_1", minDist + relaxation);
+cpt.insertConstraint("ZERO", "x" + currentX + "a2 - x" + lastX + "b + "
+                     "y" + currentY + "a2 - y" + lastY + "b + RELAXATION",
+                     CP_MIN, "b" + lastX + "_" + currentX + "_3", minDist + relaxation);
+// createTrack:"x17a - 4 UM"(带单位后缀的表达式串)
+cpt.insertConstraint("x" + track + "a - " + to_string(minIntersection) + " UM",
+                     "x" + track + "b", CP_MAX, "b" + track + "_reduceLturns", relaxation);
+```
+
+其中 `RELAXATION` 是真实变量(`RELAXATION = 20000`,`autocell2.h:68`),`b_…` 是 0/1 控制变量——这是标准的 **big-M 析取写法,数学正确**;但"变量名可以是表达式"这一假设与"列名只能是标识符"的 LP 语法冲突,生成器与写出器之间**没有任何校验**。
+
+后果:严格读取器直接拒绝——CBC 的 CoinLpIO 报 `Invalid column names` 后**回退到默认列名**,整个模型与列脱节,版图退化为 0×0;而 Gurobi 的 LP 解析器能容忍并把表达式展开,所以上游一直"能用"、从未暴露。我方修复:重命名 + 显式定义约束 `astranExprN - (原表达式) = 0`,语义等价(§5.1)。
+
+### 6.3 缺陷二:宽金属/最小面积约束的数值退化(PDK 规则交互)
+
+`insertVia()` 的最小面积约束:
+
+```cpp
+double A = currentRules->getRulef(A1M1);   // 金属1最小面积
+double W = currentRules->getRulef(W2VI);   // 通孔宽度
+double tmp1 = (sqrt(A) - (A/W)) / (sqrt(A) - W);
+double tmp2 = (sqrt(A) - W) / (sqrt(A) - (A/W));
+cpt.insertConstraint("ZERO", "y"+metNode+"_width" + " + " + to_string(-tmp1) + " x"+metNode+"_width", CP_MIN, ...);
+cpt.insertConstraint("ZERO", "y"+metNode+"_width" + " + " + to_string(-tmp2) + " x"+metNode+"_width", CP_MIN, ...);
+```
+
+而 `tech_freePDK45.rul` 里 **`A1M1 = 0`**(该规则缺失/未定义):
+
+- `tmp1 = (0-0)/(0-0.065) = -0.0` → 系数打印为 `0.000000`;
+- `tmp2 = (0-0.065)/(0-0) = -inf` → 系数打印为 `inf`。
+
+这正是 LP 中"孪生约束"(一条 `0.000000`、一条 `inf`)的准确来源:两条约束作用于同一表达式 `y<id>_width + coef·x<id>_width`。从 PDK 视角:A1M1 缺失时该约束本就无意义,算法应对零/未定义规则有保护;补全规则(`A1M1 ≈ 0.02`)或加 `if (A > 0 && W > 0)` 守卫均可根治。我方已在 LP 层按"无界"语义丢弃 `inf` 项(残留的 `0.000000` 项无害),结果与上游一致(§5.7(1))。
+
+### 6.4 缺陷三:写出器自身的笔误/漏误(已修复,§5.1)
+
+- `Generals` 段遍历了**整个 `variables` 表**(含表达式键)而非 `int_vars` → 非法 LP 段;
+- 目标函数首项负号丢失;
+- `router.cpp` `rtLayers(5)` 越界写、`graphrouter.cpp` 迭代器失效、`placer.cpp` 未初始化读数等 C++ UB。
+
+都属于实现层小错,与压缩算法无关,但同样制造异常/非确定性。
+
+### 6.5 缺陷四:模型规模与病态 big-M(性能性异常)
+
+- 每个相邻几何对的析取展开引入 3 个 0/1 变量 + `RELAXATION` + 多条约束;30 管单元即 **2.6 万变量 / 4 万约束**(COMPLEX10);
+- 大 M = **20000 µm**(单元本身仅 2–10 µm),数值上是一个巨大的 M;CBC 这类开源求解器在其上吃力(数值容差、搜索),Gurobi 则轻松(上游日志 ~50 s 解完)。这就是"同一模型,Gurobi 无异常、CBC 超时/无解"的本质。
+
+我方适配层曾有两个策略放大了缺陷四:`inf` 夹成 big-M 1e9(把缺陷二变成不可行模型)与 300 s 硬上限(大模型必然 `NO_SOLUTION_FOUND`)。现已改为:丢弃 `inf` 项 + 尊重 ASTRAN 的 `TimeLimit`(默认 3600 s,`GUROBI_CL_TIME_LIMIT` 可收紧),并在 `main.py` 拒绝 0×0 单元计入节省量(§5.7 与本轮提交)。
+
+### 6.6 结论与建议
+
+1. **不是算法错误,是"生成/写出实现缺陷 + 规则数据缺陷 + 求解器能力差距"的叠加**;压缩模型经交叉验证是正确的。
+2. 已观测异常已全部有修复与测试覆盖。残余建议(按收益排序):
+   - C++:`insertVia` 最小面积块加 `A > 0 && W > 0` 守卫;`insertDistanceRuleInteligent`/`createTrack` 的表达式串改走真正的辅助变量,或在写出器里显式展开表达式;
+   - PDK:补全 `tech_freePDK45.rul` 的 `A1M1`(当前为 0);
+   - 求解器:大单元用真实 Gurobi 或放宽时限(环境变量 `GUROBI_CL_TIME_LIMIT` 已支持)。
