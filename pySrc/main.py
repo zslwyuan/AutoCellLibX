@@ -87,7 +87,7 @@ def main():
         benchmarkFailure = False
 
         for i in range(0, topThr):
-            if (len(clusterSeqs[0].patternClusters) == 0):
+            if (len(clusterSeqs) == 0 or len(clusterSeqs[0].patternClusters) == 0):
                 break
             if (len(clusterSeqs[0].patternClusters[0].cellIdsContained) >= 11):
                 continue
@@ -246,7 +246,7 @@ def main():
 
             for i in range(0, 10):
                 print("searching for ", targetPatternTrace)
-                if (len(clusterSeqs[0].patternClusters) == 0):
+                if (len(clusterSeqs) == 0 or len(clusterSeqs[0].patternClusters) == 0):
                     break
                 if (len(clusterSeqs[0].patternClusters[0].cellIdsContained) >= 11):
                     continue

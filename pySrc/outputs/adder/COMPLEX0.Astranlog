@@ -168,7 +168,7 @@ astran> read ./outputs/adder//COMPLEX0.run
    NMOS: MCL1#3-MCL1#2-MCL0#2-MCL0#3-MCL2#5-MCL2#4-MCL2#3-
 -> Placing transistors...
 -> Routing cell...
--> Routing finished in 4 attempts after 0.024 s
+-> Routing finished in 4 attempts after 0.028 s
  ( initial cost = 17104 num reps = 7350 problem size = 49 )  Iteration 1; cost = 28639.000 (17104.000); p_cost = 28639.000; accept = 1.000; avg_delta = 1.569; dp = 2319.423; thres = 99999.000; cost_ratio = 1.674; [0]
  Iteration 2; cost = 28223.000 (17104.000); p_cost = 28223.000; accept = 1.000; avg_delta = -0.057; dp = 2311.978; thres = 47999.520; cost_ratio = 0.985; [0]
  Iteration 3; cost = 26511.000 (17104.000); p_cost = 26511.000; accept = 1.000; avg_delta = -0.233; dp = 2251.442; thres = 23039.770; cost_ratio = 0.939; [0]
@@ -222,7 +222,8 @@ astran> read ./outputs/adder//COMPLEX0.run
  Iteration 51; cost = 9043.000 (9043.000); p_cost = 9043.000; accept = 0.107; avg_delta = 0.000; dp = nan; thres = 375.611; cost_ratio = 1.000; [9]
  final cost = 9043 
 -> Routing cell...
--> Routing finished in 4 attempts after 0.016 s
+-> Routing finished in 4 attempts after 0.023 s
+-> New best transistor ordering found with cost: 4636
  ( initial cost = 17104 num reps = 7350 problem size = 49 )  Iteration 1; cost = 31265.000 (17104.000); p_cost = 31265.000; accept = 1.000; avg_delta = 1.927; dp = 2336.731; thres = 99999.000; cost_ratio = 1.828; [0]
  Iteration 2; cost = 26251.000 (17104.000); p_cost = 26251.000; accept = 1.000; avg_delta = -0.682; dp = 2287.689; thres = 47999.520; cost_ratio = 0.840; [0]
  Iteration 3; cost = 27847.000 (17104.000); p_cost = 27847.000; accept = 1.000; avg_delta = 0.217; dp = 2305.757; thres = 23039.770; cost_ratio = 1.061; [0]
@@ -273,7 +274,7 @@ astran> read ./outputs/adder//COMPLEX0.run
  Iteration 48; cost = 9043.000 (9043.000); p_cost = 9043.000; accept = 0.106; avg_delta = 0.000; dp = nan; thres = 408.089; cost_ratio = 1.000; [9]
  final cost = 9043 
 -> Routing cell...
--> Routing finished in 4 attempts after 0.024 s
+-> Routing finished in 4 attempts after 0.026 s
  ( initial cost = 17104 num reps = 7350 problem size = 49 )  Iteration 1; cost = 29071.000 (17104.000); p_cost = 29071.000; accept = 1.000; avg_delta = 1.628; dp = 2333.488; thres = 99999.000; cost_ratio = 1.700; [0]
  Iteration 2; cost = 27408.000 (17104.000); p_cost = 27408.000; accept = 1.000; avg_delta = -0.226; dp = 2422.131; thres = 47999.520; cost_ratio = 0.943; [0]
  Iteration 3; cost = 27599.000 (17104.000); p_cost = 27599.000; accept = 1.000; avg_delta = 0.026; dp = 2374.612; thres = 23039.770; cost_ratio = 1.007; [0]
@@ -328,32 +329,32 @@ astran> read ./outputs/adder//COMPLEX0.run
  Iteration 52; cost = 9043.000 (9043.000); p_cost = 9043.000; accept = 0.110; avg_delta = 0.000; dp = nan; thres = 367.372; cost_ratio = 1.000; [9]
  final cost = 9043 
 -> Routing cell...
--> Routing finished in 4 attempts after 0.018 s
+-> Routing finished in 4 attempts after 0.025 s
 -> Final cost: Width=16; Gate Mismatches=0; WL=14; Rt. Density=2; Nr. Gaps=2
-   PMOS: MCL1#1-MCL1#0-MCL0#0-MCL0#1-MCL2#2-MCL2#1-MCL2#0-
-   NMOS: MCL1#3-MCL1#2-MCL0#2-MCL0#3-MCL2#5-MCL2#4-MCL2#3-
+   PMOS: MCL2#0-MCL2#1-MCL2#2-MCL0#1-MCL0#0-MCL1#0-MCL1#1-
+   NMOS: MCL2#3-MCL2#4-MCL2#5-MCL0#3-MCL0#2-MCL1#2-MCL1#3-
 -> Routing cell...
--> Routing finished in 4 attempts after 0.023 s
+-> Routing finished in 4 attempts after 0.025 s
 
--> Cost before optimization:4631
+-> Cost before optimization:4636
 -> Optimizing routing graph...
 -> Cost after optimization: 4598
--> Runtime = 5.773 s
+-> Runtime = 5.808 s
 
 -> Cost before optimization:4598
 -> Optimizing routing graph...
 -> Cost after optimization: 4598
--> Runtime = 2.33 s
+-> Runtime = 2.579 s
 -> Compacting layout...
--> Calling LP Solver (8977 variables, 13289 constraints)
+-> Calling LP Solver (9258 variables, 14106 constraints)
 -> Running command: "D:/aclx-tools/gurobi_cl.cmd" TimeLimit=3600 ResultFile=ILPmodel.sol ILPmodel.lp
 -> To interrupt earlier and get the current best solution, type in a terminal: kill -2 [gurobi process]
 -> * and H means new feasible solution found:CBC devel — COIN-OR Branch and Cut
 
 ▶ Problem loading
 
-  |Rows| = 13290   |Cols| = 8977   |NZ| = 34414
-  Variables: 3663 binary, 5314 integer, 0 continuous
+  |Rows| = 14107   |Cols| = 9258   |NZ| = 36617
+  Variables: 3858 binary, 5400 integer, 0 continuous
 
   Coefficient ranges:
     Matrix  ∈ [1,      1e+05]   κ ≈      1e+05
@@ -361,7 +362,7 @@ astran> read ./outputs/adder//COMPLEX0.run
     Bounds  ∈ [1,          1]   κ ≈          1
     RHS     ∈ [1, 2.1475e+09]   κ ≈ 2.1475e+09
 
-✔ Problem loaded — 13290 rows, 8977 cols, 34414 NZ, 8977 integer
+✔ Problem loaded — 14107 rows, 9258 cols, 36617 NZ, 9258 integer
 
 ▶ Non-default parameters
 
@@ -371,26 +372,26 @@ astran> read ./outputs/adder//COMPLEX0.run
 
 ▶ Root LP relaxation
 
-  Bound tightening: 12589 bounds tightened (2279 fixed) in 0.010 s.
+  Bound tightening: 13429 bounds tightened (2409 fixed) in 0.011 s.
   Clique strengthening: no changes (0.00s)
   Coefficient strengthening: 43 coefficients on 43 rows (0.00s)
-  Row reductions: 2550 rows removed (1319 all-fixed, 1231 duplicate, 0 parallel), 87 row bounds tightened (0.03s)
+  Row reductions: 3058 rows removed (1433 all-fixed, 1625 duplicate, 0 parallel), 87 row bounds tightened (0.03s)
   LP auto: recommended dual_pertv72
 
 ▶ Preprocessing
 
    Pass   Fixed Tightened Strengthened  Subst Time(s)
   ───── ─────── ───────── ──────────── ────── ───────
-      1       1       835           13      0   0.161
-      2       0         0            1      0   0.172
+      1       1       836           13      0   0.162
+      2       0         0            1      0   0.173
 
-  Processed model: 4203 rows, 1788 cols, 9216 NZ
-                   1788 integer (109 binary)
+  Processed model: 4292 rows, 1788 cols, 9397 NZ
+                   1788 integer (110 binary)
 
-  Conflict graph: built in 0.01s, density 0.003%
+  Conflict graph: built in 0.00s, density 0.003%
   Clique strengthening: extended 0, dominated 0
 
-✔ Preprocessing complete — Time: 0.102s
+✔ Preprocessing complete — Time: 0.109s
 
 ▶ Root node heuristics
 
@@ -399,98 +400,128 @@ astran> read ./outputs/adder//COMPLEX0.run
   rounding                 no solution                    0.000
   greedy cover             no solution                    0.000
   greedy equality          no solution                    0.000
-  DiveCoefficient          no solution                    0.005
+  DiveCoefficient          no solution                    0.010
   RINS                     no solution                    0.000
 
-✔ Root node heuristics — no solution in 0.005s
+✔ Root node heuristics — no solution in 0.010s
 
 ▶ Cut generation (root node)
 
   Pass     Rows    Tight   Frac     Suminf        Objective  Time(s)
   ──── ──────── ──────── ────── ────────── ──────────────── ────────
-     1     4203        0     39      10.95      3.67582e+06    0.220
-     2     4232       29     43      11.66      3.67623e+06    0.300
-     3     4239       36    251      34.33      3.67642e+06    0.380
-     4     4242       39    461      44.44      3.67646e+06    0.460
-     5     4243       40    409      83.84      3.67649e+06    0.550
-     6     4248       45    597      72.67      3.67653e+06    0.640
-     7     4249       46    605      171.5      3.67655e+06    0.730
-     8     4248       45    629      158.7      3.67656e+06    0.820
-     9     4248       45    640      173.8      3.67656e+06    0.910
-    10     4249       46    633      116.6      3.67656e+06     1.00
-    11     4248       45    620      170.8      3.67657e+06     1.10
-    12     4246       43    574      128.5      3.67657e+06     1.18
-    13     4247       44    933      311.4      3.67658e+06     1.27
-    14     4251       48    324      80.14      3.67658e+06     1.37
-    15     4248       45    575      203.5      3.67658e+06     1.45
-    16     4252       49    615      66.29      3.67658e+06     1.54
-    17     4253       50    611      88.95      3.67658e+06     1.63
-    18     4250       47    661      50.31      3.67658e+06     1.72
-    19     4252       49    692      89.34      3.67658e+06     1.80
-    20     4250       47    676      66.84      3.67658e+06     1.88
-    21     4250       47    657      78.02      3.67658e+06     1.97
-    22     4250       47    558      34.52      3.67658e+06     2.05
-    23     4249       46    679      154.3      3.67658e+06     2.13
-    24     4253       50    605      97.16      3.67658e+06     2.22
-    25     4250       47    677      71.39      3.67658e+06     2.31
-    26     4252       49    658      127.8      3.67658e+06     2.39
-    27     4253       50    678      128.8      3.67658e+06     2.48
-    28     4253       50    634      128.2      3.67658e+06     2.56
-    29     4252       49    677      98.46      3.67658e+06     2.65
-    30     4250       47    589      104.8      3.67658e+06     2.73
-    31     4252       49    639      102.5      3.67658e+06     2.82
+     1     4292        0     41      12.01      4.47553e+06    0.230
+     2     4320       28    331      80.93      4.47574e+06    0.310
+     3     4327       35    408       69.8      4.47594e+06    0.400
+     4     4329       37    738      240.7        4.476e+06    0.490
+     5     4333       41   1030      152.3      4.47603e+06    0.590
+     6     4333       41    753      297.1      4.47606e+06    0.700
+     7     4332       40    749      305.5      4.47607e+06    0.800
+     8     4333       41    785      291.7      4.47608e+06    0.890
+     9     4333       41    739      197.9      4.47608e+06    0.980
+    10     4332       40    738      205.8      4.47608e+06     1.08
+    11     4332       40    397      120.7      4.47609e+06     1.18
+    12     4332       40    729        251       4.4761e+06     1.27
+    13     4333       41    747      149.1      4.47611e+06     1.36
+    14     4334       42    736      200.3      4.47612e+06     1.46
+    15     4335       43    724      131.6      4.47612e+06     1.56
+    16     4337       45    729      111.6      4.47612e+06     1.65
+    17     4336       44    791      119.3      4.47613e+06     1.75
+    18     4334       42    766      149.8      4.47613e+06     1.85
+    19     4333       41    777      287.6      4.47613e+06     1.95
+    20     4333       41    775        126      4.47613e+06     2.05
+    21     4331       39    748      119.3      4.47614e+06     2.14
+    22     4332       40    298      68.62      4.47614e+06     2.24
+    23     4336       44    547      109.3      4.47614e+06     2.32
+    24     4336       44    773      201.3      4.47614e+06     2.42
+    25     4335       43    725      180.7      4.47614e+06     2.51
+    26     4337       45    775      199.6      4.47614e+06     2.61
+    27     4335       43    797      209.6      4.47614e+06     2.70
+    28     4336       44    743      125.4      4.47614e+06     2.80
+    29     4337       45    792        180      4.47614e+06     2.90
+    30     4337       45    797      96.25      4.47614e+06     3.00
+    31     4335       43    763      100.1      4.47614e+06     3.09
+    32     4335       43    798      264.6      4.47614e+06     3.19
+    33     4336       44    562      81.01      4.47614e+06     3.28
+    34     4333       41    701      61.89      4.47614e+06     3.37
+    35     4336       44    772      173.4      4.47615e+06     3.46
+    36     4340       48    769      248.6      4.47615e+06     3.56
+    37     4336       44    795      252.1      4.47615e+06     3.65
+    38     4336       44    557      162.9      4.47615e+06     3.75
+    39     4340       48    804      168.1      4.47615e+06     3.85
+    40     4333       41    763      155.1      4.47615e+06     3.95
+    41     4337       45    790      243.3      4.47616e+06     4.05
+    42     4338       46    783      166.6      4.47616e+06     4.15
+    43     4336       44    792      228.2      4.47616e+06     4.25
+    44     4336       44    719      180.5      4.47617e+06     4.34
+    45     4341       49    808      239.3      4.47617e+06     4.44
+    46     4341       49    798      184.5      4.47617e+06     4.54
+    47     4338       46    771      151.5      4.47617e+06     4.64
+    48     4338       46    716      191.7      4.47617e+06     4.74
+    49     4342       50    807      208.4      4.47617e+06     4.84
+    50     4339       47    506      137.2      4.47617e+06     4.94
+    51     4336       44    781        178      4.47617e+06     5.03
+    52     4337       45    774      223.1      4.47617e+06     5.13
+    53     4339       47    785      160.3      4.47618e+06     5.23
+    54     4339       47    803      205.5      4.47618e+06     5.33
+    55     4338       46    796      116.7      4.47618e+06     5.44
+    56     4342       50    801      227.1      4.47618e+06     5.53
+    57     4344       52    760      185.1      4.47618e+06     5.64
+    58     4339       47    736        143      4.47618e+06     5.74
+    59     4339       47    778      164.4      4.47618e+06     5.84
 
   Cut generator summary:
   Generator              Row cuts Avg density Col cuts   Time(s) Next run    
   ────────────────────── ──────── ─────────── ──────── ───────── ────────────
-  Probing                       0         0.0        0     0.150 every node  
-  Gomory                     1452        56.9        0     0.226 every node  
-  Knapsack                      0         0.0        0     0.030 every 1000 nodes
-  Clique                        0         0.0        0     0.002 every 1000 nodes
-  OddWheel                      0         0.0        0     0.000 every 1000 nodes
-  MixedIntegerRounding2         0         0.0        0     0.052 every 1000 nodes
-  FlowCover                     0         0.0        0     0.013 every 1000 nodes
-  TwoMirCuts                  251        29.4        0     0.032 every node  
-  ZeroHalf                      0         0.0        0      1.95 every 1000 nodes
+  Probing                       0         0.0        0     0.287 every node  
+  Gomory                     2239        74.2        0     0.738 every node  
+  Knapsack                      0         0.0        0     0.066 every 1000 nodes
+  Clique                        0         0.0        0     0.000 every 1000 nodes
+  OddWheel                      0         0.0        0     0.002 every 1000 nodes
+  MixedIntegerRounding2         0         0.0        0     0.092 every 1000 nodes
+  FlowCover                     0         0.0        0     0.019 every 1000 nodes
+  TwoMirCuts                  275        30.3        0     0.064 every node  
+  ZeroHalf                      0         0.0        0      3.86 every 1000 nodes
 
-✔ Cut generation complete — 50 cuts, obj 3.67582e+06 → 3.67658e+06 in 31 passes
+✔ Cut generation complete — 49 cuts, obj 4.47553e+06 → 4.47618e+06 in 59 passes
 
 ▶ Branch and bound
 
      Nodes   OnTree  Depth         BestSol Method                 BestBound     Gap%   Time(s)
   ──────── ──────── ────── ─────────────── ──────────────── ─────────────── ──────── ─────────
-         0        1      0               —                      3.67658e+06        —      2.97
- ★       1        0      1      3.6768e+06 DiveCoefficient      3.67658e+06    0.01%      3.02
- ★       1        0      1     3.67673e+06 DiveCoefficient      3.67658e+06    0.00%      3.07
- ★       2        1      2     3.67672e+06 DiveCoefficient      3.67658e+06    0.00%      3.11
- ★      14       12     13     3.67666e+06 B&B                  3.67658e+06    0.00%      3.40
- ★      19       12     14     3.67665e+06 B&B                  3.67658e+06    0.00%      3.48
-        26       14     12     3.67665e+06                      3.67658e+06    0.00%      3.68
- ★      46       16     13     3.67661e+06 B&B                  3.67658e+06    0.00%      3.96
- ★      47        7     10     3.67661e+06 B&B                  3.67658e+06    0.00%      4.01
- ★      73        5      8      3.6766e+06 B&B                  3.67658e+06    0.00%      4.28
-        78        3      3      3.6766e+06                      3.67658e+06    0.00%      4.38
+         0        1      0               —                      4.47618e+06        —      5.98
+ ★       1        0      1     4.47784e+06 DiveCoefficient      4.47618e+06    0.04%      6.05
+ ★      26       21     22     4.47778e+06 B&B                  4.47618e+06    0.04%      6.55
+ ★      33       23     21     4.47736e+06 B&B                  4.47618e+06    0.03%      6.64
+        38       16     19     4.47736e+06                      4.47618e+06    0.03%      6.69
+ ★      39       15     20     4.47736e+06 B&B                  4.47618e+06    0.03%      6.70
+ ★      43       14     13     4.47734e+06 B&B                  4.47618e+06    0.03%      6.74
+ ★      48       13     13     4.47734e+06 B&B                  4.47618e+06    0.03%      6.82
+ ★      57        8      9     4.47733e+06 B&B                  4.47618e+06    0.03%      6.90
+        84        2      6     4.47733e+06                      4.47618e+06    0.03%      7.41
+       116        1      2     4.47733e+06                       4.4767e+06    0.01%      8.11
+ ★     147        3      8     4.47732e+06 strong branching      4.4767e+06    0.01%      8.36
+ ★     148        6      9     4.47732e+06 B&B                   4.4767e+06    0.01%      8.36
 
-✔ Optimal — Obj: 3.6766e+06   Bound: 3.6766e+06   Gap: 0.00%   Nodes: 102   Iters: 2784   Time: 5.12s
-  Strong branching: 1242 calls, 6579 iters, 26 nodes fathomed, 64 vars fixed
-  Max depth: 13   Vars fixed on cost: 574   Fathoming: 0 times, 0 nodes, 0 iters
+✔ Optimal — Obj: 4.47732e+06   Bound: 4.47732e+06   Gap: 0.00%   Nodes: 173   Iters: 5517   Time: 8.58s
+  Strong branching: 1714 calls, 6570 iters, 24 nodes fathomed, 12 vars fixed
+  Max depth: 21   Vars fixed on cost: 218   Fathoming: 4 times, 32 nodes, 339 iters
 
 ▶ Postprocessing
 
-✔ Postprocessing complete — Time: 0.0141s
+✔ Postprocessing complete — Time: 0.0148s
 
 Result - Optimal solution found
-Objective value:                3676598
-Enumerated nodes:               102
-Total iterations:               2784
-Time (B&C, Wallclock seconds):  5.13992
+Objective value:                4477315
+Enumerated nodes:               173     (from fathoming 32)
+Total iterations:               5517
+Time (B&C, Wallclock seconds):  8.61393
 
-Time (B&C, Wallclock seconds):  5.13992
-Total time (Wallclock seconds): 5.14021   (CPU seconds):             5.14
-Optimal solution found, objective 3.6766e+06
+Time (B&C, Wallclock seconds):  8.61393
+Total time (Wallclock seconds): 8.61426   (CPU seconds):             8.614
+Optimal solution found, objective 4.47732e+06
 
-Optimal solution found, objective 3.6766e+06
--> Cell Size (W x H): 1.8 x 2.6
--> Total generation time for cell COMPLEX0: 43s
+Optimal solution found, objective 4.47732e+06
+-> Cell Size (W x H): 2.2 x 2.6
+-> Total generation time for cell COMPLEX0: 47s
 -> Saving GDSII Technology Mapping File: ./outputs/adder//GDSIILTable.txt
 -> Saving layout COMPLEX0 to file: ./outputs/adder//COMPLEX0.gds

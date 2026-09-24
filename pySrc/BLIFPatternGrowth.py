@@ -61,6 +61,9 @@ def growASeqOfClusters(BLIFGraph, clusterSeq, clusterNum, patternNum, paintPatte
                     # bypass cells in current cluster or visited
                     if (curNeighbor.clusterId == cluster.clusterId or curNeighbor in visitedNeighbors or curNeighbor.stopType):
                         continue
+                    if (curNeighbor.clusterId != -1):
+                        if (curNeighbor.cluster.clusterTypeId == cluster.clusterTypeId):
+                            continue
                     neighbor2cluster[curNeighbor] = cluster
 
                     if (not curNeighbor in thisClusterNeighbors):
@@ -209,6 +212,9 @@ def growASeqOfClusters_BasedOn(BLIFGraph, clusterSeq, clusterNum, patternNum, pa
                     # bypass cells in current cluster or visited
                     if (curNeighbor.clusterId == cluster.clusterId or curNeighbor in visitedNeighbors or curNeighbor.stopType):
                         continue
+                    if (curNeighbor.clusterId != -1):
+                        if (curNeighbor.cluster.clusterTypeId == cluster.clusterTypeId):
+                            continue
                     neighbor2cluster[curNeighbor] = cluster
 
                     if (not curNeighbor in thisClusterNeighbors):

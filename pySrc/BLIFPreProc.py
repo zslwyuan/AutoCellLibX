@@ -217,7 +217,7 @@ def extractAndEncodeSubgraph_Tree(cells, rootNode, depthLimit=2, clusterId=None)
                     Que.append(inputNet.predCell.id)
                     if (not inputNet.predCell.id in tree):
                         tree.append(inputNet.predCell.id)
-                    encodes.append(inputNet.predCell.stdCellType.typeName)
+                        encodes.append(inputNet.predCell.stdCellType.typeName)
         head += 1
 
     if (not clusterId is None):
@@ -360,10 +360,9 @@ def heuristicLabelSomeNodesAndGetInitialClusters_BasedOn(BLIFGraph, cells, netli
             clusterCellsCnt += len(tree)
         if (len(newSeq.patternClusters) > 0):
             initialClusterSeqs.append(newSeq)
+            labelId += 1
         else:
             del newSeq
-
-        labelId += 1
 
     resSeqs = sortPatternClusterSeqs(initialClusterSeqs)
 
@@ -424,9 +423,10 @@ def convertBLIFGraphIntoDataset(BLIFGraph, stdCellTypesForFeature, maxNumType=36
         g.edge_mat = np.array(edges).T
 
     # add node feature based on node type
+    featureDim = max(maxNumType, len(feat_dict))
     for g in g_list:
 
-        node_features = np.zeros((len(g.node_tags), maxNumType))
+        node_features = np.zeros((len(g.node_tags), featureDim))
         node_features[range(len(g.node_tags)), [
             tag for tag in g.node_tags]] = 1
 
