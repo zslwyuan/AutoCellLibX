@@ -124,9 +124,11 @@ is only in the code is effectively undocumented.
   nothing was found at all. Do not raise the limit expecting tighter layouts;
   for provable optimality use real Gurobi.
 - **`.subckt` port order changes the layout**, not just its formatting —
-  reordering the pins moves ASTRAN's placement (COMPLEX0: 2.4 µm in insertion
-  order versus 2.0 µm in the old hash order). Keep it deterministic, and treat
-  a change of ordering as a change of result.
+  reordering the pins moves ASTRAN's placement, and the effect is
+  cell-dependent: a "canonical" order (VCC GND first, signals sorted) improved
+  COMPLEX0 (2.4 → 2.0 µm) but made COMPLEX9 (3.6 → 4.2) and COMPLEX10
+  (3.8 → 8.4) worse, so the insertion order is kept. Treat any change of
+  ordering as a change of result.
 - **A pipeline run does not delete obsolete outputs.** Rerunning with a
   different pattern set leaves orphan `COMPLEX*` files behind, so clear the
   benchmark output directory before a regeneration you intend to commit.

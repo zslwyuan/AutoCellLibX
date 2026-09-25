@@ -226,7 +226,9 @@ def main():
     model.max_mip_gap = 0.02
     phase1 = int(os.environ.get("GUROBI_CL_TIME_LIMIT", "300"))
     phase1 = max(60, min(phase1, timelimit))
-    retry = min(max(timelimit - phase1, 0), 900)   # extended search when empty
+    # Extended search only when the first phase found nothing at all.
+    retry = int(os.environ.get("GUROBI_CL_RETRY_LIMIT", "900"))
+    retry = max(0, min(retry, timelimit - phase1))
     try:
         status = model.optimize(max_seconds=phase1)
         if (status == mip.OptimizationStatus.NO_SOLUTION_FOUND and retry > 0):

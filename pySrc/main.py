@@ -149,14 +149,23 @@ def main():
                                 # A failed LP solve makes ASTRAN read an
                                 # all-zero solution and emit a 0 x 0 cell;
                                 # counting it would report fake area savings.
+                                # Exclude the pattern; one failed cell must
+                                # not kill the whole benchmark.
                                 if (newWidth <= 0):
                                     print("WARNING :", benchmarkName,
                                           " COMPLEX"+str(patternTraceId),
                                           " has zero width (solver failed); excluding the pattern")
-                                    benchmarkFailure = True
-                            except:
-                                print("WARNING :", benchmarkName, " fails!")
-                                benchmarkFailure = True
+                                    continue
+                            except Exception:
+                                # ASTRAN could not produce a layout for this
+                                # pattern (e.g. every conservative attempt of
+                                # autoFlow failed).  Exclude the pattern instead
+                                # of failing the whole benchmark, so later
+                                # patterns and phase 2 still run.
+                                print("WARNING :", benchmarkName,
+                                      " COMPLEX"+str(patternTraceId),
+                                      " could not be generated; excluding the pattern")
+                                continue
 
                 if (benchmarkFailure):
                     break
@@ -168,6 +177,8 @@ def main():
                 oriUnitGSCLArea = getArea(exampleCells, stdType2GSCLArea)
                 newUnitAstranArea = loadAstranArea(
                     outputPath, "COMPLEX"+str(patternTraceId))
+                if (newUnitAstranArea <= 0):   # a cached 0 x 0 layout counts nothing
+                    continue
                 if (oriUnitAstranArea-newUnitAstranArea > 0):
                     complexSelection.append(("COMPLEX"+str(patternTraceId), len(
                         tmpClusterSeq.patternClusters), len(tmpClusterSeq.patternClusters[0].cellIdsContained), tmpClusterSeq.patternExtensionTrace))
