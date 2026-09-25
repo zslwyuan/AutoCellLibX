@@ -412,8 +412,7 @@ cpt.insertConstraint("ZERO", "y"+metNode+"_width" + " + " + to_string(-tmp2) + "
 `bestRecord-adder`:**节省 106.2(ASTRAN 同高基准的 13.25%;GSCL LEF 的 11.44%)**,选定单元 COMPLEX10(59 次出现,5 单元)。内部自洽:原 5 单元宽度合计 5.6,合并后 3.8,1.8 × 59 = 106.2。
 
 **未完成(已记录)**:
-- 6 单元生长图案(COMPLEX11):求解在两段预算内未终止,由 0×0 防护排除,相关半成品产物已清理;
-- 因在 COMPLEX11 阶段手动停止,`bestRecord-seperateadder`(phase 2 的逐图案记录)未生成;
+- 6 单元生长图案(COMPLEX11):求解在两段预算内未终止,由 0×0 防护排除;其后的 7 单元图案(COMPLEX12)同样无法生成——CBC 在最大模型上**不遵守时间上限**(无法中断超长的根松弛求解),故这两个图案的生成不会终止,已从数据集中移除(不会进入任何记录);<s>`bestRecord-seperateadder`(phase 2 的逐图案记录)未生成</s>——已用 phase 2 的忠实回放(`pySrc/replay_seperateadder.py`)生成,与真实循环同公式、同浮点;
 - 行高仍为 2.6 vs GSCL45 的 2.47(见 §5.5/§5.7(2));`originalAstranStdCells/` 已全部按 2.6 重生成(16 个单元,含本轮的 CLKBUF1/DFFNEGX1/DFFPOSX1/MUX2X1/NOR3X1)。
 
 ### 5.9 第五轮:补齐基线单元时的 ASTRAN 崩溃(2026-09-25)
@@ -433,3 +432,27 @@ P/N 数量不等时,`transPlacement` 用 `link=-1` 的 GAP 条目把两条 order
 为装 gdb 而 `pacman -S mingw-w64-x86_64-gdb` 时,依赖把 `mingw-w64-x86_64-python`(3.14,无 python-mip)装进了 `C:\msys64\mingw64\bin`。`Astran.py` 把该目录置于 PATH 之前(ASTRAN 运行期 DLL 需要),于是 `gurobi_cl.cmd` 里的裸 `python` 解析到 MSYS2 解释器 → `ModuleNotFoundError: No module named 'mip'`,压缩静默失效。修复:`Astran.py` 把**当前流程所用的解释器目录**放在 PATH 最前(mingw64 其次),DLL 仍能解析、求解器包装始终用带 mip 的 python。
 
 **验证**:`NOR3X1` 修复后 1.4 × 2.6、48 s、OPTIMAL(objective 2.86e6);16 个基线单元全部 H=2.6;44 单元 + 3 集成测试全通过。
+
+### 5.10 第六轮:端口顺序实验与失败单元鲁棒性(2026-09-25)
+
+**(1) 复杂单元端口顺序的实验结论:保持插入序**
+
+观察到 `.subckt` 端口顺序会改变 ASTRAN 的布局(COMPLEX0 在旧 hash 序下 2.0、插入序下 2.4),因此做了受控实验:把端口改为**规范序**(`VCC GND` 在前、其余按字典序),重生成四个复杂单元:
+
+| 单元 | 插入序 | 规范序 | 结论 |
+|---|---|---|---|
+| COMPLEX0 | 2.4 | **2.0** | 更好 |
+| COMPLEX1 | 4.2 | 4.2 | 不变 |
+| COMPLEX9 | 3.6 | 4.2 | 更差 |
+| COMPLEX10 | 3.8 | **8.4** | 明显更差(300s 内只找到很差的可行解) |
+
+**结论:顺序对布局质量的影响与单元相关、无一致最优,规范序整体更差,已回退保持插入序**。经验:任何"看起来更规范"的改动,只要改变 ASTRAN 的输入顺序,就必须逐单元实测。
+
+**(2) 失败单元不再中断整个基准(`main.py`)**
+
+- phase 1:0×0 版图(求解无解→全零解)或 ASTRAN 完全无法生成(5 次 conservative 尝试全失败)的图案,现在**只排除该图案**(`continue`),不再置 `benchmarkFailure` 中断整个基准;缓存里已有的 0×0 版图在记账处同样被排除;
+- phase 2:`loadAstranArea` 失败/0×0 的图案在逐图案记录(`bestRecord-seperateadder`)中跳过,不再断言崩溃或计出虚假节省;生长出"从未 dump 过"的轨迹也直接跳过(否则 `dumpedPaterns` 键查会 KeyError);
+- **phase 2 的生长导出已删除**:它把生长网表写到 `patternNum` 派生的 id 下,与磁盘上已有 id 撞车——实测把 `COMPLEX1.sp` 覆盖成别的图案(这很可能就是早期快照里 `bestRecord-*` 与磁盘文件对不上的来源之一);phase 2 只算记录,不需要导出;
+- 求解器:两段式预算的第二段长度可用 `GUROBI_CL_RETRY_LIMIT`(默认 900 s)控制,便于把重跑限定在紧凑预算内。注意:CBC 在最大模型上可能**无视时间上限**(无法中断超长根松弛),故对 COMPLEX11/12 这类单元,"限时"不保证终止——这是 COMPLEX11/12 被排除的根因,也说明超大单元应改用真实 Gurobi。
+
+**验证**:44 单元 + 4 集成测试全通过;adder 最终选择不变(COMPLEX10,106.2 = 13.25%);`bestRecord-seperateadder` 由 phase 2 的忠实回放生成,四行数值(106.2/72/48.8/0)与独立计算一致。
