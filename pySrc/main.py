@@ -304,8 +304,19 @@ def main():
                     oriUnitAstranArea = getArea(
                         exampleCells, stdType2AstranArea)
                     oriUnitGSCLArea = getArea(exampleCells, stdType2GSCLArea)
-                    newUnitAstranArea = loadAstranArea(
-                        outputPath, "COMPLEX"+str(patternTraceId))
+                    try:
+                        newUnitAstranArea = loadAstranArea(
+                            outputPath, "COMPLEX"+str(patternTraceId))
+                    except Exception:
+                        print("WARNING :", benchmarkName,
+                              " COMPLEX"+str(patternTraceId),
+                              " has no usable layout; skipping it in the records")
+                        continue
+                    if (newUnitAstranArea <= 0):
+                        print("WARNING :", benchmarkName,
+                              " COMPLEX"+str(patternTraceId),
+                              " has zero width; skipping it in the records")
+                        continue
                     saveArea += (oriUnitAstranArea-newUnitAstranArea) * \
                         len(tmpClusterSeq.patternClusters)
                     saveGSCLArea += (oriUnitGSCLArea-newUnitAstranArea) * \
