@@ -1,5 +1,5 @@
-astran> read ./originalAstranStdCells//INVX1.run
--> Reading file: ./originalAstranStdCells//INVX1.run
+astran> read D:\AutoCellLibX\pySrc\originalAstranStdCells/INVX1.run
+-> Reading file: D:\AutoCellLibX\pySrc\originalAstranStdCells/INVX1.run
 -> Setting lpsolve executable to: D:\AutoCellLibX\tools\gurobi_cl\gurobi_cl.cmd
 -> Loading technology from file: D:\AutoCellLibX\tools\astran\build\Work\tech_freePDK45.rul
 -> Loading cells netlist from file: ../stdCelllib/cellsAstranFriendly.sp
@@ -88,7 +88,7 @@ astran> read ./originalAstranStdCells//INVX1.run
  Iteration 17; cost = 1602.000 (1602.000); p_cost = 1602.000; accept = 0.587; avg_delta = 0.000; dp = nan; thres = 149.329; cost_ratio = 1.000; [9]
  final cost = 1602 
 -> Routing cell...
--> Routing finished in 1 attempts after 0 s
+-> Routing finished in 1 attempts after 0.001 s
  ( initial cost = 1602 num reps = 150 problem size = 1 )  Iteration 1; cost = 2206.000 (1602.000); p_cost = 2206.000; accept = 1.000; avg_delta = 4.027; dp = 301.328; thres = 99999.000; cost_ratio = 1.377; [0]
  Iteration 2; cost = 2206.000 (1602.000); p_cost = 2206.000; accept = 1.000; avg_delta = 0.000; dp = 301.032; thres = 47999.520; cost_ratio = 1.000; [1]
  Iteration 3; cost = 2206.000 (1602.000); p_cost = 2206.000; accept = 1.000; avg_delta = 0.000; dp = 300.277; thres = 23039.770; cost_ratio = 1.000; [2]
@@ -108,7 +108,7 @@ astran> read ./originalAstranStdCells//INVX1.run
  Iteration 17; cost = 1602.000 (1602.000); p_cost = 1602.000; accept = 0.487; avg_delta = 0.000; dp = nan; thres = 152.882; cost_ratio = 1.000; [9]
  final cost = 1602 
 -> Routing cell...
--> Routing finished in 1 attempts after 0.002 s
+-> Routing finished in 1 attempts after 0 s
  ( initial cost = 1602 num reps = 150 problem size = 1 )  Iteration 1; cost = 2206.000 (1602.000); p_cost = 2206.000; accept = 1.000; avg_delta = 4.027; dp = 301.570; thres = 99999.000; cost_ratio = 1.377; [0]
  Iteration 2; cost = 1602.000 (1602.000); p_cost = 1602.000; accept = 1.000; avg_delta = -4.027; dp = 300.277; thres = 47999.520; cost_ratio = 0.726; [0]
  Iteration 3; cost = 2206.000 (1602.000); p_cost = 2206.000; accept = 1.000; avg_delta = 4.027; dp = 299.304; thres = 23039.770; cost_ratio = 1.377; [0]
@@ -128,30 +128,30 @@ astran> read ./originalAstranStdCells//INVX1.run
  Iteration 17; cost = 1602.000 (1602.000); p_cost = 1602.000; accept = 0.473; avg_delta = 0.000; dp = nan; thres = 130.087; cost_ratio = 1.000; [9]
  final cost = 1602 
 -> Routing cell...
--> Routing finished in 1 attempts after 0.001 s
+-> Routing finished in 1 attempts after 0 s
 -> Final cost: Width=3; Gate Mismatches=0; WL=0; Rt. Density=1; Nr. Gaps=0
    PMOS: M0-
    NMOS: M1-
 -> Routing cell...
--> Routing finished in 1 attempts after 0.001 s
+-> Routing finished in 1 attempts after 0 s
 
 -> Cost before optimization:1226
 -> Optimizing routing graph...
 -> Cost after optimization: 1209
--> Runtime = 0.129 s
+-> Runtime = 0.133 s
 
 -> Cost before optimization:1209
 -> Optimizing routing graph...
 -> Cost after optimization: 1209
--> Runtime = 0.056 s
+-> Runtime = 0.057 s
 -> Compacting layout...
 -> Calling LP Solver (1065 variables, 1436 constraints)
 -> Running command: "D:\AutoCellLibX\tools\gurobi_cl\gurobi_cl.cmd" TimeLimit=3600 ResultFile=ILPmodel.sol ILPmodel.lp
 -> To interrupt earlier and get the current best solution, type in a terminal: kill -2 [gurobi process]
--> * and H means new feasible solution found:Optimal solution found, objective 1.21418e+06
-
-Optimal solution found, objective 1.21418e+06
+-> * and H means new feasible solution found:Solver status OptimizationStatus.OPTIMAL, objective 1.21481e+06
+-> repair detection: met1=26 poly=7
+-> Spacing repair pass 0: 0 violating pair(s)
 -> Cell Size (W x H): 0.6 x 2.6
--> Total generation time for cell INVX1: 2s
--> Saving GDSII Technology Mapping File: ./originalAstranStdCells//GDSIILTable.txt
--> Saving layout INVX1 to file: ./originalAstranStdCells//INVX1.gds
+-> Total generation time for cell INVX1: 3s
+-> Saving GDSII Technology Mapping File: D:\AutoCellLibX\pySrc\originalAstranStdCells/GDSIILTable.txt
+-> Saving layout INVX1 to file: D:\AutoCellLibX\pySrc\originalAstranStdCells/INVX1.gds

@@ -91,7 +91,7 @@ astran> read D:\AutoCellLibX\pySrc\originalAstranStdCells/CLKBUF1.run
    NMOS: M8-M9-M11-M10-M12-M13-M15-M14-
 -> Placing transistors...
 -> Routing cell...
--> Routing finished in 1 attempts after 0.007 s
+-> Routing finished in 1 attempts after 0.009 s
  ( initial cost = 13065 num reps = 9600 problem size = 64 )  Iteration 1; cost = 24476.000 (13065.000); p_cost = 24476.000; accept = 1.000; avg_delta = 1.189; dp = 1354.258; thres = 99999.000; cost_ratio = 1.873; [0]
  Iteration 2; cost = 25197.000 (13065.000); p_cost = 25197.000; accept = 1.000; avg_delta = 0.075; dp = 1379.873; thres = 47999.520; cost_ratio = 1.029; [0]
  Iteration 3; cost = 24510.000 (13065.000); p_cost = 24510.000; accept = 1.000; avg_delta = -0.072; dp = 1327.336; thres = 23039.770; cost_ratio = 0.973; [0]
@@ -146,7 +146,7 @@ astran> read D:\AutoCellLibX\pySrc\originalAstranStdCells/CLKBUF1.run
  Iteration 26; cost = 9336.000 (9336.000); p_cost = 9336.000; accept = 0.131; avg_delta = 0.000; dp = 0.005; thres = 606.895; cost_ratio = 1.000; [9]
  final cost = 9336 
 -> Routing cell...
--> Routing finished in 1 attempts after 0.006 s
+-> Routing finished in 1 attempts after 0.007 s
  ( initial cost = 13065 num reps = 9600 problem size = 64 )  Iteration 1; cost = 25215.000 (13065.000); p_cost = 25215.000; accept = 1.000; avg_delta = 1.266; dp = 1318.802; thres = 99999.000; cost_ratio = 1.930; [0]
  Iteration 2; cost = 25435.000 (13065.000); p_cost = 25435.000; accept = 1.000; avg_delta = 0.023; dp = 1373.458; thres = 47999.520; cost_ratio = 1.009; [0]
  Iteration 3; cost = 26029.000 (13065.000); p_cost = 26029.000; accept = 1.000; avg_delta = 0.062; dp = 1402.408; thres = 23039.770; cost_ratio = 1.023; [0]
@@ -174,7 +174,7 @@ astran> read D:\AutoCellLibX\pySrc\originalAstranStdCells/CLKBUF1.run
  Iteration 25; cost = 9336.000 (9336.000); p_cost = 9336.000; accept = 0.128; avg_delta = 0.000; dp = 0.005; thres = 631.096; cost_ratio = 1.000; [9]
  final cost = 9336 
 -> Routing cell...
--> Routing finished in 1 attempts after 0.006 s
+-> Routing finished in 1 attempts after 0.008 s
 -> Final cost: Width=17; Gate Mismatches=0; WL=17; Rt. Density=2; Nr. Gaps=0
    PMOS: M0-M1-M2-M3-M5-M4-M6-M7-
    NMOS: M8-M9-M11-M10-M12-M13-M15-M14-
@@ -184,18 +184,20 @@ astran> read D:\AutoCellLibX\pySrc\originalAstranStdCells/CLKBUF1.run
 -> Cost before optimization:2373
 -> Optimizing routing graph...
 -> Cost after optimization: 2366
--> Runtime = 9.523 s
+-> Runtime = 9.69 s
 
 -> Cost before optimization:2366
 -> Optimizing routing graph...
 -> Cost after optimization: 2366
--> Runtime = 2.707 s
+-> Runtime = 2.772 s
 -> Compacting layout...
 -> Calling LP Solver (7498 variables, 12401 constraints)
 -> Running command: "D:\AutoCellLibX\tools\gurobi_cl\gurobi_cl.cmd" TimeLimit=3600 ResultFile=ILPmodel.sol ILPmodel.lp
 -> To interrupt earlier and get the current best solution, type in a terminal: kill -2 [gurobi process]
--> * and H means new feasible solution found:Solver status OptimizationStatus.FEASIBLE, objective 4.11376e+06
--> Cell Size (W x H): 2 x 2.6
--> Total generation time for cell CLKBUF1: 329s
+-> * and H means new feasible solution found:Solver status OptimizationStatus.OPTIMAL, objective 3.71122e+06
+-> repair detection: met1=77 poly=68
+-> Spacing repair pass 0: 0 violating pair(s)
+-> Cell Size (W x H): 1.8 x 2.6
+-> Total generation time for cell CLKBUF1: 54s
 -> Saving GDSII Technology Mapping File: D:\AutoCellLibX\pySrc\originalAstranStdCells/GDSIILTable.txt
 -> Saving layout CLKBUF1 to file: D:\AutoCellLibX\pySrc\originalAstranStdCells/CLKBUF1.gds

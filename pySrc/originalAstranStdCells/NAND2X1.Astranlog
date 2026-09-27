@@ -1,5 +1,5 @@
-astran> read ./originalAstranStdCells//NAND2X1.run
--> Reading file: ./originalAstranStdCells//NAND2X1.run
+astran> read D:\AutoCellLibX\pySrc\originalAstranStdCells/NAND2X1.run
+-> Reading file: D:\AutoCellLibX\pySrc\originalAstranStdCells/NAND2X1.run
 -> Setting lpsolve executable to: D:\AutoCellLibX\tools\gurobi_cl\gurobi_cl.cmd
 -> Loading technology from file: D:\AutoCellLibX\tools\astran\build\Work\tech_freePDK45.rul
 -> Loading cells netlist from file: ../stdCelllib/cellsAstranFriendly.sp
@@ -240,7 +240,7 @@ astran> read ./originalAstranStdCells//NAND2X1.run
  Iteration 35; cost = 3010.000 (3010.000); p_cost = 3010.000; accept = 0.320; avg_delta = 0.000; dp = nan; thres = 121.208; cost_ratio = 1.000; [9]
  final cost = 3010 
 -> Routing cell...
--> Routing finished in 1 attempts after 0.002 s
+-> Routing finished in 1 attempts after 0.001 s
 -> Final cost: Width=5; Gate Mismatches=0; WL=2; Rt. Density=2; Nr. Gaps=0
    PMOS: M1-M0-
    NMOS: M3-M2-
@@ -250,20 +250,20 @@ astran> read ./originalAstranStdCells//NAND2X1.run
 -> Cost before optimization:1839
 -> Optimizing routing graph...
 -> Cost after optimization: 1834
--> Runtime = 0.325 s
+-> Runtime = 0.33 s
 
 -> Cost before optimization:1834
 -> Optimizing routing graph...
 -> Cost after optimization: 1834
--> Runtime = 0.148 s
+-> Runtime = 0.147 s
 -> Compacting layout...
 -> Calling LP Solver (2080 variables, 2885 constraints)
 -> Running command: "D:\AutoCellLibX\tools\gurobi_cl\gurobi_cl.cmd" TimeLimit=3600 ResultFile=ILPmodel.sol ILPmodel.lp
 -> To interrupt earlier and get the current best solution, type in a terminal: kill -2 [gurobi process]
--> * and H means new feasible solution found:Optimal solution found, objective 1.62542e+06
-
-Optimal solution found, objective 1.62542e+06
+-> * and H means new feasible solution found:Solver status OptimizationStatus.OPTIMAL, objective 1.62585e+06
+-> repair detection: met1=37 poly=14
+-> Spacing repair pass 0: 0 violating pair(s)
 -> Cell Size (W x H): 0.8 x 2.6
--> Total generation time for cell NAND2X1: 4s
--> Saving GDSII Technology Mapping File: ./originalAstranStdCells//GDSIILTable.txt
--> Saving layout NAND2X1 to file: ./originalAstranStdCells//NAND2X1.gds
+-> Total generation time for cell NAND2X1: 3s
+-> Saving GDSII Technology Mapping File: D:\AutoCellLibX\pySrc\originalAstranStdCells/GDSIILTable.txt
+-> Saving layout NAND2X1 to file: D:\AutoCellLibX\pySrc\originalAstranStdCells/NAND2X1.gds

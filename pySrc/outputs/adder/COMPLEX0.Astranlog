@@ -1,8 +1,8 @@
-astran> read ./outputs/adder//COMPLEX0.run
--> Reading file: ./outputs/adder//COMPLEX0.run
+astran> read D:\AutoCellLibX\pySrc\outputs\adder/COMPLEX0.run
+-> Reading file: D:\AutoCellLibX\pySrc\outputs\adder/COMPLEX0.run
 -> Setting lpsolve executable to: D:\AutoCellLibX\tools\gurobi_cl\gurobi_cl.cmd
 -> Loading technology from file: D:\AutoCellLibX\tools\astran\build\Work\tech_freePDK45.rul
--> Loading cells netlist from file: ./outputs/adder//COMPLEX0.sp
+-> Loading cells netlist from file: D:\AutoCellLibX\pySrc\outputs\adder\COMPLEX0.sp
 -> Selecting cell netlist: COMPLEX0
 -> Trying with 2 tracks and conservative = 0 ...
 -> Calculating cell area...
@@ -168,7 +168,7 @@ astran> read ./outputs/adder//COMPLEX0.run
    NMOS: MCL1#3-MCL1#2-MCL0#2-MCL0#3-MCL2#5-MCL2#4-MCL2#3-
 -> Placing transistors...
 -> Routing cell...
--> Routing finished in 3 attempts after 0.016 s
+-> Routing finished in 3 attempts after 0.015 s
  ( initial cost = 17104 num reps = 7350 problem size = 49 )  Iteration 1; cost = 28639.000 (17104.000); p_cost = 28639.000; accept = 1.000; avg_delta = 1.569; dp = 2319.423; thres = 99999.000; cost_ratio = 1.674; [0]
  Iteration 2; cost = 28223.000 (17104.000); p_cost = 28223.000; accept = 1.000; avg_delta = -0.057; dp = 2311.978; thres = 47999.520; cost_ratio = 0.985; [0]
  Iteration 3; cost = 26511.000 (17104.000); p_cost = 26511.000; accept = 1.000; avg_delta = -0.233; dp = 2251.442; thres = 23039.770; cost_ratio = 0.939; [0]
@@ -222,7 +222,7 @@ astran> read ./outputs/adder//COMPLEX0.run
  Iteration 51; cost = 9043.000 (9043.000); p_cost = 9043.000; accept = 0.107; avg_delta = 0.000; dp = nan; thres = 375.611; cost_ratio = 1.000; [9]
  final cost = 9043 
 -> Routing cell...
--> Routing finished in 6 attempts after 0.029 s
+-> Routing finished in 6 attempts after 0.033 s
  ( initial cost = 17104 num reps = 7350 problem size = 49 )  Iteration 1; cost = 31265.000 (17104.000); p_cost = 31265.000; accept = 1.000; avg_delta = 1.927; dp = 2336.731; thres = 99999.000; cost_ratio = 1.828; [0]
  Iteration 2; cost = 26251.000 (17104.000); p_cost = 26251.000; accept = 1.000; avg_delta = -0.682; dp = 2287.689; thres = 47999.520; cost_ratio = 0.840; [0]
  Iteration 3; cost = 27847.000 (17104.000); p_cost = 27847.000; accept = 1.000; avg_delta = 0.217; dp = 2305.757; thres = 23039.770; cost_ratio = 1.061; [0]
@@ -333,23 +333,25 @@ astran> read ./outputs/adder//COMPLEX0.run
    PMOS: MCL1#1-MCL1#0-MCL0#0-MCL0#1-MCL2#2-MCL2#1-MCL2#0-
    NMOS: MCL1#3-MCL1#2-MCL0#2-MCL0#3-MCL2#5-MCL2#4-MCL2#3-
 -> Routing cell...
--> Routing finished in 3 attempts after 0.014 s
+-> Routing finished in 3 attempts after 0.02 s
 
 -> Cost before optimization:4627
 -> Optimizing routing graph...
 -> Cost after optimization: 4598
--> Runtime = 5.788 s
+-> Runtime = 5.738 s
 
 -> Cost before optimization:4598
 -> Optimizing routing graph...
 -> Cost after optimization: 4598
--> Runtime = 2.481 s
+-> Runtime = 2.466 s
 -> Compacting layout...
 -> Calling LP Solver (8971 variables, 13274 constraints)
 -> Running command: "D:\AutoCellLibX\tools\gurobi_cl\gurobi_cl.cmd" TimeLimit=3600 ResultFile=ILPmodel.sol ILPmodel.lp
 -> To interrupt earlier and get the current best solution, type in a terminal: kill -2 [gurobi process]
--> * and H means new feasible solution found:Solver status OptimizationStatus.FEASIBLE, objective 4.89068e+06
--> Cell Size (W x H): 2.4 x 2.6
--> Total generation time for cell COMPLEX0: 335s
--> Saving GDSII Technology Mapping File: ./outputs/adder//GDSIILTable.txt
--> Saving layout COMPLEX0 to file: ./outputs/adder//COMPLEX0.gds
+-> * and H means new feasible solution found:Solver status OptimizationStatus.OPTIMAL, objective 4.09517e+06
+-> repair detection: met1=112 poly=49
+-> Spacing repair pass 0: 0 violating pair(s)
+-> Cell Size (W x H): 2 x 2.6
+-> Total generation time for cell COMPLEX0: 75s
+-> Saving GDSII Technology Mapping File: D:\AutoCellLibX\pySrc\outputs\adder/GDSIILTable.txt
+-> Saving layout COMPLEX0 to file: D:\AutoCellLibX\pySrc\outputs\adder/COMPLEX0.gds

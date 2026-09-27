@@ -1,5 +1,5 @@
-astran> read ./originalAstranStdCells//NAND3X1.run
--> Reading file: ./originalAstranStdCells//NAND3X1.run
+astran> read D:\AutoCellLibX\pySrc\originalAstranStdCells/NAND3X1.run
+-> Reading file: D:\AutoCellLibX\pySrc\originalAstranStdCells/NAND3X1.run
 -> Setting lpsolve executable to: D:\AutoCellLibX\tools\gurobi_cl\gurobi_cl.cmd
 -> Loading technology from file: D:\AutoCellLibX\tools\astran\build\Work\tech_freePDK45.rul
 -> Loading cells netlist from file: ../stdCelllib/cellsAstranFriendly.sp
@@ -109,7 +109,7 @@ astran> read ./originalAstranStdCells//NAND3X1.run
  Iteration 22; cost = 4018.000 (4018.000); p_cost = 4018.000; accept = 0.222; avg_delta = 0.000; dp = nan; thres = 502.526; cost_ratio = 1.000; [9]
  final cost = 4018 
 -> Routing cell...
--> Routing finished in 1 attempts after 0.001 s
+-> Routing finished in 1 attempts after 0.002 s
  ( initial cost = 7260 num reps = 1350 problem size = 9 )  Iteration 1; cost = 7557.000 (7260.000); p_cost = 7557.000; accept = 1.000; avg_delta = 0.220; dp = 1307.570; thres = 99999.000; cost_ratio = 1.041; [0]
  Iteration 2; cost = 8672.000 (7260.000); p_cost = 8672.000; accept = 1.000; avg_delta = 0.826; dp = 1366.742; thres = 47999.520; cost_ratio = 1.148; [0]
  Iteration 3; cost = 8902.000 (7260.000); p_cost = 8902.000; accept = 1.000; avg_delta = 0.170; dp = 1324.404; thres = 23039.770; cost_ratio = 1.027; [0]
@@ -159,17 +159,17 @@ astran> read ./originalAstranStdCells//NAND3X1.run
  Iteration 22; cost = 4018.000 (4018.000); p_cost = 4018.000; accept = 0.199; avg_delta = 0.000; dp = nan; thres = 524.796; cost_ratio = 1.000; [9]
  final cost = 4018 
 -> Routing cell...
--> Routing finished in 1 attempts after 0.002 s
+-> Routing finished in 1 attempts after 0.001 s
 -> Final cost: Width=7; Gate Mismatches=0; WL=4; Rt. Density=2; Nr. Gaps=0
    PMOS: M2-M1-M0-
    NMOS: M5-M4-M3-
 -> Routing cell...
--> Routing finished in 1 attempts after 0.003 s
+-> Routing finished in 1 attempts after 0.002 s
 
 -> Cost before optimization:2469
 -> Optimizing routing graph...
 -> Cost after optimization: 2456
--> Runtime = 0.696 s
+-> Runtime = 0.693 s
 
 -> Cost before optimization:2456
 -> Optimizing routing graph...
@@ -179,10 +179,10 @@ astran> read ./originalAstranStdCells//NAND3X1.run
 -> Calling LP Solver (2847 variables, 4109 constraints)
 -> Running command: "D:\AutoCellLibX\tools\gurobi_cl\gurobi_cl.cmd" TimeLimit=3600 ResultFile=ILPmodel.sol ILPmodel.lp
 -> To interrupt earlier and get the current best solution, type in a terminal: kill -2 [gurobi process]
--> * and H means new feasible solution found:Optimal solution found, objective 1.6358e+06
-
-Optimal solution found, objective 1.6358e+06
+-> * and H means new feasible solution found:Solver status OptimizationStatus.OPTIMAL, objective 1.63758e+06
+-> repair detection: met1=40 poly=21
+-> Spacing repair pass 0: 0 violating pair(s)
 -> Cell Size (W x H): 0.8 x 2.6
--> Total generation time for cell NAND3X1: 4s
--> Saving GDSII Technology Mapping File: ./originalAstranStdCells//GDSIILTable.txt
--> Saving layout NAND3X1 to file: ./originalAstranStdCells//NAND3X1.gds
+-> Total generation time for cell NAND3X1: 8s
+-> Saving GDSII Technology Mapping File: D:\AutoCellLibX\pySrc\originalAstranStdCells/GDSIILTable.txt
+-> Saving layout NAND3X1 to file: D:\AutoCellLibX\pySrc\originalAstranStdCells/NAND3X1.gds

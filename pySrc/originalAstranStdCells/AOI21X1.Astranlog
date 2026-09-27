@@ -1,5 +1,5 @@
-astran> read ./originalAstranStdCells//AOI21X1.run
--> Reading file: ./originalAstranStdCells//AOI21X1.run
+astran> read D:\AutoCellLibX\pySrc\originalAstranStdCells/AOI21X1.run
+-> Reading file: D:\AutoCellLibX\pySrc\originalAstranStdCells/AOI21X1.run
 -> Setting lpsolve executable to: D:\AutoCellLibX\tools\gurobi_cl\gurobi_cl.cmd
 -> Loading technology from file: D:\AutoCellLibX\tools\astran\build\Work\tech_freePDK45.rul
 -> Loading cells netlist from file: ../stdCelllib/cellsAstranFriendly.sp
@@ -101,7 +101,7 @@ astran> read ./originalAstranStdCells//AOI21X1.run
    NMOS: M3-M4-M5-
 -> Placing transistors...
 -> Routing cell...
--> Routing finished in 4 attempts after 0.005 s
+-> Routing finished in 4 attempts after 0.003 s
  ( initial cost = 7460 num reps = 1350 problem size = 9 )  Iteration 1; cost = 11166.000 (7460.000); p_cost = 11166.000; accept = 1.000; avg_delta = 2.745; dp = 1319.653; thres = 99999.000; cost_ratio = 1.497; [0]
  Iteration 2; cost = 9203.000 (7460.000); p_cost = 9203.000; accept = 1.000; avg_delta = -1.454; dp = 1342.807; thres = 47999.520; cost_ratio = 0.824; [0]
  Iteration 3; cost = 5941.000 (5941.000); p_cost = 5941.000; accept = 1.000; avg_delta = -2.416; dp = 1359.511; thres = 23039.770; cost_ratio = 0.646; [0]
@@ -193,7 +193,7 @@ astran> read ./originalAstranStdCells//AOI21X1.run
  Iteration 28; cost = 4222.000 (4222.000); p_cost = 4222.000; accept = 0.221; avg_delta = 0.000; dp = 0.001; thres = 385.762; cost_ratio = 1.000; [9]
  final cost = 4222 
 -> Routing cell...
--> Routing finished in 4 attempts after 0.003 s
+-> Routing finished in 4 attempts after 0.005 s
 -> Final cost: Width=7; Gate Mismatches=0; WL=6; Rt. Density=2; Nr. Gaps=0
    PMOS: M0-M1-M2-
    NMOS: M3-M4-M5-
@@ -203,20 +203,20 @@ astran> read ./originalAstranStdCells//AOI21X1.run
 -> Cost before optimization:2521
 -> Optimizing routing graph...
 -> Cost after optimization: 2508
--> Runtime = 0.603 s
+-> Runtime = 0.615 s
 
 -> Cost before optimization:2508
 -> Optimizing routing graph...
 -> Cost after optimization: 2508
--> Runtime = 0.289 s
+-> Runtime = 0.295 s
 -> Compacting layout...
 -> Calling LP Solver (2888 variables, 4307 constraints)
 -> Running command: "D:\AutoCellLibX\tools\gurobi_cl\gurobi_cl.cmd" TimeLimit=3600 ResultFile=ILPmodel.sol ILPmodel.lp
 -> To interrupt earlier and get the current best solution, type in a terminal: kill -2 [gurobi process]
--> * and H means new feasible solution found:Optimal solution found, objective 2.03809e+06
-
-Optimal solution found, objective 2.03809e+06
--> Cell Size (W x H): 1 x 2.6
--> Total generation time for cell AOI21X1: 8s
--> Saving GDSII Technology Mapping File: ./originalAstranStdCells//GDSIILTable.txt
--> Saving layout AOI21X1 to file: ./originalAstranStdCells//AOI21X1.gds
+-> * and H means new feasible solution found:Solver status OptimizationStatus.FEASIBLE, objective 2.44309e+06
+-> repair detection: met1=37 poly=21
+-> Spacing repair pass 0: 0 violating pair(s)
+-> Cell Size (W x H): 1.2 x 2.6
+-> Total generation time for cell AOI21X1: 304s
+-> Saving GDSII Technology Mapping File: D:\AutoCellLibX\pySrc\originalAstranStdCells/GDSIILTable.txt
+-> Saving layout AOI21X1 to file: D:\AutoCellLibX\pySrc\originalAstranStdCells/AOI21X1.gds
