@@ -81,22 +81,28 @@ void Gds::generateUnits(){
     f.push_back(0x14);
     f.push_back(0x03);
     f.push_back(0x05);
-    f.push_back(0x3E);
-    f.push_back(0x41);
-    f.push_back(0x89);
-    f.push_back(0x37);
-    f.push_back(0x4B);
-    f.push_back(0xC6);
-    f.push_back(0xA7);
-    f.push_back(0xEF);
-    f.push_back(0x39);
-    f.push_back(0x44);
-    f.push_back(0xB8);
-    f.push_back(0x2F);
-    f.push_back(0xA0);
-    f.push_back(0x9B);
-    f.push_back(0x5A);
-    f.push_back(0x51);
+    // UNITS record: [dbu in user units, dbu in meters].  The GDS writer emits
+    // 2x the internal coordinates and one internal unit is MINSTEP = 0.0025um
+    // (rules resolution), so one database unit is MINSTEP/2 = 0.00125um =
+    // 1.25nm.  The previous hardcoded bytes decoded to a nonsensical
+    // (8.2e-9, 7.98e-33) pair; readers that fall back to a 1nm dbu then drew
+    // every shape at 80% of the designed size.
+    f.push_back(0x3F); // 0.00125
+    f.push_back(0x54);
+    f.push_back(0x7A);
+    f.push_back(0xE1);
+    f.push_back(0x47);
+    f.push_back(0xAE);
+    f.push_back(0x14);
+    f.push_back(0x7B);
+    f.push_back(0x3E); // 1.25e-9
+    f.push_back(0x15);
+    f.push_back(0x79);
+    f.push_back(0x8E);
+    f.push_back(0xE2);
+    f.push_back(0x30);
+    f.push_back(0x8C);
+    f.push_back(0x3A);
     
     write();
 }

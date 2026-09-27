@@ -611,10 +611,10 @@ bool AutoCell::compact(string lpSolverFile, int diffStretching, int griddedPoly,
                     
                     //insert space or a track between current and last poly node, if it exists
                     if(lastPolNodes[x]!="" && rt->areConnected2(lastElement_it->pol[x], elements_it->pol[x]))
-                        createTrack(geometries, cpt, lastPolNodes[x], currentPolNodes[x], "", POLY, H);
-                    
+                        createTrack(geometries, cpt, lastPolNodes[x], currentPolNodes[x], currentNetList.getNetName(rt->getNet(elements_it->pol[x])), POLY, H);
+
                     if(x && rt->areConnected(elements_it->pol[x-1], elements_it->pol[x]))
-                        createTrack(geometries, cpt, currentPolNodes[x-1], currentPolNodes[x], "", POLY, V);
+                        createTrack(geometries, cpt, currentPolNodes[x-1], currentPolNodes[x], currentNetList.getNetName(rt->getNet(elements_it->pol[x])), POLY, V);
                     
                     //space poly and last diff
                     if(!rt->isSource(elements_it->pol[x])){
@@ -814,7 +814,82 @@ bool AutoCell::compact(string lpSolverFile, int diffStretching, int griddedPoly,
     
     if (!cpt.solve(lpSolverFile, timeLimit))
         return false;
-    
+
+    // Rule-cleanliness repair passes.  The pairwise constraint model spaces
+    // metal/poly nodes only against the nodes of the two previous elements;
+    // routing tracks and nodes of farther elements carry no explicit spacing
+    // constraints, so the solver can leave a foreign net's wire closer to a
+    // node than the technology rule allows.  Detect those pairs in the solved
+    // coordinates and re-solve with disjunctive keep-away constraints until
+    // the layout is rule-clean (or the pass budget is exhausted).
+    {
+        map<Box*, int> geoIndex;
+        for (int i = 0; i < (int)geometries.size(); i++) geoIndex[geometries[i]] = i;
+        for (int repairPass = 0; repairPass < 8; repairPass++) {
+            struct SpGeo { int idx; string net; int ax, ay, bx, by; };
+            vector<SpGeo> met1, poly;
+            for (int l = 0; l < 2; l++) {
+                layer_name layer = (l == 0 ? MET1 : POLY);
+                vector<SpGeo> &out = (l == 0 ? met1 : poly);
+                for (list<Box>::iterator bit = currentLayout.layers[layer].begin(); bit != currentLayout.layers[layer].end(); ++bit) {
+                    map<Box*, int>::iterator gi = geoIndex.find(&*bit);
+                    if (gi == geoIndex.end()) continue;
+                    int i = gi->second;
+                    int xa = cpt.getVariableVal("x" + to_string(i) + "a");
+                    int xb = cpt.getVariableVal("x" + to_string(i) + "b");
+                    int ya = cpt.getVariableVal("y" + to_string(i) + "a");
+                    int yb = cpt.getVariableVal("y" + to_string(i) + "b");
+                    if (xa == -1 || xb == -1 || ya == -1 || yb == -1) continue;
+                    SpGeo g;
+                    g.idx = i; g.net = bit->getNet();
+                    g.ax = xa; g.ay = ya; g.bx = xb; g.by = yb;
+                    out.push_back(g);
+                }
+            }
+            int violCount = 0;
+            cout << "-> repair detection: met1=" << met1.size() << " poly=" << poly.size() << endl;
+            for (int l = 0; l < 2; l++) {
+                vector<SpGeo> &lst = (l == 0 ? met1 : poly);
+                int rule = (l == 0 ? currentRules->getRule(S1M1M1) : currentRules->getRule(S1P1P1));
+                for (size_t a = 0; a < lst.size(); a++) {
+                    for (size_t b = a + 1; b < lst.size(); b++) {
+                        SpGeo &A = lst[a];
+                        SpGeo &B = lst[b];
+                        int dx = max(A.ax, B.ax) - min(A.bx, B.bx);
+                        int dy = max(A.ay, B.ay) - min(A.by, B.by);
+                        if (dx < 0 && dy < 0) continue; // overlapping: same net, intended merge
+                        // euclidean corner distance, matching the diagonal
+                        // option of insertDistanceRuleInteligent
+                        int cdx = max(dx, 0), cdy = max(dy, 0);
+                        if (cdx * cdx + cdy * cdy >= rule * rule) continue; // already legal
+                        if (!A.net.empty() && A.net == B.net) continue; // same net: legal, contact bridges
+                        cout << "-> spacing violation: g" << A.idx << "[" << A.net << "]("
+                             << A.ax << "," << A.ay << "," << A.bx << "," << A.by << ") vs g"
+                             << B.idx << "[" << B.net << "]("
+                             << B.ax << "," << B.ay << "," << B.bx << "," << B.by << ") dx=" << dx << " dy=" << dy << endl;
+                        // disjunctive keep-away: B right of / left of / above / below A
+                        string tag = to_string(A.idx) + "_" + to_string(B.idx) + "_kr" + to_string(repairPass);
+                        string t1 = "b" + tag + "1", t2 = "b" + tag + "2", t3 = "b" + tag + "3", t4 = "b" + tag + "4";
+                        cpt.forceBinaryVar(t1);
+                        cpt.forceBinaryVar(t2);
+                        cpt.forceBinaryVar(t3);
+                        cpt.forceBinaryVar(t4);
+                        cpt.insertConstraint("ZERO", t1 + " + " + t2 + " + " + t3 + " + " + t4, CP_EQ, 1);
+                        cpt.insertConstraint("x" + to_string(A.idx) + "b", "x" + to_string(B.idx) + "a", CP_MIN, t1, rule);
+                        cpt.insertConstraint("x" + to_string(B.idx) + "b", "x" + to_string(A.idx) + "a", CP_MIN, t2, rule);
+                        cpt.insertConstraint("y" + to_string(A.idx) + "b", "y" + to_string(B.idx) + "a", CP_MIN, t3, rule);
+                        cpt.insertConstraint("y" + to_string(B.idx) + "b", "y" + to_string(A.idx) + "a", CP_MIN, t4, rule);
+                        violCount++;
+                    }
+                }
+            }
+            cout << "-> Spacing repair pass " << repairPass << ": " << violCount << " violating pair(s)" << endl;
+            if (violCount == 0) break;
+            if (!cpt.solve(lpSolverFile, timeLimit))
+                return false;
+        }
+    }
+
     for (int i = 0; i < geometries.size(); i++) {
         
         int xa = cpt.getVariableVal("x" + to_string(i) + "a");
@@ -958,6 +1033,20 @@ bool AutoCell::compact(string lpSolverFile, int diffStretching, int griddedPoly,
     currentLayout.addPolygon(0, height - supWidth, width, height, MET1).setNet(currentCircuit->getVddNet());
     currentLayout.addPolygon(0, height - supWidth, width, height, MET1P);
     currentLayout.addPolygon(0, 0, width, height, CELLBOX);
+    // The supply rails are ports of the cell, but route() keeps vdd/gnd out of
+    // IOgeometries, so without an explicit label the exported cell carries no
+    // VCC/GND text and LEF/LVS cannot bind the rails.
+    Pin gndPin, vddPin;
+    gndPin.setX(width / 2);
+    gndPin.setY(supWidth / 2);
+    gndPin.setLayer(MET1);
+    currentLayout.setPin(currentCircuit->getGndNet(), gndPin);
+    currentLayout.addLabel(currentCircuit->getGndNet(), Point(width / 2, supWidth / 2));
+    vddPin.setX(width / 2);
+    vddPin.setY(height - supWidth / 2);
+    vddPin.setLayer(MET1);
+    currentLayout.setPin(currentCircuit->getVddNet(), vddPin);
+    currentLayout.addLabel(currentCircuit->getVddNet(), Point(width / 2, height - supWidth / 2));
     int nWellBorder=currentRules->getIntValue(currentCircuit->getnWellBorder());
     currentLayout.addPolygon(-nWellBorder, height + nWellBorder, width + nWellBorder, cpt.getVariableVal("posNWell"), NWEL);
     currentLayout.addPolygon(-nWellBorder, -nWellBorder, width + nWellBorder, cpt.getVariableVal("posNWell"), PWEL);
@@ -1427,6 +1516,12 @@ string AutoCell::createGeometry(vector<Box*> &geometries, Compaction &cpt, strin
 }
 
 void AutoCell::createNode(vector<Box*> &geometries, Compaction &cpt, list<Element>::iterator elements_it, int pos, vector<string> &currentNode, string netName, layer_name l){
+    // poly nodes are created with an empty net name at the call site; recover
+    // the real net from the routing graph so same-net poly pieces (gate
+    // stripes, contact landings and their routing) are never spaced apart by
+    // the rule-cleanliness repair passes
+    if (l == POLY && netName.empty())
+        netName = currentNetList.getNetName(rt->getNet(elements_it->pol[pos]));
     string currentGeo = createGeometry(geometries, cpt, netName, l==MET1?3:6, l);
     
     //apply minimum distance rules to cell borders
@@ -1458,10 +1553,16 @@ void AutoCell::createNode(vector<Box*> &geometries, Compaction &cpt, list<Elemen
     cpt.forceBinaryVar("b" + currentGeo+ "_endline_v");
     cpt.forceBinaryVar("b" + currentGeo+ "_endline_h");
     cpt.insertConstraint("ZERO", "b" + currentGeo+ "_endline_v" + " + " "b" + currentGeo+ "_endline_h", CP_EQ, 1);
-    cpt.insertConstraint("x" + currentGeo + "a2", "x" + currentGeo + "a", CP_MIN, "b" + currentGeo+ "_endline_h", minExt);
-    cpt.insertConstraint("x" + currentGeo + "b", "x" + currentGeo + "b2", CP_MIN, "b" + currentGeo+ "_endline_h", minExt);
-    cpt.insertConstraint("y" + currentGeo + "a2", "y" + currentGeo + "a", CP_MIN, "b" + currentGeo+ "_endline_v", minExt);
-    cpt.insertConstraint("y" + currentGeo + "b", "y" + currentGeo + "b2", CP_MIN, "b" + currentGeo+ "_endline_v", minExt);
+    // a2/b2 must be exactly the (possibly extended) edges of the shape.  The
+    // original CP_MIN form only bounds them from one side, leaving a2/b2 free
+    // to shrink without limit whenever minExt==0 (S3==S1, as in FreePDK45);
+    // the compactor then satisfied the diagonal spacing option of
+    // insertDistanceRuleInteligent by shrinking a2/b2 instead of separating
+    // the shapes, producing sub-rule MET1/POLY gaps between different nets.
+    cpt.insertConstraint("x" + currentGeo + "a2", "x" + currentGeo + "a", CP_EQ, "b" + currentGeo+ "_endline_h", minExt);
+    cpt.insertConstraint("x" + currentGeo + "b", "x" + currentGeo + "b2", CP_EQ, "b" + currentGeo+ "_endline_h", minExt);
+    cpt.insertConstraint("y" + currentGeo + "a2", "y" + currentGeo + "a", CP_EQ, "b" + currentGeo+ "_endline_v", minExt);
+    cpt.insertConstraint("y" + currentGeo + "b", "y" + currentGeo + "b2", CP_EQ, "b" + currentGeo+ "_endline_v", minExt);
     
     if(enableDFM){
         cpt.insertConstraint("x" + currentGeo + "a2", "x" + currentGeo + "a", CP_MIN, "max" + currentGeo+ "H");

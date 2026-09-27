@@ -368,7 +368,11 @@ bool DesignMng::readCommand(string cmd){
                             list<Label>::iterator labels_it;
                             for (labels_it = circuit->getLayout(words[2])->labels.begin(); labels_it != circuit->getLayout(words[2])->labels.end(); labels_it++){
                                 strcpy(tmp, labels_it->text.c_str());
-                                g.generateLabel(strToInt(rules->getGDSIIVal(MET1)), 2*labels_it->pt.getX(), 2*labels_it->pt.getY(), tmp);
+                                // pin text goes on the metal1 PIN purpose layer
+                                // (MET1P = 18 in the FreePDK45 layer map), not on
+                                // the drawing layer, so stream-in binds the text
+                                // to the pin shapes
+                                g.generateLabel(strToInt(rules->getGDSIIVal(MET1P)), 2*labels_it->pt.getX(), 2*labels_it->pt.getY(), tmp);
                                 g.generateEndelement();
                             }
                             
