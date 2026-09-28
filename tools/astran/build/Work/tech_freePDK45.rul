@@ -2,7 +2,7 @@
 
 TECHNAME	freePDK45
 MINSTEP	   	0.0025
-VDD         3.3
+VDD         1.1
 MLAYERS		6
 
 S1P1P1	0.075
@@ -98,6 +98,13 @@ W2V10	0
 
 *Layers Map
 *Name   CIF  GDSII Tech
+*GDSII numbers: base layers keep the Cadence-style numbering used throughout
+*this repository; metal/via layers follow the GSCL45 stream map
+*(stdCelllib/gds2_encounter.map: metal1=49, via=50, metal2=51, via2=61,
+*metal3=62, via3=30, metal4=31, via4=32, metal5=33).  The GSCL45 map
+*collapses every metal1 purpose (drawing/pin/fill/via) onto 49, so MET1P
+*shares 49 and pin text lands on 49 as well.  The old VIA4=18 collision
+*with MET1P is gone.
 
 CONT    CCG  10    contact
 POLY    CPG  9     poly
@@ -107,18 +114,18 @@ NSEL    CSN  4     nimplant
 PSEL    CSP  5     pimplant
 NWEL    CWN  3     nwell
 PWEL    CWP  2     pwell
-VIA1    CVA  12    via1
-VIA2    CVS  14    via2
-VIA3    CVT  16    via3
-VIA4    CVQ  18    via4
-MET1    CMF  11    metal1
-MET2    CMS  13    metal2
-MET3    CMT  15    metal3
-MET4    CMQ  17    metal4
-MET5    CMP  19    metal5
-MET1P   CPF  18    metal1
-MET2P   CPS  19    metal2
-MET3P   CPT  20    metal3
+VIA1    CVA  50    via1
+VIA2    CVS  61    via2
+VIA3    CVT  30    via3
+VIA4    CVQ  32    via4
+MET1    CMF  49    metal1
+MET2    CMS  51    metal2
+MET3    CMT  62    metal3
+MET4    CMQ  31    metal4
+MET5    CMP  33    metal5
+MET1P   CPF  49    metal1
+MET2P   CPS  51    metal2
+MET3P   CPT  62    metal3
 CELLBOX CBX  235   prBoundary
 FIMP    FIMP 199   FIMP
 

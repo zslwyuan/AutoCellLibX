@@ -492,3 +492,61 @@ ASTRAN 只给 IOgeometries 里的信号端口打标(route() 把 vdd/gnd 排除�
   宽度变小并非缩水:几何不再被 0.8× 出错解读,且间距全数满足 tech_freePDK45.rul。
 
 **运维教训**:被终止的后台批量任务在 Windows 上会遗留内层 `bash` 循环继续拉起 ASTRAN;两个并行 ASTRAN 会覆写共享的 `ILPmodel.lp/.sol`,表现为随机的 UNBOUNDED/0×0/秒退。清树后必须整批重做受污染时段的单元。
+
+### 5.12 第八轮:对齐 GSCL45 的工艺标定,与紧行高下暴露的两个压缩缺陷(2026-09-27/28)
+
+前面几轮修好了 GDS 的*语义*(单位、层号、标签、间距模型),但几何*标定*仍停在 ASTRAN 的编译内置值(行高 13×0.20 = 2.6µm、导轨 0.72µm、VDD 3.3V),与目标库 GSCL45 不一致。本轮从库自身的约定完成标定,并借此把压缩器在紧行高下暴露的两个缺陷修掉。
+
+**(1) 标定来源与改动**
+
+从 `stdCelllib` 提取的 GSCL45 约定:LEF `CoreSite SIZE 0.38 BY 2.47`、M1 pitch 0.19µm、abutment 导轨 0.13µm 高、宽度取 0.19 的倍数、`gscl45nm.lib` 标称电压 1.1V、`gds2_encounter.map` 的 stream 号(metal1=49、via=50、metal2=51、via2=61、metal3=62、via3=30、metal4=31、via4=32、metal5=33)。
+
+- `pySrc/Astran.py`:`ASTRAN_VGRID=ASTRAN_HGRID=0.19`(原 0.20)、`ASTRAN_SUPPLY_SIZE=0.26`(原 0.72;内部 `supWidth = max(supplyVSize, W1M1)/2 = 0.13` → 导轨高 0.13µm)、`ASTRAN_NWELL_POS=1.0825`(原 1.14,按行高比例缩放)。行高 = 13 × 0.19 = **2.47µm = GSCL45 site 高**。
+- `tools/astran/build/Work/tech_freePDK45.rul`:金属/通孔层号改为 GSCL45 stream 号;`VDD 3.3 → 1.1`。
+- `tools/astran/build_astran.sh`:链接后 `strip` 二进制 —— 360 的启动启发式(HEUR/QVM…Malware.Gen)会删除刚链接的 `Astran.exe`,strip 后不再误杀(替代此前"加信任列表"的说法)。
+
+验证:全部单元的 GDS 实测导轨高 0.13µm、总高 2.47µm;24 个单元中 7 个窄单元宽度与 LEF 手工版完全一致(INVX1 0.57、NAND2X1 0.76、NOR2X1 0.76、NAND3X1 0.95、AOI21X1 0.95、OAI21X1 0.95、AOI22X1 1.14);NOR3X1 1.52、DFFNEGX1 4.18 偏大(ASTRAN 的折叠/布线未达库内手工版,非标定问题)。
+
+**(2) 宽度表(H = 2.47µm,单位 µm;面积代理为宽度)**
+
+| 基准(LEF 对照) | 宽度 | 基准 | 宽度 |
+|---|---|---|---|
+| INVX1 (0.57 ✓) | 0.57 | MUX2X1 | 1.33 |
+| NAND2X1 (0.76 ✓) | 0.76 | NOR3X1 | 1.52 |
+| NOR2X1 (0.76 ✓) | 0.76 | XOR2X1 | 1.52 |
+| AND2X1 | 0.95 | CLKBUF1 | 1.71 |
+| NAND3X1 (0.95 ✓) | 0.95 | XNOR2X1 | 2.09 |
+| AOI21X1 (0.95 ✓) | 0.95 | DFFPOSX1 | 2.85 |
+| OAI21X1 (0.95 ✓) | 0.95 | DFFNEGX1 | 4.18 |
+| OR2X1 | 0.95 | AOI22X1 (1.14 ✓) | 1.14 |
+
+| 复合单元 | 宽度 | 说明 |
+|---|---|---|
+| COMPLEX0 | 2.09 | 首解即可行,修复通道 0 违规 |
+| COMPLEX1 | 3.61 | 需要下面的两处修复(见 (3)) |
+| COMPLEX9 | 5.13 | 300s 求解预算下的保守解 |
+| COMPLEX10 | 6.27 | 同上 |
+
+**(3) 紧行高暴露的两个压缩缺陷(P0)**
+
+COMPLEX1 在 H=2.47 下压缩模型被 CBC **证明不可行**(52s 内给出 INFEASIBLE),`autoFlow` 的 `conservative` 0…4 全部失败。两个独立缺陷:
+
+**(3a) 分离规则的第三个分支(q)在紧行高下不可满足。** `insertDistanceRuleInteligent` 给每对形状三个互斥的分离方式(右/上/对角右上),由选择子二进制 `b<A>_<B>_<opt>_<uid>` 门控;§5.11 把端线变量 `a2/b2` 由单边约束改为等式后,第三分支真正生效 —— 其中对角分支 `x_cur_a2 - x_last_b + y_cur_a2 - y_last_b ≥ d` 同时耦合两个坐标,对某些由放置器固定了相对次序的形状对不可满足。**加宽单元也没用**:实测 3 个内部轨道的同一模型同样 INFEASIBLE,说明不是水平空间不足。定位证据:用适配器自己的解析器建同一模型,逐族删除约束 —— 删除全部第三分支后模型在 901s 内给出可行解。
+修复(在求解适配器,失败时触发):仅当模型被**证明 INFEASIBLE** 时,重建并仅丢弃第三分支(`_is_option3_disjunct`:含 `RELAXATION` 且引用 `…_3` 选择子),再解;ASTRAN 随后的**修复通道**按解出坐标强制真实间距,导出仍规则洁净。刻意**不**在超时(`NO_SOLUTION_FOUND`)时触发 —— 那是求解预算问题而非模型缺陷,应保留精确约束,让 `autoFlow` 的保守度/轨道升级复现同一结果(否则改一次预算就会悄悄改变某个单元用的是哪个模型)。对首解即可行的单元完全不触发(20 个单元中 19 个如此)。该回退并非万能:COMPLEX9 的 `conservative = 0` 在丢掉第三分支后仍被证明不可行(那里另有冲突源,未再深挖),该单元最终在 `conservative = 2` 求解成功。
+
+**(3b) 修复通道的四选一分离约束缺少各自的大 M(潜伏缺陷)。** `compact()` 的修复通道对每个违规对插入四个二进制 `t1..t4`(和 = 1)与四条分离约束,但**漏写了 `+ RELAXATION` 项及 `rule + relaxation` 系数**。于是 `t_i = 0` 的分支仍部分生效(例如 t2=0 仍要求 `x_A_a ≥ x_B_b`),与 t1=1 的 `x_B_a ≥ x_A_b` 直接矛盾 —— 任何二进制赋值都不可行,重解恒为 INFEASIBLE,通道空转满 8 轮后带着原违规导出。因 §5.11 之后所有单元首解 0 违规,该缺陷一直未触发(COMPLEX1 之前也只有 0 违规)。
+修复:四条约束改为 `"x…b + RELAXATION"` 且系数 `rule + relaxation`(与 `insertDistanceRuleInteligent` 的写法一致,本处 `relaxation == RELAXATION == 20000`)。重生成后 COMPLEX1 第 0 轮检出 6 对违规、第 1 轮即为 0。
+
+**(4) 结果与回归防护**
+
+- COMPLEX1 重生成:**3.61 × 2.47µm**,`repair=(1, 0)`(1 轮修复,末轮 0 违规)。
+- 终审 sweep(20 个单元)全部通过:UNITS、GDS 尺寸对日志、端口标签(含电源)在 pin 层、MET1-接触-poly 搭接连通分量、无浮岛、修复通道末轮 0 违规。
+- `tests/unit/test_gds_quality.py` 新增两项回归:`(a)` 每个单元日志的最后一条 "Spacing repair pass N: M violating pair(s)" 必须 M = 0;`(b)` 以 MET1-CONT-POLY 搭接图区分同网合并与真违规后,**不同网的 MET1 角距必须 ≥ S1M1M1**。全部 **165** 个单测通过。
+- 惰性验证:用新二进制重生成 INVX1,逐层几何位一致(仅 GDS 时间戳字节不同)—— 证明改动对首解即可行的单元行为不变,故其余 15 个基准与 COMPLEX0/9/10 无需重做。
+
+**(5) 已知取舍(仍开放)**
+
+- 生成的 ASTRAN 行高与 GSCL45 site 一致(2.47µm),金属/通孔层号也已对齐;但**基础层**(active 1、poly 9、contact 10、well 2/3/4/5)仍用本仓库的 Cadence 式编号 —— 若要与 GSCL45 库的 GDS 直接合并,基础层仍需按需重映射(§5.5 的遗留项已缩小到基础层)。
+- `supplysize`/`nwellpos` 由行高比例推得(1.0825 = 2.47/2 − 0.1525),并无 GSCL45 官方工艺文件可对(仓库中没有);DRC 由 ASTRAN 的 `tech_freePDK45.rul` 约束保证。
+- COMPLEX9/COMPLEX10 在默认 300s 求解预算下偏保守(5.13/6.27)。曾用 600s 预算重跑尝试收紧:COMPLEX10 有望变窄,但 COMPLEX9 在 `conservative = 1` 上由适配器回退进入"松弛后靠修复通道补 21 对违规"的昂贵路径,质量反而不如严格模型在 `conservative = 2` 得到的干净解 —— 故**未采用**收紧结果,保留两个单元现有的干净解;如需收紧,应针对单个单元并复核修复通道末轮仍为 0 违规。
+- `compaction.cpp` 新增 `ASTRAN_DUMP_FAILED_LP=1` 时把失败模型写为 `ILPmodel.fail.lp` 的调试口(便于离线定位不可行,不设则行为不变)。

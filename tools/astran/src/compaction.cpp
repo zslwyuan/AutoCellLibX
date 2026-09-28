@@ -637,6 +637,28 @@ int Compaction::solve(string lpSolverFile, int timeLimit) {
     
     _pclose(x);
     
+    // A failed solve is otherwise silent: the adapter writes an all-zero
+    // solution and ASTRAN then emits a 0 x 0 cell.  When ASTRAN_DUMP_FAILED_LP
+    // is set, keep the model that produced it so the infeasibility can be
+    // inspected offline (the LP file is overwritten by the next solve).
+    if (getenv("ASTRAN_DUMP_FAILED_LP") != NULL) {
+        FILE* chk = fopen(solFileName.c_str(), "r");
+        if (chk) {
+            char cl[150];
+            bool anyVar = false;
+            while (fgets(cl, 150, chk)) {
+                if (cl[0] != '#' && cl[0] != '\n' && cl[0] != '\r') { anyVar = true; break; }
+            }
+            fclose(chk);
+            if (!anyVar) {
+                std::ifstream src((lp_filename + ".lp").c_str(), std::ios::binary);
+                std::ofstream dst((lp_filename + ".fail.lp").c_str(), std::ios::binary);
+                dst << src.rdbuf();
+                cout << "-> Dumped failed model to " << lp_filename << ".fail.lp" << endl;
+            }
+        }
+    }
+    
     FILE* stream = fopen(solFileName.c_str(), "r");
     
 	if(stream==NULL)

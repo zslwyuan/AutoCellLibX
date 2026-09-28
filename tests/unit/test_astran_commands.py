@@ -38,12 +38,16 @@ def test_script_wires_lpsolve_paths_and_cell_name():
     assert "COMPLEX1.gds" in script
 
 
-def test_default_geometry_is_the_2p6_cell_used_by_the_flow():
-    assert ASTRAN_CELLS_HEIGHT * ASTRAN_VGRID == 2.6
+def test_default_geometry_matches_the_gscl45_row_height():
+    # GSCL45's CoreSite is 0.38 x 2.47 and its M1 pitch is 0.19, so the flow
+    # uses 13 rows of 0.19 = the exact site height (width, the area proxy, is
+    # only comparable at a fixed height).
+    assert ASTRAN_VGRID == 0.19
+    assert abs(ASTRAN_CELLS_HEIGHT * ASTRAN_VGRID - 2.47) < 1e-9
 
 
 def test_geometry_constants_drive_the_script(monkeypatch):
     """Calibrating the row height is a constants change, nothing else."""
-    monkeypatch.setattr(Astran, "ASTRAN_VGRID", 0.19)
+    monkeypatch.setattr(Astran, "ASTRAN_VGRID", 0.2)
     script = _cmd()
-    assert "set grid 0.2 0.19" in script
+    assert "set grid 0.19 0.2" in script

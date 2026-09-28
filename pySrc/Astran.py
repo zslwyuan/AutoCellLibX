@@ -32,9 +32,9 @@ def loadAstranArea(GDSPath, typeName):
     """Nominal cell width of a generated cell, read from its ASTRAN log.
 
     Width is used as the area proxy: cell area is proportional to width at a
-    fixed row height, so this compares the ASTRAN baseline (generated at
-    H=3.2um) and the locally generated cells (H=2.6um) consistently.  Same
-    metric as GDSIIAnalysis.loadAstranGDS / loadOrignalGSCL45nmGDS.
+    fixed row height, so this compares the ASTRAN baseline and the locally
+    generated cells (both at the GSCL45 row height H=2.47um) consistently.
+    Same metric as GDSIIAnalysis.loadAstranGDS / loadOrignalGSCL45nmGDS.
     """
     logFileName = os.path.join(GDSPath, typeName + ".Astranlog")
     if (os.path.exists(logFileName)):
@@ -46,16 +46,20 @@ def loadAstranArea(GDSPath, typeName):
     return 123
 
 
-# Cell geometry written into every ASTRAN run script.  Row height is
-# cellsHeight * vGrid = 13 * 0.20 = 2.6 um.  These are set explicitly instead
-# of relying on ASTRAN's compiled-in defaults so a run is reproducible.  To
-# target a different library's row height, change them here (e.g. 13 * 0.19 =
-# 2.47 um for the GSCL45 site height) and re-validate DRC on the layouts.
+# Cell geometry written into every ASTRAN run script, calibrated to the
+# GSCL45 library: the LEF's M1 routing pitch is 0.19 um, so the routing grid
+# is 0.19 and the row height is cellsHeight * vGrid = 13 * 0.19 = 2.47 um,
+# which is exactly the GSCL45 CoreSite height (LEF `SIZE x BY 2.47`).  The
+# supply rails use the library's abutment style: 0.13 um tall, centred on
+# the row boundary (half inside, half overhanging), hence supplysize 0.26.
+# Cell widths come out as multiples of 0.19, matching the library's own
+# half-site granularity.  These are set explicitly instead of relying on
+# ASTRAN's compiled-in defaults so a run is reproducible.
 ASTRAN_CELLS_HEIGHT = 13
-ASTRAN_HGRID = 0.20
-ASTRAN_VGRID = 0.20
-ASTRAN_SUPPLY_SIZE = 0.72
-ASTRAN_NWELL_POS = 1.14
+ASTRAN_HGRID = 0.19
+ASTRAN_VGRID = 0.19
+ASTRAN_SUPPLY_SIZE = 0.26
+ASTRAN_NWELL_POS = 1.0825
 ASTRAN_CELL_TEMPLATE = "Tapless"
 
 

@@ -823,6 +823,12 @@ bool AutoCell::compact(string lpSolverFile, int diffStretching, int griddedPoly,
     // coordinates and re-solve with disjunctive keep-away constraints until
     // the layout is rule-clean (or the pass budget is exhausted).
     {
+        // A degenerate (all-zero) solution means the model was infeasible;
+        // spacing "violations" read off it are meaningless and constraining
+        // them explodes the LP.  Fail fast so the caller retries with more
+        // routing room.
+        if (cpt.getVariableVal("width") <= 0)
+            return false;
         map<Box*, int> geoIndex;
         for (int i = 0; i < (int)geometries.size(); i++) geoIndex[geometries[i]] = i;
         for (int repairPass = 0; repairPass < 8; repairPass++) {
@@ -875,10 +881,18 @@ bool AutoCell::compact(string lpSolverFile, int diffStretching, int griddedPoly,
                         cpt.forceBinaryVar(t3);
                         cpt.forceBinaryVar(t4);
                         cpt.insertConstraint("ZERO", t1 + " + " + t2 + " + " + t3 + " + " + t4, CP_EQ, 1);
-                        cpt.insertConstraint("x" + to_string(A.idx) + "b", "x" + to_string(B.idx) + "a", CP_MIN, t1, rule);
-                        cpt.insertConstraint("x" + to_string(B.idx) + "b", "x" + to_string(A.idx) + "a", CP_MIN, t2, rule);
-                        cpt.insertConstraint("y" + to_string(A.idx) + "b", "y" + to_string(B.idx) + "a", CP_MIN, t3, rule);
-                        cpt.insertConstraint("y" + to_string(B.idx) + "b", "y" + to_string(A.idx) + "a", CP_MIN, t4, rule);
+                        // Each option must be *relaxed* when its selector is 0,
+                        // otherwise option t1=1 ("B right of A") coexists with
+                        // t2=0 ("A right of B") -- the four constraints would
+                        // always contradict each other and the re-solve would be
+                        // infeasible.  The "+ RELAXATION" term with the matching
+                        // coefficient is the big-M that disables an option, the
+                        // same device insertDistanceRuleInteligent uses (here
+                        // relaxation == RELAXATION).
+                        cpt.insertConstraint("x" + to_string(A.idx) + "b + RELAXATION", "x" + to_string(B.idx) + "a", CP_MIN, t1, rule + relaxation);
+                        cpt.insertConstraint("x" + to_string(B.idx) + "b + RELAXATION", "x" + to_string(A.idx) + "a", CP_MIN, t2, rule + relaxation);
+                        cpt.insertConstraint("y" + to_string(A.idx) + "b + RELAXATION", "y" + to_string(B.idx) + "a", CP_MIN, t3, rule + relaxation);
+                        cpt.insertConstraint("y" + to_string(B.idx) + "b + RELAXATION", "y" + to_string(A.idx) + "a", CP_MIN, t4, rule + relaxation);
                         violCount++;
                     }
                 }

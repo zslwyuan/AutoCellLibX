@@ -137,6 +137,24 @@ def _round_away(x):
     return int(x + 0.5) if x >= 0 else -int(-x + 0.5)
 
 
+def _is_option3_disjunct(body):
+    """Whether a constraint is the *third* option of a spacing disjunction.
+
+    The spacing helpers give the solver a fixed set of ways to keep two shapes
+    apart, each gated by a selector binary named ``b<A>_<B>_<option>_<uid>``
+    (the uid keeps names unique).  Option 3 is the one that fails to coexist
+    with the rest of the model on a tight row: for MET1/POLY it is the
+    *diagonal* separation (x_cur_a2 - x_last_b + y_cur_a2 - y_last_b >= d,
+    which couples both coordinates and, once the end-line variables a2/b2 are
+    pinned to the real edges, can be unsatisfiable for a placement the placer
+    already fixed), and in the 3-way order helper it is the inverted x-order.
+    Such a constraint always carries the RELAXATION constant and references a
+    ``..._3`` selector.
+    """
+    return ("RELAXATION" in body and
+            re.search(r"\bb[A-Za-z0-9_]*_3(?:_|[^0-9]|$)", body) is not None)
+
+
 def main():
     import mip
 
@@ -161,83 +179,121 @@ def main():
 
     obj_text, cons, int_vars, bin_vars, semi_vars = _read_cplex_lp(modelfile)
 
-    model = mip.Model()
-    model.verbose = 1 if os.environ.get("GUROBI_CL_VERBOSE") else 0
-    _cache = {}
+    def build(drop_option3):
+        model = mip.Model()
+        model.verbose = 1 if os.environ.get("GUROBI_CL_VERBOSE") else 0
+        _cache = {}
 
-    def var(name, vtype=None):
-        v = _cache.get(name)
-        if v is None:
-            v = model.add_var(name=name, var_type=vtype or mip.CONTINUOUS)
-            _cache[name] = v
-        return v
+        def var(name, vtype=None):
+            v = _cache.get(name)
+            if v is None:
+                v = model.add_var(name=name, var_type=vtype or mip.CONTINUOUS)
+                _cache[name] = v
+            return v
 
-    int_set = set(int_vars)
-    bin_set = set(bin_vars)
-    semi_set = set(semi_vars)
+        int_set = set(int_vars)
+        bin_set = set(bin_vars)
+        semi_set = set(semi_vars)
 
-    # declare typed variables first so their type is fixed
-    for name in int_vars:
-        var(name, mip.INTEGER)
-    for name in bin_vars:
-        var(name, mip.BINARY)
-    for name in semi_vars:
-        var(name, mip.CONTINUOUS)
+        # declare typed variables first so their type is fixed
+        for name in int_vars:
+            var(name, mip.INTEGER)
+        for name in bin_vars:
+            var(name, mip.BINARY)
+        for name in semi_vars:
+            var(name, mip.CONTINUOUS)
 
-    def vtype_of(name):
-        if name in bin_set:
-            return mip.BINARY
-        if name in int_set:
-            return mip.INTEGER
-        return mip.CONTINUOUS
+        def vtype_of(name):
+            if name in bin_set:
+                return mip.BINARY
+            if name in int_set:
+                return mip.INTEGER
+            return mip.CONTINUOUS
 
-    # objective
-    obj_terms = _parse_terms(obj_text)
-    model.objective = mip.minimize(
-        mip.xsum(coef * var(n, vtype_of(n)) for coef, n in obj_terms if n is not None))
+        # objective
+        obj_terms = _parse_terms(obj_text)
+        model.objective = mip.minimize(
+            mip.xsum(coef * var(n, vtype_of(n)) for coef, n in obj_terms if n is not None))
 
-    # constraints
-    for body in cons:
-        m = re.match(r"^(.*?)(<=|>=|=)(.*)$", body)
-        if not m:
-            continue
-        lhs, op, rhs = m.group(1), m.group(2), m.group(3)
-        lt = _parse_terms(lhs)
-        rt = _parse_terms(rhs)
-        lhs_expr = mip.xsum(c * var(n, vtype_of(n)) for c, n in lt if n is not None)
-        rhs_expr = mip.xsum(c * var(n, vtype_of(n)) for c, n in rt if n is not None)
-        lhs_const = sum(c for c, n in lt if n is None)
-        rhs_const = sum(c for c, n in rt if n is None)
-        if op == "<=":
-            model += lhs_expr - rhs_expr <= (rhs_const - lhs_const)
-        elif op == ">=":
-            model += lhs_expr - rhs_expr >= (rhs_const - lhs_const)
-        else:
-            model += lhs_expr - rhs_expr == (rhs_const - lhs_const)
+        # constraints
+        for body in cons:
+            if drop_option3 and _is_option3_disjunct(body):
+                continue
+            m = re.match(r"^(.*?)(<=|>=|=)(.*)$", body)
+            if not m:
+                continue
+            lhs, op, rhs = m.group(1), m.group(2), m.group(3)
+            lt = _parse_terms(lhs)
+            rt = _parse_terms(rhs)
+            lhs_expr = mip.xsum(c * var(n, vtype_of(n)) for c, n in lt if n is not None)
+            rhs_expr = mip.xsum(c * var(n, vtype_of(n)) for c, n in rt if n is not None)
+            lhs_const = sum(c for c, n in lt if n is None)
+            rhs_const = sum(c for c, n in rt if n is None)
+            if op == "<=":
+                model += lhs_expr - rhs_expr <= (rhs_const - lhs_const)
+            elif op == ">=":
+                model += lhs_expr - rhs_expr >= (rhs_const - lhs_const)
+            else:
+                model += lhs_expr - rhs_expr == (rhs_const - lhs_const)
 
-    # Compaction runs on an already-legal layout, so a loose relative gap only
-    # reduces how aggressively a cell is shrunk -- it never makes the result
-    # illegal.  CBC finds a good feasible solution on ASTRAN's big-M models but
-    # cannot prove optimality (the LP bound is too weak), so a short first phase
-    # accepts that solution; only when NOTHING was found does the search get the
-    # remaining budget.  This bounds the runtime while keeping the layouts
-    # legal.  For provable optimality use real Gurobi.  GUROBI_CL_TIME_LIMIT
-    # sets the first-phase length.
-    model.max_mip_gap = 0.02
+        # Compaction runs on an already-legal layout, so a loose relative gap
+        # only reduces how aggressively a cell is shrunk -- it never makes the
+        # result illegal.  CBC finds a good feasible solution on ASTRAN's big-M
+        # models but cannot prove optimality (the LP bound is too weak), so a
+        # short first phase accepts that solution; only when NOTHING was found
+        # does the search get the remaining budget.  This bounds the runtime
+        # while keeping the layouts legal.  For provable optimality use real
+        # Gurobi.  GUROBI_CL_TIME_LIMIT sets the first-phase length.
+        model.max_mip_gap = 0.02
+        return model
+
     phase1 = int(os.environ.get("GUROBI_CL_TIME_LIMIT", "300"))
     phase1 = max(60, min(phase1, timelimit))
     # Extended search only when the first phase found nothing at all.
     retry = int(os.environ.get("GUROBI_CL_RETRY_LIMIT", "900"))
     retry = max(0, min(retry, timelimit - phase1))
-    try:
-        status = model.optimize(max_seconds=phase1)
-        if (status == mip.OptimizationStatus.NO_SOLUTION_FOUND and retry > 0):
-            status = model.optimize(max_seconds=retry)
-        ok = status in (mip.OptimizationStatus.OPTIMAL,
-                        mip.OptimizationStatus.FEASIBLE)
-    except Exception as e:  # noqa: BLE001
-        print("Unable to solve model (%s)" % e)
-        return 0
+
+    def solve(model):
+        try:
+            status = model.optimize(max_seconds=phase1)
+            if (status == mip.OptimizationStatus.NO_SOLUTION_FOUND and retry > 0):
+                status = model.optimize(max_seconds=retry)
+        except Exception as e:  # noqa: BLE001
+            print("Unable to solve model (%s)" % e)
+            return mip.OptimizationStatus.NO_SOLUTION_FOUND
+        return status
+
+    def solved(status):
+        return status in (mip.OptimizationStatus.OPTIMAL,
+                          mip.OptimizationStatus.FEASIBLE)
+
+    model = build(False)
+    status = solve(model)
+
+    # Recovery for an infeasible compaction model.  The "intelligent" spacing
+    # rule gives the solver three ways to separate a pair (right of / above /
+    # diagonally up-right); the diagonal option couples both coordinates
+    # (x_cur_a - x_last_b + y_cur_a - y_last_b >= minDist) and, now that the
+    # end-line variables a2/b2 are pinned to the real edges, it can be
+    # unsatisfiable for a pair whose relative placement the placer already
+    # fixed -- the model then has no solution even though a legal layout
+    # exists.  Dropping only the option-3 disjuncts turns that option into a
+    # free escape; ASTRAN's post-solve repair pass then enforces the real
+    # spacing rules on the solved coordinates, so the exported layout stays
+    # rule-clean.
+    #
+    # Triggered only on a *proved* INFEASIBLE, never on a mere timeout: a model
+    # that is feasible but too hard for the time budget must keep its exact
+    # constraints so ASTRAN's normal escalation (conservative, then tracks)
+    # reproduces the same result, and so a time-budget change cannot silently
+    # alter which model produced a cell.
+    if status == mip.OptimizationStatus.INFEASIBLE:
+        print("WARNING: compaction model %s; retrying without the option-3 "
+              "spacing disjuncts (repair pass enforces real spacing)" % status)
+        model = build(True)
+        status = solve(model)
+
+    ok = solved(status)
 
     with open(resultfile, "w") as f:
         if ok and model.objective_value is not None:

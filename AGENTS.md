@@ -47,10 +47,12 @@ is only in the code is effectively undocumented.
 
 2. **Cell geometry is set explicitly in the ASTRAN run script**, not left to
    ASTRAN's compiled-in defaults. `Astran.runAstranForNetlist` emits
-   `set rowheight 13` / `set grid 0.20 0.20` / `set supplysize 0.72` /
-   `set nwellpos 1.14` / `set celltemplate "Tapless"`, i.e. H = 13 × 0.20 =
-   2.6 µm. Change the target row height here (and re-validate DRC), not by
-   editing ASTRAN.
+   `set rowheight 13` / `set grid 0.19 0.19` / `set supplysize 0.26` /
+   `set nwellpos 1.0825` / `set celltemplate "Tapless"`, i.e. H = 13 × 0.19 =
+   2.47 µm — exactly the GSCL45 CoreSite height, with widths on the library's
+   0.19 µm (M1-pitch) granularity and 0.13 µm supply rails like the library's
+   abutment rails (drawn inside the cell). Change the target row height here
+   (and re-validate DRC), not by editing ASTRAN.
 
 3. **ASTRAN puts *expressions* where LP readers expect variable names** (e.g.
    a column named `b0_17_1 + b0_17_2 + b0_17_3`). `compaction.cpp` renames
@@ -117,6 +119,34 @@ is only in the code is effectively undocumented.
   all-zero solution and ASTRAN emits a **0 × 0 cell**; `main.py` detects that
   and excludes the pattern from the reported savings (never count zero width).
   Grep the logs for "no usable LP solution" when a cell is missing or 0 × 0.
+  Set `ASTRAN_DUMP_FAILED_LP=1` to keep the model that failed as
+  `ILPmodel.fail.lp` (the LP is otherwise overwritten by the next solve).
+- **An infeasible compaction model on a tight row is real, and the third
+  disjunct is the usual culprit.** The "intelligent" spacing rule gives the
+  solver three ways to separate a pair (right of / above / diagonally up-right,
+  selected by a `b<A>_<B>_<option>_<uid>` binary). Once `createNode` pins the
+  end-line variables `a2`/`b2` to the real edges (§5.11), option 3 couples both
+  coordinates and can be unsatisfiable for a relative placement the placer
+  already fixed — CBC then *proves* `INFEASIBLE` even though a legal layout
+  exists. `autoFlow`'s `conservative` retry shrinks the diffusion (making it
+  worse) and never widens the cell, so it cannot recover; neither does adding
+  internal tracks. The adapter recovers by rebuilding the model with the option
+  3 disjuncts dropped and re-solving; ASTRAN's repair pass then enforces the
+  real spacing on the solved coordinates. This fires only on a *proved*
+  `INFEASIBLE`, never on a timeout — a model that is merely too hard for the
+  budget must keep its exact constraints so the normal escalation still
+  reproduces the same cell. COMPLEX1 needs the recovery at H = 2.47 — expect
+  the log to show "retrying without the option-3 spacing disjuncts".
+- **Every disjunctive keep-away constraint needs its own big-M term.** The
+  repair pass in `compact()` inserts four binaries per violating pair; each of
+  the four constraints must carry `+ RELAXATION` with coefficient
+  `rule + relaxation`, exactly as `insertDistanceRuleInteligent` writes them.
+  Without it the "off" branch `t_i = 0` still forces e.g. `x_B_a >= x_A_b`, so
+  options 1 and 2 contradict each other and the re-solve is *always*
+  infeasible: the loop spins to its 8-pass budget, leaves the variables
+  untouched, and the cell is exported with the original violations. The log
+  prints "Spacing repair pass N: M violating pair(s)" — the final M must be 0,
+  which `tests/unit/test_gds_quality.py` now enforces.
 - **CBC solves fast but proves slowly.** On ASTRAN's big-M models (M = 20000 µm)
   CBC finds a good feasible solution quickly yet cannot close the 2 % gap, so
   the adapter accepts the first-phase solution after
@@ -149,15 +179,18 @@ is only in the code is effectively undocumented.
   if you touch it.
 - **Do not call `Model.read()` on the generated LP** (see invariant 3).
 - **`build/bin/Astran.exe` looks like malware to 360 Total Security**
-  (`HEUR/QVM…Malware.Gen`, from its `_popen` use). It is a false positive; add
-  the directory to the trust list. It is not committed.
+  (`HEUR/QVM…Malware.Gen`, from its `_popen` use). It is a false positive;
+  `build_astran.sh` now **strips the binary after linking** (the stripped
+  content no longer triggers the on-launch heuristic). Keep that step; if the
+  binary is ever quarantined again, restore the path to 360's trust list.
 - **`wx-config` from MSYS2 mis-resolves under Git Bash.** The build uses
   `tools/astran/bin/wx-config`, a shim that reports the MSYS2 wxWidgets 3.2
   flags directly.
-- **Also reported in a prior audit** and still open: generated row height
-  (2.6 µm) does not exactly match the GSCL45 site height (2.47 µm), and
-  ASTRAN's stream layer numbers differ from the GSCL45 library's — remap before
-  mixing layouts in one GDS. See `doc/AUDIT_REPORT.md` §5.5.
+- **Layer/stream numbers now follow the GSCL45 stream map** (metal1=49,
+  via=50, …) — see `stdCelllib/gds2_encounter.map` and the calibrated layer
+  map in `tools/astran/build/Work/tech_freePDK45.rul`. Generated GDS can be
+  merged with the library without remapping; base layers (active 1, poly 9,
+  contact 10, wells) keep the Cadence-style numbering used across the repo.
 
 ## Workflows
 

@@ -128,30 +128,30 @@ astran> read D:\AutoCellLibX\pySrc\originalAstranStdCells/INVX1.run
  Iteration 17; cost = 1602.000 (1602.000); p_cost = 1602.000; accept = 0.473; avg_delta = 0.000; dp = nan; thres = 130.087; cost_ratio = 1.000; [9]
  final cost = 1602 
 -> Routing cell...
--> Routing finished in 1 attempts after 0 s
+-> Routing finished in 1 attempts after 0.001 s
 -> Final cost: Width=3; Gate Mismatches=0; WL=0; Rt. Density=1; Nr. Gaps=0
    PMOS: M0-
    NMOS: M1-
 -> Routing cell...
--> Routing finished in 1 attempts after 0 s
+-> Routing finished in 1 attempts after 0.001 s
 
--> Cost before optimization:1226
+-> Cost before optimization:1238
 -> Optimizing routing graph...
--> Cost after optimization: 1209
--> Runtime = 0.133 s
+-> Cost after optimization: 1221
+-> Runtime = 0.22 s
 
--> Cost before optimization:1209
+-> Cost before optimization:1221
 -> Optimizing routing graph...
--> Cost after optimization: 1209
--> Runtime = 0.057 s
+-> Cost after optimization: 1221
+-> Runtime = 0.099 s
 -> Compacting layout...
--> Calling LP Solver (1065 variables, 1436 constraints)
+-> Calling LP Solver (1257 variables, 1744 constraints)
 -> Running command: "D:\AutoCellLibX\tools\gurobi_cl\gurobi_cl.cmd" TimeLimit=3600 ResultFile=ILPmodel.sol ILPmodel.lp
 -> To interrupt earlier and get the current best solution, type in a terminal: kill -2 [gurobi process]
--> * and H means new feasible solution found:Solver status OptimizationStatus.OPTIMAL, objective 1.21481e+06
--> repair detection: met1=26 poly=7
+-> * and H means new feasible solution found:Solver status OptimizationStatus.OPTIMAL, objective 1.15451e+06
+-> repair detection: met1=34 poly=7
 -> Spacing repair pass 0: 0 violating pair(s)
--> Cell Size (W x H): 0.6 x 2.6
--> Total generation time for cell INVX1: 3s
+-> Cell Size (W x H): 0.57 x 2.47
+-> Total generation time for cell INVX1: 2s
 -> Saving GDSII Technology Mapping File: D:\AutoCellLibX\pySrc\originalAstranStdCells/GDSIILTable.txt
 -> Saving layout INVX1 to file: D:\AutoCellLibX\pySrc\originalAstranStdCells/INVX1.gds

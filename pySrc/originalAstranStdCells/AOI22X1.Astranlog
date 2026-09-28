@@ -117,7 +117,7 @@ astran> read D:\AutoCellLibX\pySrc\originalAstranStdCells/AOI22X1.run
    NMOS: M4-M5-M6-M7-
 -> Placing transistors...
 -> Routing cell...
--> Routing finished in 10 attempts after 0.009 s
+-> Routing finished in 5 attempts after 0.009 s
  ( initial cost = 9799 num reps = 2400 problem size = 16 )  Iteration 1; cost = 12707.000 (9799.000); p_cost = 12707.000; accept = 1.000; avg_delta = 1.212; dp = 1561.261; thres = 99999.000; cost_ratio = 1.297; [0]
  Iteration 2; cost = 14034.000 (9799.000); p_cost = 14034.000; accept = 1.000; avg_delta = 0.553; dp = 1594.072; thres = 47999.520; cost_ratio = 1.104; [0]
  Iteration 3; cost = 13038.000 (9799.000); p_cost = 13038.000; accept = 1.000; avg_delta = -0.415; dp = 1701.927; thres = 23039.770; cost_ratio = 0.929; [0]
@@ -154,7 +154,7 @@ astran> read D:\AutoCellLibX\pySrc\originalAstranStdCells/AOI22X1.run
  Iteration 34; cost = 5840.000 (5840.000); p_cost = 5840.000; accept = 0.174; avg_delta = 0.000; dp = nan; thres = 415.085; cost_ratio = 1.000; [9]
  final cost = 5840 
 -> Routing cell...
--> Routing finished in 10 attempts after 0.011 s
+-> Routing finished in 5 attempts after 0.009 s
  ( initial cost = 9799 num reps = 2400 problem size = 16 )  Iteration 1; cost = 12679.000 (9799.000); p_cost = 12679.000; accept = 1.000; avg_delta = 1.200; dp = 1630.763; thres = 99999.000; cost_ratio = 1.294; [0]
  Iteration 2; cost = 14288.000 (9799.000); p_cost = 14288.000; accept = 1.000; avg_delta = 0.670; dp = 1605.202; thres = 47999.520; cost_ratio = 1.127; [0]
  Iteration 3; cost = 7763.000 (7763.000); p_cost = 7763.000; accept = 1.000; avg_delta = -2.719; dp = 1583.239; thres = 23039.770; cost_ratio = 0.543; [0]
@@ -190,7 +190,7 @@ astran> read D:\AutoCellLibX\pySrc\originalAstranStdCells/AOI22X1.run
  Iteration 33; cost = 5840.000 (5840.000); p_cost = 5840.000; accept = 0.165; avg_delta = 0.000; dp = nan; thres = 430.610; cost_ratio = 1.000; [9]
  final cost = 5840 
 -> Routing cell...
--> Routing finished in 6 attempts after 0.006 s
+-> Routing finished in 7 attempts after 0.009 s
  ( initial cost = 9799 num reps = 2400 problem size = 16 )  Iteration 1; cost = 14143.000 (9799.000); p_cost = 14143.000; accept = 1.000; avg_delta = 1.810; dp = 1562.196; thres = 99999.000; cost_ratio = 1.443; [0]
  Iteration 2; cost = 11134.000 (9799.000); p_cost = 11134.000; accept = 1.000; avg_delta = -1.254; dp = 1590.079; thres = 47999.520; cost_ratio = 0.787; [0]
  Iteration 3; cost = 15110.000 (9799.000); p_cost = 15110.000; accept = 1.000; avg_delta = 1.657; dp = 1586.350; thres = 23039.770; cost_ratio = 1.357; [0]
@@ -226,30 +226,30 @@ astran> read D:\AutoCellLibX\pySrc\originalAstranStdCells/AOI22X1.run
  Iteration 33; cost = 5840.000 (5840.000); p_cost = 5840.000; accept = 0.166; avg_delta = 0.000; dp = nan; thres = 427.172; cost_ratio = 1.000; [9]
  final cost = 5840 
 -> Routing cell...
--> Routing finished in 6 attempts after 0.007 s
+-> Routing finished in 7 attempts after 0.01 s
 -> Final cost: Width=9; Gate Mismatches=0; WL=10; Rt. Density=3; Nr. Gaps=0
    PMOS: M0-M1-M2-M3-
    NMOS: M4-M5-M6-M7-
 -> Routing cell...
--> Routing finished in 10 attempts after 0.01 s
+-> Routing finished in 5 attempts after 0.01 s
 
--> Cost before optimization:3176
+-> Cost before optimization:3190
 -> Optimizing routing graph...
--> Cost after optimization: 3163
--> Runtime = 1.133 s
+-> Cost after optimization: 3181
+-> Runtime = 2.018 s
 
--> Cost before optimization:3163
+-> Cost before optimization:3181
 -> Optimizing routing graph...
--> Cost after optimization: 3163
--> Runtime = 0.54 s
+-> Cost after optimization: 3181
+-> Runtime = 0.961 s
 -> Compacting layout...
--> Calling LP Solver (3843 variables, 5873 constraints)
+-> Calling LP Solver (4669 variables, 6909 constraints)
 -> Running command: "D:\AutoCellLibX\tools\gurobi_cl\gurobi_cl.cmd" TimeLimit=3600 ResultFile=ILPmodel.sol ILPmodel.lp
 -> To interrupt earlier and get the current best solution, type in a terminal: kill -2 [gurobi process]
--> * and H means new feasible solution found:Solver status OptimizationStatus.FEASIBLE, objective 2.85866e+06
--> repair detection: met1=44 poly=28
+-> * and H means new feasible solution found:Solver status OptimizationStatus.OPTIMAL, objective 2.33406e+06
+-> repair detection: met1=56 poly=28
 -> Spacing repair pass 0: 0 violating pair(s)
--> Cell Size (W x H): 1.4 x 2.6
--> Total generation time for cell AOI22X1: 307s
+-> Cell Size (W x H): 1.14 x 2.47
+-> Total generation time for cell AOI22X1: 14s
 -> Saving GDSII Technology Mapping File: D:\AutoCellLibX\pySrc\originalAstranStdCells/GDSIILTable.txt
 -> Saving layout AOI22X1 to file: D:\AutoCellLibX\pySrc\originalAstranStdCells/AOI22X1.gds

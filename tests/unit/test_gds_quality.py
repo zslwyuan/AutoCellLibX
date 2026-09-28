@@ -13,7 +13,12 @@ found broken once and that are invisible unless the file bytes are inspected:
 3. every port of the netlist -- VCC and GND included -- must carry a pin label
    on the metal1 pin layer (18); power labels used to be missing entirely;
 4. contacts and metal/poly shapes must respect the FreePDK45 minimum widths
-   of the technology file the cell was compiled with.
+   of the technology file the cell was compiled with;
+5. the compaction "spacing repair" loop must converge to zero violating pairs
+   (its keep-away constraints each need their own big-M relaxation term, or
+   the re-solve is infeasible and the loop spins without ever fixing a pair);
+6. metal shapes belonging to *different* nets must respect the S1M1M1 corner
+   spacing.
 
 All checks are pure GDS/netlist parsing (stdlib only) and run against the
 committed artifacts, so they work on a fresh checkout without ASTRAN.
@@ -32,8 +37,12 @@ LAYER, XY, ENDEL, STRING = 0x0D, 0x10, 0x11, 0x19
 # tech_freePDK45.rul: MINSTEP 0.0025um -> internal unit 2.5nm; the GDS writer
 # emits 2x internal coordinates, so one database unit is 1.25nm.
 DBU_UM = 0.00125
-MET1, POLY, CONT, PRB, MET1_PIN = 11, 9, 10, 235, 18
+# stream numbers follow the GSCL45 map (stdCelllib/gds2_encounter.map):
+# metal1 drawing and metal1 pin are both 49; poly 9, contact 10, prBoundary 235
+MET1, POLY, CONT, PRB, MET1_PIN = 49, 9, 10, 235, 49
 W1M1_UM, W2P1_UM, W2CT_UM = 0.065, 0.05, 0.065
+# same-layer spacing from tech_freePDK45.rul (um)
+S1M1M1_UM, S1P1P1_UM = 0.065, 0.075
 
 REPO_DIR = os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__))))
@@ -193,3 +202,85 @@ def test_contact_and_metal_widths_meet_the_technology_rules(path):
             assert min(w, h) >= min_um - 1e-9, (
                 "%s: %s shape %.4f x %.4f below minimum %.4f"
                 % (rel, what, w, h, min_um))
+
+
+def _overlap(a, b):
+    return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
+
+
+def _met1_components(boxes):
+    """Group MET1 shapes into nets via the MET1-CONT-POLY overlap graph.
+
+    Returns [(net_root, box), ...] for every MET1 box: two boxes are on the
+    same net iff they share a root.  Used to tell a legal same-net merge from a
+    spacing violation between two different nets.
+    """
+    shapes = ([(MET1, b) for b in boxes.get(MET1, [])] +
+              [(CONT, b) for b in boxes.get(CONT, [])] +
+              [(POLY, b) for b in boxes.get(POLY, [])])
+    n = len(shapes)
+    parent = list(range(n))
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    touching = {frozenset(p) for p in
+                ((MET1, MET1), (MET1, CONT), (CONT, POLY), (POLY, POLY))}
+    for i in range(n):
+        for j in range(i + 1, n):
+            if (frozenset((shapes[i][0], shapes[j][0])) in touching and
+                    _overlap(shapes[i][1], shapes[j][1])):
+                ri, rj = find(i), find(j)
+                if ri != rj:
+                    parent[ri] = rj
+    return [(find(i), shapes[i][1]) for i in range(n) if shapes[i][0] == MET1]
+
+
+@pytest.mark.skipif(not GDS_FILES, reason="no committed GDS artifacts")
+@pytest.mark.parametrize("path", GDS_FILES)
+def test_spacing_repair_loop_converged(path):
+    # The compaction repair loop only rewrites the layout when a pass reports
+    # violations, so a non-zero final count means the exported cell still
+    # breaks a spacing rule.  This is what a missing big-M term in the
+    # keep-away constraints used to cause: the re-solve was infeasible, so the
+    # loop spun to its pass budget without ever fixing a pair.
+    log = os.path.splitext(path)[0] + ".Astranlog"
+    if not os.path.exists(log):
+        pytest.skip("no log for %s" % os.path.basename(path))
+    passes = [(int(m.group(1)), int(m.group(2)))
+              for m in (re.match(r"-> Spacing repair pass (\d+): (\d+) violating", l)
+                        for l in open(log, errors="replace")) if m]
+    assert passes, "%s: no spacing repair pass recorded" % os.path.basename(path)
+    last_pass, violations = passes[-1]
+    assert violations == 0, (
+        "%s: repair loop stopped at pass %d with %d violating pair(s)"
+        % (os.path.basename(path), last_pass, violations))
+
+
+@pytest.mark.skipif(not GDS_FILES, reason="no committed GDS artifacts")
+@pytest.mark.parametrize("path", GDS_FILES)
+def test_different_net_metal_spacing_meets_the_rule(path):
+    rel = os.path.basename(path)
+    _, boxes, _ = parse_gds(path)
+    items = _met1_components(boxes)
+    rule = S1M1M1_UM / DBU_UM
+    offenders = []
+    for i in range(len(items)):
+        ci, a = items[i]
+        for j in range(i + 1, len(items)):
+            cj, b = items[j]
+            if ci == cj:
+                continue
+            dx = max(a[0], b[0]) - min(a[2], b[2])
+            dy = max(a[1], b[1]) - min(a[3], b[3])
+            if dx < 0 and dy < 0:
+                continue  # overlapping: same net merged by abutting shapes
+            cdx, cdy = max(dx, 0), max(dy, 0)
+            if cdx * cdx + cdy * cdy < rule * rule:
+                offenders.append((a, b, dx, dy))
+    assert not offenders, (
+        "%s: %d metal pair(s) closer than S1M1M1, e.g. %s"
+        % (rel, len(offenders), offenders[0]))

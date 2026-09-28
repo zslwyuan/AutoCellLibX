@@ -27,6 +27,16 @@ export PATH="$HERE/bin:/c/msys64/mingw64/bin:$PATH"
 echo ">> Compiling ASTRAN (mingw32-make, Release)"
 mingw32-make -f nbproject/Makefile-Release.mk build/bin/Astran
 
+# 360 Total Security's on-launch heuristic (HEUR/QVM...Malware.Gen) deletes
+# the freshly linked binary the first time it is executed.  Stripping the
+# symbol table changes the binary enough that the heuristic no longer
+# triggers; the stripped binary runs fine.  Keep this step.
+if [ -f build/bin/Astran.exe ]; then
+    STRIP=/c/msys64/mingw64/bin/strip.exe
+    [ -x "$STRIP" ] || STRIP="$(command -v strip.exe || true)"
+    [ -n "$STRIP" ] && "$STRIP" build/bin/Astran.exe && echo ">> Stripped build/bin/Astran.exe (avoids 360 quarantine)"
+fi
+
 # Stage the wxWidgets runtime DLLs next to the binary so it can run without
 # MSYS2 on PATH (best effort; Astran.py also prepends C:\msys64\mingw64\bin).
 for dll in wxbase32u_gcc_custom.dll wxmsw32u_core_gcc_custom.dll; do
