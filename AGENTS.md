@@ -21,6 +21,34 @@ three pieces:
 Everything is one repository, one test suite, one commit history. There is no
 separate ASTRAN checkout to keep in sync.
 
+## Desktop GUI (`gui/`)
+
+A PySide6 front end (`python -m gui` or `python gui/app.py`) that wraps the
+same pipeline in a stage-aware, cancellable run and adds the visualisations
+the CLI never had (interactive GDS viewer, pattern/design graphs, area
+charts).  When changing the flow, keep these GUI-side invariants:
+
+- **The core is Qt-free and unit-tested.** `gui/paths.py`, `gui/artifacts.py`
+  (record/log/SPICE readers), `gui/gds_model.py`, `gui/flow_core.py` are plain
+  Python; only `gui/widgets/` and `gui/tabs/` touch Qt.  The parsing/calibration
+  behaviour is pinned by `tests/unit/test_gui_artifacts.py`.
+- **`flow_core.py` is a faithful port of `main.py`'s control flow** with
+  progress callbacks and cancellation.  It must keep the same guards (trace-keyed
+  de-dup, 0×0-layout exclusion, incremental `bestRecord-*` writes) and run one
+  ASTRAN cell at a time.  A GUI run and a CLI run must produce the same cells.
+- **The GDS viewer calibrates against the log, never the file's UNITS record.**
+  ASTRAN writes a bogus UNITS record; empirically every generated cell is 16.5
+  GDS units/µm, so the viewer scales by (outline-height / log-height).  See
+  `gui/gds_model.py`.
+- **matplotlib is pinned to Agg** in `gui/app.py` before the flow's pyplot
+  imports, so the worker-thread pattern figures never touch the Qt backend.
+- **ASTRAN launch failures are surfaced as actionable guidance** (the 360
+  Total Security false positive), not raw tracebacks — see
+  `flow_core._popen_astran`.  If the binary is quarantined, the layout run
+  fails with that message; whitelist `tools/astran/build/bin/` and rebuild.
+
+See `gui/README.md` for the page-by-page tour.
+
 ## Canonical documents
 
 | Document | Contents |
@@ -210,6 +238,9 @@ bash tools/astran/build_astran.sh
 
 # run the whole flow
 cd pySrc && python main.py
+
+# run the desktop GUI (PySide6)
+python -m gui
 
 # regenerate one cell's layout without re-running mining
 cd pySrc && python regenerate_cells.py --dir outputs/adder COMPLEX1

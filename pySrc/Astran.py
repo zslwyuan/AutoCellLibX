@@ -63,8 +63,14 @@ ASTRAN_NWELL_POS = 1.235
 ASTRAN_CELL_TEMPLATE = "Tapless"
 
 
-def buildAstranCommands(gurobiPath, technologyPath, spiceNetlistPath, complexName, commandDir):
-    """Build the ASTRAN shell-mode script for one cell (runs nothing)."""
+def buildAstranCommands(gurobiPath, technologyPath, spiceNetlistPath, complexName, commandDir, geometry=None):
+    """Build the ASTRAN shell-mode script for one cell (runs nothing).
+
+    ``geometry`` optionally overrides the compiled-in constants above (keys:
+    cellsHeight, hGrid, vGrid, supplySize, nwellPos, cellTemplate).  The GUI
+    uses this so the user can experiment with row height / grid / supply rails
+    without editing this file; anything not in the dict keeps the constants.
+    """
     script = """set lpsolve "@gurobiPath@"
 load technology "@technologyPath@"
 load netlist "@netlistPath@"
@@ -78,16 +84,17 @@ cellgen autoflow
 export layout @name@ @commandDir@/@name@.gds
 exit
 """
+    geometry = geometry or {}
     substitutions = {
         "gurobiPath": gurobiPath,
         "technologyPath": technologyPath,
         "netlistPath": spiceNetlistPath,
-        "cellsHeight": str(ASTRAN_CELLS_HEIGHT),
-        "hGrid": "%g" % ASTRAN_HGRID,
-        "vGrid": "%g" % ASTRAN_VGRID,
-        "supplySize": "%g" % ASTRAN_SUPPLY_SIZE,
-        "nwellPos": "%g" % ASTRAN_NWELL_POS,
-        "cellTemplate": ASTRAN_CELL_TEMPLATE,
+        "cellsHeight": str(geometry.get("cellsHeight", ASTRAN_CELLS_HEIGHT)),
+        "hGrid": "%g" % geometry.get("hGrid", ASTRAN_HGRID),
+        "vGrid": "%g" % geometry.get("vGrid", ASTRAN_VGRID),
+        "supplySize": "%g" % geometry.get("supplySize", ASTRAN_SUPPLY_SIZE),
+        "nwellPos": "%g" % geometry.get("nwellPos", ASTRAN_NWELL_POS),
+        "cellTemplate": geometry.get("cellTemplate", ASTRAN_CELL_TEMPLATE),
         "name": complexName,
         "commandDir": commandDir,
     }
