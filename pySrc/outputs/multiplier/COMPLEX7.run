@@ -1,0 +1,13 @@
+set lpsolve "D:\AutoCellLibX\tools\gurobi_cl\gurobi_cl.cmd"
+load technology "D:\AutoCellLibX\tools\astran\build\Work\tech_freePDK45.rul"
+load netlist "./outputs/multiplier/COMPLEX7.sp"
+set rowheight 13
+set grid 0.19 0.19
+set supplysize 0.26
+set nwellpos 1.235
+set celltemplate "Tapless"
+cellgen select COMPLEX7
+cellgen autoflow
+export layout COMPLEX7 ./outputs/multiplier/COMPLEX7.gds
+exit
+
