@@ -168,7 +168,7 @@ astran> read D:\AutoCellLibX\pySrc\outputs\adder/COMPLEX0.run
    NMOS: MCL1#3-MCL1#2-MCL0#2-MCL0#3-MCL2#5-MCL2#4-MCL2#3-
 -> Placing transistors...
 -> Routing cell...
--> Routing finished in 6 attempts after 0.037 s
+-> Routing finished in 4 attempts after 0.034 s
  ( initial cost = 17104 num reps = 7350 problem size = 49 )  Iteration 1; cost = 28639.000 (17104.000); p_cost = 28639.000; accept = 1.000; avg_delta = 1.569; dp = 2319.423; thres = 99999.000; cost_ratio = 1.674; [0]
  Iteration 2; cost = 28223.000 (17104.000); p_cost = 28223.000; accept = 1.000; avg_delta = -0.057; dp = 2311.978; thres = 47999.520; cost_ratio = 0.985; [0]
  Iteration 3; cost = 26511.000 (17104.000); p_cost = 26511.000; accept = 1.000; avg_delta = -0.233; dp = 2251.442; thres = 23039.770; cost_ratio = 0.939; [0]
@@ -222,8 +222,7 @@ astran> read D:\AutoCellLibX\pySrc\outputs\adder/COMPLEX0.run
  Iteration 51; cost = 9043.000 (9043.000); p_cost = 9043.000; accept = 0.107; avg_delta = 0.000; dp = nan; thres = 375.611; cost_ratio = 1.000; [9]
  final cost = 9043 
 -> Routing cell...
--> Routing finished in 4 attempts after 0.036 s
--> New best transistor ordering found with cost: 4655
+-> Routing finished in 3 attempts after 0.034 s
  ( initial cost = 17104 num reps = 7350 problem size = 49 )  Iteration 1; cost = 31265.000 (17104.000); p_cost = 31265.000; accept = 1.000; avg_delta = 1.927; dp = 2336.731; thres = 99999.000; cost_ratio = 1.828; [0]
  Iteration 2; cost = 26251.000 (17104.000); p_cost = 26251.000; accept = 1.000; avg_delta = -0.682; dp = 2287.689; thres = 47999.520; cost_ratio = 0.840; [0]
  Iteration 3; cost = 27847.000 (17104.000); p_cost = 27847.000; accept = 1.000; avg_delta = 0.217; dp = 2305.757; thres = 23039.770; cost_ratio = 1.061; [0]
@@ -274,7 +273,7 @@ astran> read D:\AutoCellLibX\pySrc\outputs\adder/COMPLEX0.run
  Iteration 48; cost = 9043.000 (9043.000); p_cost = 9043.000; accept = 0.106; avg_delta = 0.000; dp = nan; thres = 408.089; cost_ratio = 1.000; [9]
  final cost = 9043 
 -> Routing cell...
--> Routing finished in 6 attempts after 0.038 s
+-> Routing finished in 4 attempts after 0.034 s
  ( initial cost = 17104 num reps = 7350 problem size = 49 )  Iteration 1; cost = 29071.000 (17104.000); p_cost = 29071.000; accept = 1.000; avg_delta = 1.628; dp = 2333.488; thres = 99999.000; cost_ratio = 1.700; [0]
  Iteration 2; cost = 27408.000 (17104.000); p_cost = 27408.000; accept = 1.000; avg_delta = -0.226; dp = 2422.131; thres = 47999.520; cost_ratio = 0.943; [0]
  Iteration 3; cost = 27599.000 (17104.000); p_cost = 27599.000; accept = 1.000; avg_delta = 0.026; dp = 2374.612; thres = 23039.770; cost_ratio = 1.007; [0]
@@ -329,30 +328,30 @@ astran> read D:\AutoCellLibX\pySrc\outputs\adder/COMPLEX0.run
  Iteration 52; cost = 9043.000 (9043.000); p_cost = 9043.000; accept = 0.110; avg_delta = 0.000; dp = nan; thres = 367.372; cost_ratio = 1.000; [9]
  final cost = 9043 
 -> Routing cell...
--> Routing finished in 6 attempts after 0.039 s
+-> Routing finished in 4 attempts after 0.035 s
 -> Final cost: Width=16; Gate Mismatches=0; WL=14; Rt. Density=2; Nr. Gaps=2
-   PMOS: MCL2#0-MCL2#1-MCL2#2-MCL0#1-MCL0#0-MCL1#0-MCL1#1-
-   NMOS: MCL2#3-MCL2#4-MCL2#5-MCL0#3-MCL0#2-MCL1#2-MCL1#3-
+   PMOS: MCL1#1-MCL1#0-MCL0#0-MCL0#1-MCL2#2-MCL2#1-MCL2#0-
+   NMOS: MCL1#3-MCL1#2-MCL0#2-MCL0#3-MCL2#5-MCL2#4-MCL2#3-
 -> Routing cell...
--> Routing finished in 4 attempts after 0.03 s
+-> Routing finished in 4 attempts after 0.033 s
 
--> Cost before optimization:4655
+-> Cost before optimization:4662
 -> Optimizing routing graph...
--> Cost after optimization: 4636
--> Runtime = 10.702 s
+-> Cost after optimization: 4623
+-> Runtime = 11.343 s
 
--> Cost before optimization:4636
+-> Cost before optimization:4623
 -> Optimizing routing graph...
--> Cost after optimization: 4636
--> Runtime = 4.506 s
+-> Cost after optimization: 4623
+-> Runtime = 4.707 s
 -> Compacting layout...
--> Calling LP Solver (10902 variables, 16379 constraints)
+-> Calling LP Solver (10165 variables, 14890 constraints)
 -> Running command: "D:\AutoCellLibX\tools\gurobi_cl\gurobi_cl.cmd" TimeLimit=3600 ResultFile=ILPmodel.sol ILPmodel.lp
 -> To interrupt earlier and get the current best solution, type in a terminal: kill -2 [gurobi process]
--> * and H means new feasible solution found:Solver status OptimizationStatus.OPTIMAL, objective 4.28254e+06
--> repair detection: met1=128 poly=49
+-> * and H means new feasible solution found:Solver status OptimizationStatus.FEASIBLE, objective 4.66174e+06
+-> repair detection: met1=124 poly=49
 -> Spacing repair pass 0: 0 violating pair(s)
--> Cell Size (W x H): 2.09 x 2.47
--> Total generation time for cell COMPLEX0: 89s
+-> Cell Size (W x H): 2.28 x 2.47
+-> Total generation time for cell COMPLEX0: 351s
 -> Saving GDSII Technology Mapping File: D:\AutoCellLibX\pySrc\outputs\adder/GDSIILTable.txt
 -> Saving layout COMPLEX0 to file: D:\AutoCellLibX\pySrc\outputs\adder/COMPLEX0.gds

@@ -109,7 +109,7 @@ astran> read D:\AutoCellLibX\pySrc\originalAstranStdCells/OR2X1.run
    NMOS: M5-M4-M3-
 -> Placing transistors...
 -> Routing cell...
--> Routing finished in 4 attempts after 0.005 s
+-> Routing finished in 4 attempts after 0.006 s
  ( initial cost = 6639 num reps = 1350 problem size = 9 )  Iteration 1; cost = 7740.000 (6639.000); p_cost = 7740.000; accept = 1.000; avg_delta = 0.816; dp = 1242.555; thres = 99999.000; cost_ratio = 1.166; [0]
  Iteration 2; cost = 8572.000 (6639.000); p_cost = 8572.000; accept = 1.000; avg_delta = 0.616; dp = 1177.330; thres = 47999.520; cost_ratio = 1.107; [0]
  Iteration 3; cost = 9899.000 (6639.000); p_cost = 9899.000; accept = 1.000; avg_delta = 0.983; dp = 1234.454; thres = 23039.770; cost_ratio = 1.155; [0]
@@ -141,7 +141,7 @@ astran> read D:\AutoCellLibX\pySrc\originalAstranStdCells/OR2X1.run
  Iteration 29; cost = 4116.000 (4116.000); p_cost = 4116.000; accept = 0.219; avg_delta = 0.000; dp = nan; thres = 346.939; cost_ratio = 1.000; [9]
  final cost = 4116 
 -> Routing cell...
--> Routing finished in 4 attempts after 0.005 s
+-> Routing finished in 4 attempts after 0.006 s
  ( initial cost = 6639 num reps = 1350 problem size = 9 )  Iteration 1; cost = 9818.000 (6639.000); p_cost = 9818.000; accept = 1.000; avg_delta = 2.355; dp = 1210.966; thres = 99999.000; cost_ratio = 1.479; [0]
  Iteration 2; cost = 4613.000 (4613.000); p_cost = 4613.000; accept = 1.000; avg_delta = -3.856; dp = 1255.027; thres = 47999.520; cost_ratio = 0.470; [0]
  Iteration 3; cost = 8364.000 (4613.000); p_cost = 8364.000; accept = 1.000; avg_delta = 2.779; dp = 1259.071; thres = 23039.770; cost_ratio = 1.813; [0]
@@ -207,30 +207,30 @@ astran> read D:\AutoCellLibX\pySrc\originalAstranStdCells/OR2X1.run
  Iteration 31; cost = 4116.000 (4116.000); p_cost = 4116.000; accept = 0.198; avg_delta = 0.000; dp = nan; thres = 317.220; cost_ratio = 1.000; [9]
  final cost = 4116 
 -> Routing cell...
--> Routing finished in 4 attempts after 0.005 s
+-> Routing finished in 4 attempts after 0.007 s
 -> Final cost: Width=7; Gate Mismatches=0; WL=5; Rt. Density=2; Nr. Gaps=0
    PMOS: M2-M1-M0-
    NMOS: M5-M4-M3-
 -> Routing cell...
--> Routing finished in 4 attempts after 0.005 s
+-> Routing finished in 4 attempts after 0.006 s
 
--> Cost before optimization:2019
+-> Cost before optimization:2029
 -> Optimizing routing graph...
--> Cost after optimization: 2012
--> Runtime = 1.182 s
+-> Cost after optimization: 2010
+-> Runtime = 1.312 s
 
--> Cost before optimization:2012
+-> Cost before optimization:2010
 -> Optimizing routing graph...
--> Cost after optimization: 2012
--> Runtime = 0.512 s
+-> Cost after optimization: 2010
+-> Runtime = 0.611 s
 -> Compacting layout...
--> Calling LP Solver (3763 variables, 5229 constraints)
+-> Calling LP Solver (3040 variables, 4365 constraints)
 -> Running command: "D:\AutoCellLibX\tools\gurobi_cl\gurobi_cl.cmd" TimeLimit=3600 ResultFile=ILPmodel.sol ILPmodel.lp
 -> To interrupt earlier and get the current best solution, type in a terminal: kill -2 [gurobi process]
--> * and H means new feasible solution found:Solver status OptimizationStatus.OPTIMAL, objective 1.94148e+06
--> repair detection: met1=56 poly=21
+-> * and H means new feasible solution found:Solver status OptimizationStatus.OPTIMAL, objective 1.94364e+06
+-> repair detection: met1=50 poly=21
 -> Spacing repair pass 0: 0 violating pair(s)
 -> Cell Size (W x H): 0.95 x 2.47
--> Total generation time for cell OR2X1: 9s
+-> Total generation time for cell OR2X1: 11s
 -> Saving GDSII Technology Mapping File: D:\AutoCellLibX\pySrc\originalAstranStdCells/GDSIILTable.txt
 -> Saving layout OR2X1 to file: D:\AutoCellLibX\pySrc\originalAstranStdCells/OR2X1.gds

@@ -88,7 +88,7 @@ astran> read D:\AutoCellLibX\pySrc\originalAstranStdCells/INVX1.run
  Iteration 17; cost = 1602.000 (1602.000); p_cost = 1602.000; accept = 0.587; avg_delta = 0.000; dp = nan; thres = 149.329; cost_ratio = 1.000; [9]
  final cost = 1602 
 -> Routing cell...
--> Routing finished in 1 attempts after 0.001 s
+-> Routing finished in 1 attempts after 0 s
  ( initial cost = 1602 num reps = 150 problem size = 1 )  Iteration 1; cost = 2206.000 (1602.000); p_cost = 2206.000; accept = 1.000; avg_delta = 4.027; dp = 301.328; thres = 99999.000; cost_ratio = 1.377; [0]
  Iteration 2; cost = 2206.000 (1602.000); p_cost = 2206.000; accept = 1.000; avg_delta = 0.000; dp = 301.032; thres = 47999.520; cost_ratio = 1.000; [1]
  Iteration 3; cost = 2206.000 (1602.000); p_cost = 2206.000; accept = 1.000; avg_delta = 0.000; dp = 300.277; thres = 23039.770; cost_ratio = 1.000; [2]
@@ -108,7 +108,7 @@ astran> read D:\AutoCellLibX\pySrc\originalAstranStdCells/INVX1.run
  Iteration 17; cost = 1602.000 (1602.000); p_cost = 1602.000; accept = 0.487; avg_delta = 0.000; dp = nan; thres = 152.882; cost_ratio = 1.000; [9]
  final cost = 1602 
 -> Routing cell...
--> Routing finished in 1 attempts after 0 s
+-> Routing finished in 1 attempts after 0.001 s
  ( initial cost = 1602 num reps = 150 problem size = 1 )  Iteration 1; cost = 2206.000 (1602.000); p_cost = 2206.000; accept = 1.000; avg_delta = 4.027; dp = 301.570; thres = 99999.000; cost_ratio = 1.377; [0]
  Iteration 2; cost = 1602.000 (1602.000); p_cost = 1602.000; accept = 1.000; avg_delta = -4.027; dp = 300.277; thres = 47999.520; cost_ratio = 0.726; [0]
  Iteration 3; cost = 2206.000 (1602.000); p_cost = 2206.000; accept = 1.000; avg_delta = 4.027; dp = 299.304; thres = 23039.770; cost_ratio = 1.377; [0]
@@ -135,21 +135,21 @@ astran> read D:\AutoCellLibX\pySrc\originalAstranStdCells/INVX1.run
 -> Routing cell...
 -> Routing finished in 1 attempts after 0.001 s
 
--> Cost before optimization:1238
+-> Cost before optimization:1235
 -> Optimizing routing graph...
--> Cost after optimization: 1221
--> Runtime = 0.22 s
+-> Cost after optimization: 1218
+-> Runtime = 0.202 s
 
--> Cost before optimization:1221
+-> Cost before optimization:1218
 -> Optimizing routing graph...
--> Cost after optimization: 1221
--> Runtime = 0.099 s
+-> Cost after optimization: 1218
+-> Runtime = 0.086 s
 -> Compacting layout...
--> Calling LP Solver (1257 variables, 1744 constraints)
+-> Calling LP Solver (1212 variables, 1664 constraints)
 -> Running command: "D:\AutoCellLibX\tools\gurobi_cl\gurobi_cl.cmd" TimeLimit=3600 ResultFile=ILPmodel.sol ILPmodel.lp
 -> To interrupt earlier and get the current best solution, type in a terminal: kill -2 [gurobi process]
--> * and H means new feasible solution found:Solver status OptimizationStatus.OPTIMAL, objective 1.15451e+06
--> repair detection: met1=34 poly=7
+-> * and H means new feasible solution found:Solver status OptimizationStatus.OPTIMAL, objective 1.15425e+06
+-> repair detection: met1=32 poly=7
 -> Spacing repair pass 0: 0 violating pair(s)
 -> Cell Size (W x H): 0.57 x 2.47
 -> Total generation time for cell INVX1: 2s

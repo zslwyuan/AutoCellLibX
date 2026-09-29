@@ -48,11 +48,12 @@ is only in the code is effectively undocumented.
 2. **Cell geometry is set explicitly in the ASTRAN run script**, not left to
    ASTRAN's compiled-in defaults. `Astran.runAstranForNetlist` emits
    `set rowheight 13` / `set grid 0.19 0.19` / `set supplysize 0.26` /
-   `set nwellpos 1.0825` / `set celltemplate "Tapless"`, i.e. H = 13 × 0.19 =
+   `set nwellpos 1.235` / `set celltemplate "Tapless"`, i.e. H = 13 × 0.19 =
    2.47 µm — exactly the GSCL45 CoreSite height, with widths on the library's
    0.19 µm (M1-pitch) granularity and 0.13 µm supply rails like the library's
-   abutment rails (drawn inside the cell). Change the target row height here
-   (and re-validate DRC), not by editing ASTRAN.
+   abutment rails (drawn inside the cell). `nwellpos` = H/2, so nwell and
+   pwell come out equal height, matching the handcrafted library. Change the
+   target row height here (and re-validate DRC), not by editing ASTRAN.
 
 3. **ASTRAN puts *expressions* where LP readers expect variable names** (e.g.
    a column named `b0_17_1 + b0_17_2 + b0_17_3`). `compaction.cpp` renames
@@ -180,9 +181,12 @@ is only in the code is effectively undocumented.
 - **Do not call `Model.read()` on the generated LP** (see invariant 3).
 - **`build/bin/Astran.exe` looks like malware to 360 Total Security**
   (`HEUR/QVM…Malware.Gen`, from its `_popen` use). It is a false positive;
-  `build_astran.sh` now **strips the binary after linking** (the stripped
-  content no longer triggers the on-launch heuristic). Keep that step; if the
-  binary is ever quarantined again, restore the path to 360's trust list.
+  `build_astran.sh` strips the binary after linking, which *reduces* the
+  heuristic hits but does not prevent a quarantine when 360 updates its
+  definitions (observed twice). The durable fix is adding the directory to
+  360's trust list (done manually on the development machine); `Astran.keep`
+  and `AstranBackup.zip` next to the binary are restore backups for a
+  mid-run quarantine.
 - **`wx-config` from MSYS2 mis-resolves under Git Bash.** The build uses
   `tools/astran/bin/wx-config`, a shim that reports the MSYS2 wxWidgets 3.2
   flags directly.
