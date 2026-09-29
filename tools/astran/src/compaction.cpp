@@ -8,6 +8,54 @@
 
 #include <cctype>
 #include <algorithm>
+#ifdef _WIN32
+#include <fcntl.h>
+#include <io.h>
+#include <windows.h>
+#endif
+
+/**
+ Run a shell command and return a read pipe, like _popen, but without any
+ console window: ASTRAN runs with CREATE_NO_WINDOW from the AutoCellLibX GUI,
+ so a plain _popen would make cmd.exe flash a black window for every LP solve.
+ The child's stderr stays on our stderr (the caller redirects it into the log
+ when it wants it); the .sol file is the real result channel.
+ */
+static FILE* astranPopenNoWindow( const std::string & cmd ) {
+#ifdef _WIN32
+	SECURITY_ATTRIBUTES sa;
+	sa.nLength = sizeof(sa);
+	sa.bInheritHandle = TRUE;
+	sa.lpSecurityDescriptor = NULL;
+	HANDLE rd, wr;
+	if( !CreatePipe(&rd, &wr, &sa, 0) )
+		return NULL;
+	SetHandleInformation(rd, HANDLE_FLAG_INHERIT, 0);
+	std::string full = "cmd.exe /c " + cmd;
+	STARTUPINFOA si;
+	ZeroMemory(&si, sizeof(si));
+	si.cb = sizeof(si);
+	si.dwFlags = STARTF_USESTDHANDLES;
+	si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+	si.hStdOutput = wr;
+	si.hStdError = GetStdHandle(STD_ERROR_HANDLE);
+	PROCESS_INFORMATION pi;
+	ZeroMemory(&pi, sizeof(pi));
+	if( !CreateProcessA(NULL, &full[0], NULL, NULL, TRUE,
+	                    CREATE_NO_WINDOW, NULL, NULL, &si, &pi) ) {
+		CloseHandle(rd);
+		CloseHandle(wr);
+		return NULL;
+	}
+	CloseHandle(wr);
+	CloseHandle(pi.hThread);
+	CloseHandle(pi.hProcess);
+	int fd = _open_osfhandle((intptr_t)rd, _O_RDONLY | _O_TEXT);
+	return _fdopen(fd, "r");
+#else
+	return _popen(cmd.c_str(), "r");
+#endif
+}
 
 /** Constructor. */
 Compaction::Compaction( cp_algo a ,string name) {
@@ -376,7 +424,7 @@ void Compaction::insertLPMinVar( string v, int i ) {
  string cmd = "\"" + lpSolverFile + "\" " + 	lp_filename + ".lp 2> temp.log";
  cout << "-> Running command: " << cmd << endl;
  
- FILE *x = _popen(cmd.c_str(), "r");
+ FILE *x = astranPopenNoWindow(cmd);
  
  if(x==NULL){
  cout << "-> ERROR: Problem to execute lp_solve!" << endl;
@@ -609,7 +657,7 @@ int Compaction::solve(string lpSolverFile, int timeLimit) {
 
 	cout << "-> Running command: " << cmd << endl;
 	
-	FILE *x = _popen(cmd.c_str(), "r");
+	FILE *x = astranPopenNoWindow(cmd);
 	
 	if(x==NULL)
 		throw AstranError("Problem executing: " + cmd);

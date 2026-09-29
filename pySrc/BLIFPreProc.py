@@ -35,7 +35,21 @@ def softmax(x):
     return e_x / e_x.sum()
 
 
+# parse_liberty (via liberty-parser + sympy boolean functions) is the dominant
+# cost of every design parse, and the GUI/flow parse the same library many
+# times per process.  Cache the parsed cell dict per (path, mtime): the
+# StdCellType objects are read-only after loadLibertyFile returns, so sharing
+# them across parses is safe.
+_liberty_cache = {}
+
+
 def loadLibertyFile(fileName):
+    key = (os.path.abspath(fileName), os.path.getmtime(fileName))
+    if key in _liberty_cache:
+        # Shallow copy: callers may add bool-* gate types for their own BLIF
+        # (loadBoolGateFromBLIF), which must not leak into the shared cache.
+        return dict(_liberty_cache[key])
+
     # Read and parse a library.
     library = parse_liberty(open(fileName).read())
 
@@ -58,6 +72,7 @@ def loadLibertyFile(fileName):
 
         stdCellLib[name] = newStdCellType
 
+    _liberty_cache[key] = stdCellLib
     return stdCellLib
 
 

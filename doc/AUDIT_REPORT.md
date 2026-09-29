@@ -610,3 +610,32 @@ ASTRAN 只给 IOgeometries 里的信号端口打标(route() 把 vdd/gnd 排除�
 - `blifparser`=MIT、`gdstk`=Boost-1.0、`mip`=EPL-2.0(均从 dist-info 核实);
 - 修改过的 ASTRAN 源码保留原版权头(Apache 2.0 §4(c) 的归属要求);`compaction.cpp` 等改动已在 §5.1/§5.9-5.12 记录;
 - 安装包(make_stage.py)现在随包携带 LICENSE/NOTICE/THIRD_PARTY_NOTICES.md/tools/astran/LICENSE.md,客户安装目录可自查。
+
+### 5.15 第十一轮:设计页解析慢与邻居深度不刷新(2026-09-29)
+
+**症状**:① 设计页解析耗时久;② 换深度(1→2→3)结果不变。
+
+**根因**:
+- 解析慢的三层原因:(a) 每次解析都重新走 `parse_liberty`(liberty-parser + sympy 布尔函数),固定开销约 0.9s(本机),之前**无缓存**;(b) BLIF 解析与规模线性:div 1.7MB≈0.5s、log2 1.9MB≈0.6s,6MB+ 基准更久;(c) 大设计(8MB+)按设计即警告。用户重复点「解析设计」或来回切基准时反复付出全部代价。
+- 深度不刷新的真 bug:`_show_neighbourhood` 的 BFS 里 `keep |= nxt` 之后才算 `frontier = nxt - keep`,永远为空——**深度 1/2/3 实际都只展开一层**;再加上深度 QSpinBox 没有连任何刷新信号,调深度完全无效果。
+
+**修复**:
+- `pySrc/BLIFPreProc.py`:`loadLibertyFile` 增加 (路径,mtime) 键控的进程级缓存,返回浅拷贝隔离 `loadBoolGateFromBLIF` 的 bool-* 注入(避免跨基准污染)。实测:第二次解析 0.93s→0.01s。
+- `gui/tabs/design.py`:
+  - BFS 重写:先 `nxt -= keep` 再并入,frontier 保持"本层新发现"节点;深度 1/2/3 实测节点数 2/3/3(修复前恒为 2);
+  - `depth.valueChanged` 连接 `_show_neighbourhood`,调深度立即重绘;
+  - `_parse` 按输入签名短路:同一基准且 BLIF/PDK 路径与 mtime 未变时直接显示 `state.designs` 缓存(不启动 worker)。
+- `gui/flow_core.py`:`parse_design` 的 info 里写入 `_parse_sig`((blif 路径,mtime),(lib 路径,mtime)),供设计页比对。
+
+**验证**:194 单测通过;offscreen 下缓存命中(worker 启动数=0)、BFS 深度单调增长;max/div/log2 首解析 0.0s/0.5s/0.6s。
+
+### 5.16 第十二轮:无窗口 ASTRAN、解析提速确认与邻居探索修复(2026-09-29)
+
+**症状**:① GUI 运行流程时不断弹出黑色控制台窗口;② 设计页解析"还是很慢";③ 邻居探索"不正常"。
+
+**根因与修复**:
+- ① 弹窗有三层来源,全部消除:(a) `flow_core._popen_astran` 从 GUI(pythonw,无控制台)启动 Astran.exe 时未带 `CREATE_NO_WINDOW`,每个单元运行都会开一个黑窗口(且持续整个运行过程)→ 现在 `CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW`;(b) ASTRAN 内部用 `_popen(cmd)` 调求解器,`cmd.exe` 本身也会闪窗 → compaction.cpp 新增 `astranPopenNoWindow`(CreatePipe + CreateProcessA + CREATE_NO_WINDOW + `_open_osfhandle`/`_fdopen`),两个求解调用点(379/612)替换,非 Windows 平台回退 `_popen`;(c) `gurobi_cl.cmd` 改用 `pythonw`(ASTRAN 只读 ResultFile=.sol,不读 stdout),`gurobi_cl.py` 加 stdout/stderr 为 None 时的 devnull 守护(print 不崩)。重建 ASTRAN 后 INVX1/NOR3X1 冒烟全部通过。
+- ② 解析实测(安装副本,缓存生效后):adder 0.0s、arbiter 0.2s、log2 0.5s、BoomRob 0.8s、BoomRegisterFile 1.1s、GemminiMesh(6MB)1.9s、GemminiLoopConv(12MB,包内最大)4.5s。首解析的固定成本是 liberty(约 0.9s),已按 (路径,mtime) 缓存;BLIF 解析与网表线性,无法更快(纯 Python 解析器)。"很慢"的剩余解释:包内 >8MB 基准(GemminiLoopConv 等)首解析数秒级属正常。
+- ③ 邻居探索两个缺陷:(a) 上一轮 BFS 重写丢了"收集时封顶"——常见类型深度 2 一层可收数千节点,spring 布局(UI 线程)卡死 → 恢复收集期 `MAX_NEIGHBOURHOOD` 上限(实测 div 深度 2 收 21 节点封顶);(b) INVX1 冒烟测试的 GDS 包围盒断言(bb<5 用户单位)在 GDS UNITS 校准提交后过时——GDS 的 UNITS 记录按设计不可信(AGENTS.md 不变式 1,查看器按日志校准),测试改为以日志 Cell Size 为权威 + GDS 非退化矩形检查。
+
+**验证**:194 单测 + 3 集成测试全绿;新 ASTRAN 求解链路(无窗口 popen + pythonw 包装)在日志中 OPTIMAL、0.57×2.47µm、修复通道 0 违规。

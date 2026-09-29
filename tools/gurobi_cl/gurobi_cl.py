@@ -24,6 +24,14 @@ import os
 import re
 import sys
 
+# Run under pythonw.exe (no console): the C runtime hands the interpreter
+# None for stdout/stderr.  print() must not crash -- route everything to the
+# logs ASTRAN already keeps (it only reads the ResultFile, not our stdout).
+if sys.stdout is None:
+    sys.stdout = open(os.devnull, "w")
+if sys.stderr is None:
+    sys.stderr = open(os.devnull, "w")
+
 if "HOME" not in os.environ:
     os.environ["HOME"] = os.environ.get("USERPROFILE", "C:\\Users\\Administrator")
 if "USERPROFILE" not in os.environ:

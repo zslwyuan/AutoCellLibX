@@ -4,6 +4,7 @@ These need the ASTRAN binary from ``tools/astran/build/bin`` -- run
 ``bash tools/astran/build_astran.sh`` first.
 """
 import os
+import re
 
 import pytest
 
@@ -36,15 +37,21 @@ def test_astran_runs_invx1_smoke(in_pysrc, tmp_path):
     gds = os.path.join(outdir, "INVX1.gds")
     assert os.path.exists(gds), "ASTRAN produced no GDS (see INVX1.Astranlog)"
 
+    # The log's "Cell Size (W x H)" is the authoritative dimension (AGENTS.md
+    # invariant 1): ASTRAN writes a bogus GDS UNITS record on purpose, so GDS
+    # user units are NOT microns -- the GUI viewer calibrates against the log
+    # (gui/gds_model.py).  Assert the compacted size from the log and that the
+    # GDS cell is a non-degenerate rectangle.
+    log = open(os.path.join(outdir, "INVX1.Astranlog")).read()
+    m = re.search(r"Cell Size \(W x H\): ([\d.]+) x ([\d.]+)", log)
+    assert m, "log must report a cell size"
+    w, h = (float(v) for v in m.groups())
+    assert 0 < w < 5 and 0 < h < 5
+
     lib = gdstk.read_gds(gds)
     cell = next(c for c in lib.cells if c.name == "INVX1")
     bb = cell.bounding_box()
-    w, h = bb[1][0] - bb[0][0], bb[1][1] - bb[0][1]
-    assert 0 < w < 5 and 0 < h < 5
-
-    # the ASTRAN log must report a cell size
-    log = open(os.path.join(outdir, "INVX1.Astranlog")).read()
-    assert "-> Cell Size (W x H):" in log
+    assert bb[1][0] > bb[0][0] and bb[1][1] > bb[0][1]
 
 
 def test_astran_runs_nor3x1_gap_ordering_smoke(in_pysrc, tmp_path):

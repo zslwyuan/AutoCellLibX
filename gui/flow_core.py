@@ -56,9 +56,17 @@ def _popen_astran(run_path, log_fh, **kwargs):
     (HEUR/QVM...Malware.Gen): it gets quarantined on first execution, so a
     path that existed at probe time can raise FileNotFoundError/PermissionError
     here.  A raw traceback tells the user nothing; this does.
+
+    On Windows the child gets CREATE_NO_WINDOW: the GUI runs console-less
+    (pythonw), so without it every ASTRAN cell launch would pop a black
+    console window.  CREATE_NEW_PROCESS_GROUP keeps cancel able to kill the
+    solver with it.
     """
     cmd = [paths.ASTRAN_BINARY, "--shell", run_path]
     try:
+        if sys.platform == "win32":
+            kwargs["creationflags"] = (subprocess.CREATE_NEW_PROCESS_GROUP |
+                                       subprocess.CREATE_NO_WINDOW)
         return subprocess.Popen(cmd, cwd=paths.PYSRC_DIR, stdout=log_fh,
                                 stderr=subprocess.STDOUT, **kwargs)
     except (PermissionError, FileNotFoundError, OSError) as exc:
@@ -1029,6 +1037,13 @@ def parse_design(benchmark, hooks=None, cancel_event=None, blif_path=None,
         name = cell.stdCellType.typeName
         type_count[name] = type_count.get(name, 0) + 1
     hist = sorted(type_count.items(), key=lambda kv: (-kv[1], kv[0]))
+
+    def _sig(p):
+        try:
+            return (p, os.path.getmtime(p))
+        except OSError:
+            return (p, None)
+
     info = {
         "benchmark": benchmark,
         "graph": BLIFGraph,
@@ -1040,6 +1055,9 @@ def parse_design(benchmark, hooks=None, cancel_event=None, blif_path=None,
         "type_hist": hist,
         "stop_cells": sum(1 for c in cells if c.stopType),
         "feature_types": stdCellTypesForFeature,
+        # Input signature so the Design tab can reuse the cached graph
+        # instead of re-parsing when nothing changed.
+        "_parse_sig": (_sig(blif_abs), _sig(lib_abs)),
     }
     hooks.design(info)
     hooks.log("设计图完成 / design graph: %d nodes, %d edges, %d types"

@@ -52,7 +52,8 @@ class DesignTab(QWidget):
             ("看分布", "左侧直方图：单元类型分布（Top 24），了解设计的逻辑构成。"),
             ("探索", "右侧「邻居探索」：选一个类型 → 调深度 → 「显示示例」，画出该类型一个实例的"
              "上下游邻居子图（高亮=根）；点击节点看详情。"),
-            ("缓存", "已解析的设计会缓存，切换基准后需重新解析。"),
+            ("缓存", "已解析的设计按输入（BLIF/PDK 路径与时间戳）缓存：同一基准重复点"
+             "「解析设计」且输入未变时直接显示缓存；更换 BLIF 或 PDK 后自动重新解析。"),
         ])
         root.addWidget(self.guide)
         self.hint = subtle("解析网表后，可查看单元类型分布，并在任意类型周围探索其邻居子图。"
@@ -101,7 +102,10 @@ class DesignTab(QWidget):
         self.show_btn.clicked.connect(self._show_neighbourhood)
         crow.addWidget(self.show_btn)
         controls.add_layout(crow)
-        self.sample_note = faint("选择类型后点击『显示示例』，查看一个实例的邻居子图（高亮为根）。")
+        # Changing the depth re-renders the neighbourhood immediately.
+        self.depth.valueChanged.connect(self._show_neighbourhood)
+        self.sample_note = faint("选择类型后点击『显示示例』，查看一个实例的邻居子图（高亮为根）；"
+                                 "调节深度会立即刷新。")
         controls.add(self.sample_note)
         right_lay.addWidget(controls)
 
@@ -182,6 +186,24 @@ class DesignTab(QWidget):
         name = self.bench.currentData()
         if not name:
             return
+        # Reuse this session's cached graph when the inputs are unchanged:
+        # re-parsing a benchmark (liberty + BLIF) is the slow part.
+        cached = self.ctx.state.designs.get(name)
+        if cached and cached.get("graph") is not None and \
+                cached.get("_parse_sig"):
+            blif = self.ctx.state.blif_path(name)
+            lib = self.ctx.state.config.liberty()
+
+            def _sig(p):
+                try:
+                    return (p, os.path.getmtime(p))
+                except OSError:
+                    return (p, None)
+
+            if cached["_parse_sig"] == (_sig(blif), _sig(lib)):
+                self.hint.setText("输入未变化，直接显示已解析的 %s。" % name)
+                self.set_design(cached)
+                return
         self.set_busy(True)
         self.hint.setText("正在解析 %s …" % name)
         self.ctx.start_design_parse(name)
@@ -220,20 +242,27 @@ class DesignTab(QWidget):
             self.graph.clear()
             return
 
-        # BFS over predecessors/successors up to depth, capped.
+        # BFS over predecessors/successors up to depth.  The frontier must be
+        # the nodes discovered *this* layer only (unioning it into `keep`
+        # before computing the next frontier would always empty it), and the
+        # collection is capped so one dense layer cannot flood the canvas.
         keep = {root_id}
         frontier = {root_id}
         for _d in range(depth):
             nxt = set()
             for node in frontier:
                 for nb in graph.successors(node):
-                    if len(keep) < MAX_NEIGHBOURHOOD:
+                    if nb not in keep and len(keep) + len(nxt) < MAX_NEIGHBOURHOOD:
                         nxt.add(nb)
                 for nb in graph.predecessors(node):
-                    if len(keep) < MAX_NEIGHBOURHOOD:
+                    if nb not in keep and len(keep) + len(nxt) < MAX_NEIGHBOURHOOD:
                         nxt.add(nb)
+                if len(keep) + len(nxt) >= MAX_NEIGHBOURHOOD:
+                    break
+            if not nxt:
+                break
             keep |= nxt
-            frontier = nxt - keep
+            frontier = nxt
             if len(keep) >= MAX_NEIGHBOURHOOD:
                 break
         sub = graph.subgraph(sorted(keep)).copy()
