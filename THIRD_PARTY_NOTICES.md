@@ -6,9 +6,7 @@ that is **shipped inside the repository or the customer installer**, its
 origin, and its license terms.  Python packages imported at run time are
 listed as a group with pointers to their bundled license texts.
 
-The project's own terms (from `LICENSE`): non-commercial use is covered by
-the Apache License 2.0; **commercial use requires contacting the project
-authors** (Wei ZHANG, eeweiz@ust.hk; Tingyuan LIANG, tliang@connect.ust.hk).
+The project's own terms are the Apache License 2.0 (see `LICENSE`).
 Third-party components keep their own license terms; where a component has
 no explicit license text, the situation is stated exactly as it is instead
 of being assumed.

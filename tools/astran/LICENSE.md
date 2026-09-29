@@ -32,9 +32,8 @@ GSCL45 standard cells and the layouts of the mined complex cells.
 - The upstream project has historically been distributed for research and
   academic use.  AutoCellLibX redistributes it (sources under
   `tools/astran/src/`, built binary under `tools/astran/build/bin/`) as part
-  of the AutoCellLibX project, which is itself Apache-2.0 for non-commercial
-  use and requires contacting the AutoCellLibX authors for commercial use
-  (see the root `LICENSE`).
+  of the AutoCellLibX project, which is licensed under the Apache License
+  2.0 (see the root `LICENSE`).
 - **For commercial use of ASTRAN, contact its authors first.**  This is the
   same precaution AutoCellLibX takes for its own commercial clause: we do
   not grant — and cannot grant — rights on ASTRAN beyond what its copyright

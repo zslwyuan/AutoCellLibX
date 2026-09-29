@@ -117,7 +117,7 @@ AutoCellLibX\
 
 | 文件 | 内容 |
 |---|---|
-| `LICENSE` | AutoCellLibX 项目许可：非商业使用遵循 Apache License 2.0；**商业使用须联系项目作者授权**（Wei ZHANG, eeweiz@ust.hk；Tingyuan LIANG, tliang@connect.ust.hk） |
+| `LICENSE` | AutoCellLibX 项目许可：Apache License 2.0 |
 | `NOTICE` | 版权声明与第三方归属摘要 |
 | `THIRD_PARTY_NOTICES.md` | 全部第三方组件的来源与许可清单（ASTRAN、GSCL45/FreePDK45 数据、基准网表、内置 Python 依赖） |
 | `tools\astran\LICENSE.md` | ASTRAN（UFRGS）的来源与许可状况说明 |
@@ -127,8 +127,8 @@ AutoCellLibX\
 1. **ASTRAN**（版图合成器，UFRGS 开源项目，上游 github.com/aziesemer/astran）
    的源码中**没有附带许可文本**——本安装包如实记录其来源与版权头，
    不代替其作者授予任何权利。学术/研究用途按上游惯例；
-   **商业用途请先联系 ASTRAN 作者确认**（与 AutoCellLibX 自身的
-   商业授权条款一致）。
+   **商业用途请先联系 ASTRAN 作者确认**（ASTRAN 的许可独立于
+   AutoCellLibX 自身的 Apache 2.0 许可）。
 2. 内置 Python 运行时中的每个包均保留其自带许可文本
    （`runtime\Lib\site-packages\*.dist-info\licenses\`）。
    其中 `liberty-parser` 为 GPL-3.0-or-later，是唯一的强 copyleft 依赖，
