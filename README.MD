@@ -27,6 +27,13 @@ This project is developed by [Reconfiguration Computing Systems Lab](https://eew
 For non-commercial usage of this open-source project, users should comply the Apache License attached in the root directory.
 For commercial usage of this open-source project, users must contact project supervisor (Wei ZHANG, eeweiz@ust.hk) for authorization.
 
+Attribution: see [`NOTICE`](NOTICE) for the copyright statement and
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) for every third-party
+component shipped with the project (ASTRAN, GSCL45/FreePDK45 data, benchmark
+netlists, bundled Python dependencies).  ASTRAN's own provenance and license
+status (vendored from UFRGS; its sources carry no license text, documented
+rather than assumed) is in [`tools/astran/LICENSE.md`](tools/astran/LICENSE.md).
+
 ## Publications
 
 \[1\] AutoCellLibX: Automated Standard Cell Library Extension Based on Pattern Mining[(Arxiv)](https://arxiv.org/abs/2207.12314)

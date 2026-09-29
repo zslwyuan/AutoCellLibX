@@ -552,3 +552,61 @@ ASTRAN 只给 IOgeometries 里的信号端口打标(route() 把 vdd/gnd 排除�
 - 曾在 1.0825 几何下用 600s 预算尝试收紧 COMPLEX9/COMPLEX10(当时 5.13/6.27):COMPLEX10 有望变窄,但 COMPLEX9 在 `conservative = 1` 上由适配器回退进入"松弛后靠修复通道补 21 对违规"的昂贵路径,质量反而不如严格模型在 `conservative = 2` 得到的干净解 —— 未采用;等井高几何下两者已分别降至 3.61/5.89 且首解可行,无需再收紧。
 - 运维:360 对 `build/bin/Astran.exe` 的启动误杀在 strip 之后仍会随其定义更新复发(strip 只解决了当次),最终以手工白名单解决;`build_astran.sh` 的 strip 步骤保留,`Astran.keep`/zip 备份可用于应急恢复。
 - `compaction.cpp` 新增 `ASTRAN_DUMP_FAILED_LP=1` 时把失败模型写为 `ILPmodel.fail.lp` 的调试口(便于离线定位不可行,不设则行为不变)。
+
+### 5.13 第九轮:结果页解释增强与客户安装包(2026-09-29)
+
+**(1) 结果页(Results)解释增强** —— `gui/tabs/results.py` 重写为教学式页面,内容全部保留原有数据逻辑(行为不变,194 个单测通过):
+
+- 阅读引导从 6 条扩到 7 条:先讲"这一页讲什么"(挖掘→合并→省面积的因果),再逐条讲六个数字、三张图与两个记录文件的读法;
+- 三张图卡片内各加一段"图下说明"(并排宽度的来源、总节省 = 单位节省 × 出现次数、两个基准口径为何不可直接比较);
+- 新增「术语表」卡片(KeyValue,11 个词条:模式/复杂单元/出现次数/覆盖/模式码/ASTRAN 基线/GSCL 基准/并排与合并宽度/单位与总节省/节省率/0×0 排除);
+- bestRecord 卡片加"逐行格式说明"(第 1–4 行语义、入选模式元组字段、seperate 文件各列);
+- 顶部六个 StatTile 各加 hint 行。构建验证:`QT_QPA_PLATFORM=offscreen` 下构造 ResultsTab 并 refresh 成功。
+
+**(2) 客户安装包** —— 无网络环境下(无 PyInstaller/Inno Setup/NSIS 可用)制作单文件自解压安装器,全部脚本在 `tools/package/`:
+
+- `make_stage.py` 装配 `dist/stage/`:流程本体(pySrc、stdCelllib、benchmark/blif 去掉 BoomBranchPredictor 与 DCache 两个 >90MB 巨型网表、tools/astran/build、tools/gurobi_cl、doc)+ 从开发机 Python 3.11 复制的**裁剪运行时**(site-packages 按 `SITE_KEEP` 保留列表,2.9GB → 970MB);
+- PySide6 只保留 QtCore/QtGui/QtWidgets(+QtSvg),按前缀去掉 WebEngine/QML/Quick/Multimedia 等(642MB → ~240MB);**坑**:初版把 `pyside6.abi3.dll`/`icu*.dll` 等非 Qt 前缀的支持 DLL 一并删了,`import QtWidgets` 报 DLL load failed —— 过滤必须以"Qt 前缀 + 白名单"为准,支持 DLL 全留;
+- 运行时裁剪踩到的隐性依赖(按导入失败逐个补进 `SITE_KEEP`):sklearn 1.9 需要 `narwhals`,liberty-parser 需要 `sympy`+`mpmath`,python-mip 需要 `cffi`(+`pycparser`);cbcbox 只留 `cbc_dist*/bin+lib`(mip 通过 `cbc_lib_dir()` 找 `libCbc-0.dll`),实测 CBC 求解正常;
+- `launcher.c` 编译为 `AutoCellLibX.exe`(自定位目录、PATH 前置 runtime、起 `pythonw -m gui`);**坑**:MSYS2 MinGW gcc 从 Git Bash 直调无法 spawn cc1.exe,必须经 `C:\msys64\usr\bin\bash.exe -lc` 驱动;
+- `installer_stub.c` 是自解压 stub(静态 CRT + 静态 zlib):找自身尾部 ZIP(解析 EOCD/中央目录,deflate 解压),进度条对话框,解压到 %TEMP% 后跑 `setup.cmd`(robocopy 到 `%LOCALAPPDATA%\AutoCellLibX` + PowerShell 建桌面/开始菜单快捷方式),结束后清理;`make_installer.py` 把 stage 打成 ZIP 追加到 stub 后即为 `dist/AutoCellLibX-Setup.exe`;
+- 交付文档 `README_DELIVERY.md`(客户视角:系统要求、安装/卸载、360 误报白名单步骤、目录结构、FAQ、数字口径)随包发布。
+
+**(3) 验证路径(交付前必跑)**
+
+1. `dist/stage` 内用自带 `runtime\python.exe` 导入全部流程模块 + PySide6,QApplication 可建,`probe_environment()` 全绿;
+2. `from mip import Model` 实测 CBC 求解(OPTIMAL);
+3. 安装器端到端:运行 `AutoCellLibX-Setup.exe` → 解压 → setup.cmd 复制 + 建快捷方式 → 从 `%LOCALAPPDATA%\AutoCellLibX` 启动 GUI;
+4. 在安装副本上跑 adder 全流程(基线/版图均命中缓存,验证挖掘→记录闭环)。
+
+已知取舍:安装包约 1GB(压缩后),因为内置完整 Python 运行时;大网表不随包(需 8MB+ 交互警告,文档说明可手工拷回);ASTRAN 的 360 误报无法自动规避,交付文档给出白名单步骤。
+
+**(4) 安装器实现与验证过程中的踩坑(全部已修复并在 E2E 中验证)**
+
+1. **360 实时防护(HEUR/QVM…Malware.Gen 启发式)** 会把 `dist/` 下每个新编译的 exe 隔离,包括**未附加任何数据的纯 stub**(行为指纹:解压→%TEMP% 写文件→拉起 cmd→递归删除,与恶意投放器重合)。无签名、无网络下载的 MinGW 产物必然中招;白名单(信任区)可解,但注意 360 的"主动防御/进程创建"与"木马查杀"是两层,都要放行。客户侧处理步骤已写入 `README_DELIVERY.md`。
+2. **Git Bash 的 TEMP=/tmp(POSIX 路径)** 会被 `_wgetenv("TEMP")` 原样取到,拼出非法路径。stub 改用 `SHGetFolderPathW(CSIDL_LOCAL_APPDATA)` 取 Windows 真实临时目录(经二进制 dump 验证返回完整路径)。
+3. **MSYS2/MinGW 链接的是旧 msvcrt.dll**,其 wprintf 族中 `%s` 按**窄字符串**解释(标准 C 是宽串)。stub 里所有宽字符串格式的 `%s` 必须写 `%ls`,否则路径被截成首字符(对话框只显示 "C")、调试日志写不进。`wsprintfW`(user32)的 `%s` 是宽串,不受影响。
+4. **批处理文件里的非 ASCII 文本**:cmd.exe 按 ANSI 代码页(GBK)解析 .cmd,UTF-8 中文会把命令边界撕碎(报 `'P' 不是内部或外部命令`)。`setup.cmd`/`uninstall.cmd`/`make_shortcuts.ps1` 全部改为纯 ASCII,中文说明移到 `README_DELIVERY.md`。
+5. **`%~dp0` 尾部反斜杠**:`"D:\...\dist\"` 的 `\"` 会让 cmd 吞掉引号、整个命令行粘连成一个参数(robocopy 报"未指定目标目录",错误码 16)。标准修法:`if "%SRC:~-1%"=="\" set "SRC=%SRC:~0,-1%"`。
+6. **批处理里 `echo` 的 `|` 必须转义为 `^|`**(ASCII 重写时容易丢)。
+7. **`SHFileOperationW` 的 FO_DELETE 在此环境静默不生效**(退出码被忽略,目录残留);改为自写 FindFirstFileW 递归删除,验证通过。
+8. **site-packages 白名单漏项**:`_cffi_backend.cp311-win_amd64.pyd`(cffi 的编译后端)不在保留列表,全量重建 stage 时被丢弃,导致安装副本 `import mip` 失败("No module named '_cffi_backend'")。教训:每次增删 SITE_KEEP 后必须重跑"导入冒烟 + 一次 LP 求解"验证。
+9. **卸载脚本的 `rd /s /q` 不能删除自己的工作目录**:先 `cd /d "%TEMP%"` 再删。
+
+最终交付物:`dist/AutoCellLibX-Setup.exe`(stub,0.13MB)+ `dist/AutoCellLibX-Setup.dat`(312MB,10370 文件)。E2E 全链路验证:解压→安装到 %LOCALAPPDATA%→桌面/开始菜单快捷方式→临时目录清理→安装副本启动 GUI→完整 adder 流程(FINISHED ok,bestRecord 1.55%)→卸载清理干净。
+
+### 5.14 第十轮:许可合规完善(2026-09-29)
+
+**背景**:仓库只有 `LICENSE`(Apache 2.0 + 商业授权联系条款),但随包/仓库分发的第三方组件没有系统性的许可说明——尤其 ASTRAN 的 vendored 源码树里**没有任何许可文本**(无 LICENSE/COPYING/GPL 文件,头文件仅含 UFRGS 版权行),这对客户交付是合规缺口。
+
+**新增文件**:
+- `NOTICE`(仓库根):AutoCellLibX 版权声明(Apache 2.0 要求)+ 第三方归属摘要;
+- `THIRD_PARTY_NOTICES.md`(仓库根):逐组件清单——ASTRAN(来源/版权头/无许可文本的如实记录/修改记录/wxWidgets LGPL 动态链接)、gurobi_cl 包装(自有)+ python-mip(EPL-2.0)+ CBC(EPL-1.0)、stdCelllib(GSCL45=FreePDK45 系 Apache-2.0、sky130=Apache-2.0、gpdk45nm.m=Cadence 专有)、benchmark(EPFL 研究用、BOOM/Rocket/Gemmini BSD-3 系)、内置 Python 依赖全表(逐包许可证,并指向 runtime 内 dist-info 自带文本);
+- `tools/astran/LICENSE.md`:ASTRAN 专项许可说明——如实陈述"源码无许可文本、版权归 UFRGS 作者、上游 github.com/aziesemer/astran、商业使用需联系其作者",不代替其作者授予权利;
+- `README.MD` License 章节与 `README_DELIVERY.md` 新增「许可与合规」章节引用上述文件。
+
+**合规要点(已核实,非猜测)**:
+- `liberty-parser` 是 GPL-3.0-or-later(唯一强 copyleft 依赖,从 dist-info METADATA 核实),文档中明确标注并提供替换思路;
+- `blifparser`=MIT、`gdstk`=Boost-1.0、`mip`=EPL-2.0(均从 dist-info 核实);
+- 修改过的 ASTRAN 源码保留原版权头(Apache 2.0 §4(c) 的归属要求);`compaction.cpp` 等改动已在 §5.1/§5.9-5.12 记录;
+- 安装包(make_stage.py)现在随包携带 LICENSE/NOTICE/THIRD_PARTY_NOTICES.md/tools/astran/LICENSE.md,客户安装目录可自查。

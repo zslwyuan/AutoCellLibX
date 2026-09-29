@@ -60,6 +60,21 @@ python main.py
 - The LP solver used by ASTRAN is `tools/gurobi_cl/gurobi_cl.cmd`
   (python-mip + COIN-OR CBC), injected via ASTRAN's `set lpsolve` command.
 
+### GUI
+
+There is also a PySide6 desktop front end for the same flow (configure, run
+with live per-cell progress, then inspect patterns, GDS layouts and area
+charts):
+
+```bash
+pip install PySide6
+python -m gui          # or: python gui/app.py
+```
+
+See `gui/README.md`.  The GUI drives the same vendored ASTRAN through
+`tools/gurobi_cl`, so the same caveats apply (one cell at a time; the 360 Total
+Security false positive on `build/bin/Astran.exe`).
+
 ## 4. Test
 
 ```bash
@@ -90,3 +105,50 @@ Test layout:
 - If 360 Total Security flags the freshly built `Astran.exe`
   (`HEUR/QVM...Malware.Gen`, caused by its `_popen` usage), add
   `tools/astran/build/bin` to its trust list — this is a known false positive.
+
+## 6. Customer installer (`tools/package/`)
+
+The customer deliverable is a single self-extracting installer built **without
+network access**: no PyInstaller/Inno Setup required.
+
+```bash
+python tools/package/make_installer.py
+# -> dist/AutoCellLibX-Setup.exe   (stub + appended ZIP of the stage)
+```
+
+The pipeline is:
+
+1. `make_stage.py` assembles `dist/stage/` — a portable app folder: the flow
+   (`pySrc`, `stdCelllib`, `benchmark/blif` without the two >90 MB giants),
+   the vendored ASTRAN build and `tools/gurobi_cl`, plus a **pruned Python
+   3.11 runtime** copied from the dev install (site-packages reduced to the
+   packages the flow actually imports; PySide6 trimmed to QtCore/QtGui/
+   QtWidgets). The keep-list is `SITE_KEEP` in the script — new Python deps
+   must be added there or the stage import test fails.
+2. `make_icon.py` renders the app icon; `launcher.c` is the portable
+   `AutoCellLibX.exe` (finds its own dir, prepends `runtime\` on PATH, starts
+   `pythonw -m gui`); both compile with MSYS2 MinGW (drive gcc/windres through
+   `C:\msys64\usr\bin\bash.exe` — invoked straight from Git Bash gcc cannot
+   spawn cc1.exe).
+3. `installer_stub.c` is a self-extracting stub (static CRT + static zlib):
+   it finds the ZIP appended to itself, extracts to `%TEMP%` behind a progress
+   dialog, runs `setup.cmd` (copies to `%LOCALAPPDATA%\AutoCellLibX`, creates
+   Desktop/Start-Menu shortcuts) and cleans up.  `setup.cmd` / `uninstall.cmd`
+   / `make_shortcuts.ps1` / `README_DELIVERY.md` ship inside the stage.
+4. `make_installer.py` zips the stage and appends it to the stub.
+
+Verification before handing out a build (all must pass):
+
+```bash
+cd dist/stage
+./runtime/python.exe -c "import sys; sys.path[:0] = ['.', 'pySrc']; \
+    import matplotlib; matplotlib.use('Agg'); \
+    import Astran, BLIFPreProc, BLIFPatternGrowth, spice, GDSIIAnalysis; \
+    from gui import paths; \
+    print([c.label for c in paths.probe_environment() if not c.ok and c.required])"
+```
+
+plus a `from mip import Model` LP solve (cbcbox pruning) and a real GUI launch
+from the installed copy.  The launcher/console entry points are
+`AutoCellLibX.exe` and `AutoCellLibX-Console.cmd` (console shows Python
+stderr, for customer-side diagnosis).
