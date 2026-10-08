@@ -37,7 +37,8 @@ def build_stub():
         sys.exit("MSYS2 bash not found: %s" % MSYS_BASH)
     if os.path.exists(STUB_EXE):
         os.remove(STUB_EXE)
-    cmd = ("cd '%s' && gcc -O2 -mwindows -static installer_stub.c "
+    cmd = ("cd '%s' && gcc -O2 -mwindows -static -fno-use-linker-plugin "
+           "installer_stub.c "
            "-o '%s' -lz -lshell32 -lcomctl32 -luser32 -lgdi32 -lole32"
            % (PKG, STUB_EXE))
     subprocess.run([MSYS_BASH, "-lc", cmd], check=True)

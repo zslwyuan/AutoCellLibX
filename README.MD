@@ -17,7 +17,7 @@ which shows the overall flow that we presented in the released paper for people 
 If you are curious about more details or some parts of the implementation confuse you, please feel free to raise issue in GitHub or contact us.
 
 <p align="center">
-<img src="https://github.com/zslwyuan/AutoCellLibX/blob/main/doc/pattern.png" alt="Pattern" title="Pattern" width="400" /> 
+<img src="doc/pattern.png" alt="Pattern" title="Pattern" width="400" /> 
 </p>
 
 ## License
@@ -53,7 +53,7 @@ Since commonly-used standard cell libraries cannot meet all the requirements in 
 Standard cell merging provides noticeable optimization potentials but it is critically challenging since numerous factors, e.g., the design context, transistor layout, design rules and expected PPAC metrics, should be considered to realize a beneficial library. First, as for the design context, designers should identify the characteristics of the target design to locate the optimization opportunities and design pattern mining is one of the promising approaches. Second, the transistor network and layout should be designed under the constraints of design rules and PPAC metrics, which is usually called standard cell layout synthesis. In this paper, we propose a fully automatic standard-cell library extension framework, AutoCellLibX which can analyze characteristics of the target gate-level netlist and extent an initial standard cell library with custom complex standard cells to minimize the area cost. 
 	
 <p align="center">
-<img src="https://github.com/zslwyuan/AutoCellLibX/blob/main/doc/motivation.png" alt="Motivation" title="Motivation" width="400" /> 
+<img src="doc/motivation.png" alt="Motivation" title="Motivation" width="400" /> 
 </p>
 
 ## Features
@@ -62,32 +62,111 @@ Standard cell merging provides noticeable optimization potentials but it is crit
 2. A pattern growth algorithm that can expand the sizes of gate-level patterns while preserving their high recurrence frequencies. Compared to previous FSM approaches, our pattern growth solution carefully handle the overlaps between pattern subgraphs to meet the technology mapping constraint and maximize area reduction
 3. A pattern combination algorithm which can iteratively find a set of gate-level patterns from numerous candidates as the extension part of the initial standard cell library to maximize the area reduction of the entire VLSI design
 4. To the best of our knowledge, it is the first automated standard cell extension framework that closes the optimization loop between the analysis of gate-level netlist and standard cell library customization. AutoCellLibX can generate SPICE netlists and GDSII layouts of the custom standard cells for downstream VLSI design flow
-5. It is far from perfect and comprehensively practical and we welcome any comment or suggestion. ^-^
+5. A stage-aware PySide6 desktop GUI that wraps the whole flow with live per-cell progress, an interactive GDS layout viewer, pattern/design graph exploration, in-app PDK editing and area-savings charts
+6. It is far from perfect and comprehensively practical and we welcome any comment or suggestion. ^-^
 
 
 ## Implementation Overview
 
 <p align="center">
-<img src="https://github.com/zslwyuan/AutoCellLibX/blob/main/doc/flow.png" alt="Implementation Overview" title="Implementation Overview" width="800" /> 
+<img src="doc/flow.png" alt="Implementation Overview" title="Implementation Overview" width="800" /> 
 </p>
+
+## Desktop GUI (PySide6)
+
+The repository ships a desktop workbench (`python -m gui`) that wraps the same
+flow in a stage-aware, cancellable run and adds the visualisations the command
+line never had:
+
+- **Overview / Configure / Run** — environment checks; benchmark and PDK
+  selection (built-in or custom BLIF netlists, Liberty/SPICE/technology/LEF/
+  layer-map inputs, editable ASTRAN geometry constraints); stage-by-stage
+  progress with a live ASTRAN cell panel and a levelled, filterable log.
+- **Patterns / Layouts** — the mined complex cells with their pattern graphs
+  and transistor-level SPICE, plus an interactive GDS viewer (layer presets,
+  ruler, two-click measurement, per-cell LP/solver details, PNG export).
+- **Results / Design / PDK editor** — design-level and per-pattern
+  area-savings charts with the raw `bestRecord-*` records; an on-demand
+  design-graph explorer; and an in-app editor for the ASTRAN technology rules
+  (`.rul`) and the Cadence layer map (`.map`) with a Chinese+English
+  explanation for every field.
+
+<p align="center">
+<img src="doc/figures/gui_overview.png" alt="GUI overview page" title="GUI overview" width="800" /> 
+</p>
+<p align="center">
+<img src="doc/figures/gui_layout.png" alt="GUI GDS layout viewer" title="GUI layout viewer" width="800" /> 
+</p>
+
+See [`gui/README.md`](gui/README.md) for the page-by-page tour and
+[`doc/ALGORITHM_DESIGN.md`](doc/ALGORITHM_DESIGN.md) for the algorithm behind it.
+
+## Installation
+
+**Option A — prebuilt Windows installer (no Python needed).** The
+[`installer-lfs`](https://github.com/zslwyuan/AutoCellLibX/tree/installer-lfs)
+branch hosts a self-contained `AutoCellLibX-Setup.exe` (bundled Python
+runtime, ASTRAN, the LP solver and the GSCL45 data; ~1.5 GB installed) via
+Git LFS:
+
+```bash
+git clone --branch installer-lfs --depth 1 https://github.com/zslwyuan/AutoCellLibX.git
+```
+
+then run `AutoCellLibX-Setup.exe`. The delivered handbook
+([`tools/package/README_DELIVERY.md`](tools/package/README_DELIVERY.md))
+covers installation, the first run and the 360 Total Security
+false-positive walkthrough.
+
+**Option B — run from source.**
+
+```bash
+pip install -r requirements.txt
+pip install PySide6
+python -m gui            # desktop GUI (PySide6)
+# or the command-line flow:
+cd pySrc && python main.py
+```
+
+ASTRAN is vendored — build it once with `bash tools/astran/build_astran.sh`
+(see [`BUILDING.md`](BUILDING.md)).
 
 ## Some Extracted Patterns and Generated Layouts
 
 Some related resultant files are provided in "pySrc/outputs" and below is an example layout.
 <p align="center">
-<img src="https://github.com/zslwyuan/AutoCellLibX/blob/main/doc/experimentalResult.png" alt="Experimental Result" title="Experimental Result" width="800" /> 
+<img src="doc/experimentalResult.png" alt="Experimental Result" title="Experimental Result" width="800" /> 
 </p>
 
-## Project Hiearchy
+## Documentation
 
-Below is a hiearchy tree of this project. As for the details, please refer to the class information and collaboration diagram in the Doxygen documentation and trace the implementation, e.g., AMFPlacer, GlobalPlacer, and PlacementInfo.
+| Document | Contents |
+|---|---|
+| [`doc/ALGORITHM_DESIGN.md`](doc/ALGORITHM_DESIGN.md) | the complete algorithm design (mining, growth, ASTRAN autoflow, interfaces), with figures |
+| [`doc/PROJECT_ANALYSIS.md`](doc/PROJECT_ANALYSIS.md) | directory / module / flow analysis |
+| [`doc/AUDIT_REPORT.md`](doc/AUDIT_REPORT.md) | algorithm + config audit and the repair record (the engineering log) |
+| [`doc/LESSONS_LEARNED.md`](doc/LESSONS_LEARNED.md) | why these defects were hard to see, and the debugging moves that found them |
+| [`gui/README.md`](gui/README.md) | the desktop GUI, page by page |
+| [`tools/package/README_DELIVERY.md`](tools/package/README_DELIVERY.md) | the delivered installer handbook |
+| [`BUILDING.md`](BUILDING.md) | environment, ASTRAN build, run/test commands, installer build |
+
+## Project Hierarchy
+
+Below is a hierarchy tree of this project. For the module-level details,
+please refer to the documents above and trace the implementation — the flow
+lives in `pySrc/` (see `doc/PROJECT_ANALYSIS.md`), the desktop GUI in
+`gui/` (see `gui/README.md`).
+
 ```
-├── benchmark   // benchmark designs (BLIF netlists + synthesis scripts)
-├── doc         // documentation: project analysis + audit reports
-├── pySrc       // AutoCellLibX Python flow (pattern mining, growth, layout flow)
-├── stdCelllib  // FreePDK45 (GSCL45) PDK and standard cell libraries
-├── tests       // pytest test suite (unit + integration)
-└── tools       // vendored ASTRAN sources + gurobi_cl-compatible LP solver
+├── benchmark       // benchmark designs (BLIF netlists + synthesis scripts)
+├── doc             // documentation: algorithm design, analysis, audit reports, figures
+├── gui             // PySide6 desktop GUI (Qt-free core + widgets + tabs)
+├── pySrc           // AutoCellLibX Python flow (pattern mining, growth, layout flow)
+├── stdCelllib      // FreePDK45 (GSCL45) PDK and standard cell libraries
+├── tests           // pytest test suite (unit + integration)
+├── tools           // vendored ASTRAN sources + gurobi_cl-compatible LP solver
+│   └── package     // self-contained Windows installer toolchain
+└── dist            // installer build output (hosted on the installer-lfs branch)
 ```
 
 The repository is **self-contained**: ASTRAN is vendored under `tools/astran/`
@@ -99,29 +178,23 @@ suite, and [doc/PROJECT_ANALYSIS.md](doc/PROJECT_ANALYSIS.md) /
 Below is the call graph of the project for your reference:
 
 <p align="center">
-<img src="https://github.com/zslwyuan/AutoCellLibX/blob/main/doc/callGraph.png" alt="Call Graph of the Project" title="Call Graph of the Project" width="800" /> 
+<img src="doc/callGraph.png" alt="Call Graph of the Project" title="Call Graph of the Project" width="800" /> 
 </p>
 
 ## Dependencies
 
-Python Packages:
+Python packages (see `requirements.txt`): numpy, networkx, matplotlib,
+gdstk, blifparser, liberty-parser, lark, mip (python-mip + COIN-OR CBC),
+tqdm, easydict, pytest — plus **PySide6** for the desktop GUI.
 
-1. tqdm
-2. numpy
-3. networkx
-4. easydict
-5. blifparser
-6. gdspy
-7. liberty-parser
-
-setup env by command:
 ```
 pip install -r requirements.txt
 ```
 
-C++ 3-rd party tool:
-
-[ASTRAN](https://github.com/aziesemer/astran) for should be installed in tools and the path of it should be indicated in "pySrc/main.py"
+The C++ layout synthesizer [ASTRAN](https://github.com/aziesemer/astran) is
+**vendored** under `tools/astran/` and built in-tree with MSYS2/MinGW64
+(`bash tools/astran/build_astran.sh`, see [BUILDING.md](BUILDING.md)) — no
+external installation or path configuration is needed.
 
 ## Todo List
 
@@ -137,4 +210,4 @@ This project is under active development and far from perfect. We do want to mak
 
 
 
-(last updated Oct 11, 2022)
+(last updated Oct 8, 2026)

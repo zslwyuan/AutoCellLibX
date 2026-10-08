@@ -75,6 +75,24 @@ See `gui/README.md`.  The GUI drives the same vendored ASTRAN through
 `tools/gurobi_cl`, so the same caveats apply (one cell at a time; the 360 Total
 Security false positive on `build/bin/Astran.exe`).
 
+### Windows installer (self-contained)
+
+The customer installer is built from a pruned Python 3.11 runtime + the flow
+modules + PDK data + the vendored ASTRAN build:
+
+```bash
+python tools/package/make_stage.py        # -> dist/stage/ (portable app dir)
+python tools/package/make_installer.py    # -> dist/AutoCellLibX-Setup.exe + .dat
+```
+
+`make_installer.py [--no-stage] [--single]` reuses an existing stage by
+default.  The two-file delivery (`.exe` stub + `.dat` archive) sidesteps 360
+Total Security's real-time quarantine of exe-with-appended-archive; `--single`
+appends the archive for machines without that heuristic.  The installed
+handbook is `tools/package/README_DELIVERY.md`.  Built installers are hosted
+via Git LFS on the `installer-lfs` branch (Gitee's free tier has no LFS, so
+that branch is GitHub-only).
+
 ## 4. Test
 
 ```bash

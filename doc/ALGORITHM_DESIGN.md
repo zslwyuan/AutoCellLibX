@@ -5,7 +5,7 @@
 >
 > - 文档版本：2026-09-27
 > - 配套文档：[doc/PROJECT_ANALYSIS.md](PROJECT_ANALYSIS.md)（目录/模块详解）、[doc/AUDIT_REPORT.md](AUDIT_REPORT.md)（缺陷审查与修复记录）、[doc/LESSONS_LEARNED.md](LESSONS_LEARNED.md)（方法论经验）、[AGENTS.md](../AGENTS.md)（工程不变量）
-> - 所有插图由 [figures/gen_figures.py](D:/AutoCellLibX/doc/figures/gen_figures.py) 生成，可用 `python doc/figures/gen_figures.py` 重新生成。
+> - 所有插图由 [figures/gen_figures.py](figures/gen_figures.py) 生成，可用 `python doc/figures/gen_figures.py` 重新生成。
 
 ---
 
@@ -13,7 +13,7 @@
 
 **一句话**：AutoCellLibX 在一个已经做完技术映射的门级网表里，挖出**频繁出现、结构相同**的子电路（"模式"），把每个模式**合并成一个新的复杂标准单元（COMPLEX cell）**，再用 ASTRAN 在晶体管级别把它**自动布局布线**出来；合并后的单元因为共享扩散区、省去单元间互连，比"一堆独立单元并排"更省面积，从而让整个设计的总面积下降。
 
-![系统总览](D:/AutoCellLibX/doc/figures/sys_overview.png)
+![系统总览](figures/sys_overview.png)
 
 系统由三部分组成（颜色即上图泳道）：
 
@@ -119,7 +119,7 @@ python regenerate_cells.py COMPLEX1     # 只重生成指定单元的版图，�
 - **解析 BLIF** 网表，把每个 `.subckt` 实例建成一个 `DesignCell`，把每条信号线建成一个 `DesignNet`（记录它的驱动单元和负载单元）；
 - **构建有向图** `BLIFGraph`（networkx `DiGraph`）：**节点 = 单元实例**，**有向边 = 驱动单元 → 负载单元**（沿信号流向）。每个节点打上 `type`（单元类型名）标签。
 
-![门级图建模](D:/AutoCellLibX/doc/figures/graph_model.png)
+![门级图建模](figures/graph_model.png)
 
 两个对后续很重要的细节：
 
@@ -144,7 +144,7 @@ python regenerate_cells.py COMPLEX1     # 只重生成指定单元的版图，�
 2. 按出现**频次排序**，只保留 **Top-30** 作为初始候选；
 3. 用 `sortPatternClusterSeqs` 按 **`簇数 × 簇大小`** 降序排列——优先考察"既大又频繁"的模式。
 
-![模式挖掘与聚类](D:/AutoCellLibX/doc/figures/pattern_mining.png)
+![模式挖掘与聚类](figures/pattern_mining.png)
 
 > 为什么不用 GNN？仓库里其实有一支 GNN（`GNNModel.py` 是 GIN 风格的 GraphCNN，`BLIFGNNTraining.py` 做节点嵌入，用来辅助聚类），但当前主流程把它注释掉了（`main.py` 第 3 行），用确定性更强的启发式编码替代——见 §3.9。
 
@@ -163,7 +163,7 @@ python regenerate_cells.py COMPLEX1     # 只重生成指定单元的版图，�
 - `clusterTypeId = patternNum`（新模式分配新 id）；
 - 被吞掉的旧簇标记 `disabled` 并剔除，未扩展的旧模式保留在池里。
 
-![模式生长](D:/AutoCellLibX/doc/figures/pattern_growth.png)
+![模式生长](figures/pattern_growth.png)
 
 **为什么"一次只吸收一类"？** 因为同一个模式的不同实例，其边界上"结构等价"的邻居才应该被一起吸收；按特征码分组保证了吸收后产生的新模式仍然是结构同构的、且互不重叠。这正是论文里说的"carefully handle the overlaps between pattern subgraphs to meet the technology mapping constraint"。
 
@@ -185,7 +185,7 @@ loop 最多 topThr(=5) 轮:
 
 把这段伪代码对应到 `main.py` 的实际控制流，就是下面这张流程图（含去重、覆盖率检查、版图有效性检查与最优记录分支）：
 
-![前端主循环流程](D:/AutoCellLibX/doc/figures/frontend_pipeline.png)
+![前端主循环流程](figures/frontend_pipeline.png)
 
 **关键阈值**（`main.py:35-37`）：
 
@@ -204,7 +204,7 @@ $$\text{saveArea} = \sum_{\text{选中模式 } i}\Big(\underbrace{\sum_{c\in\tex
 
 只有 `saveArea > 0` 的模式才进入组合；本轮总 `saveArea` 超过历史最佳才写入 `bestRecord-<bench>`，否则停止（收益递减即收手）。
 
-![面积评估与组合](D:/AutoCellLibX/doc/figures/area_eval.png)
+![面积评估与组合](figures/area_eval.png)
 
 > **为什么收益来自"合并"？** 见 §1.1：共享扩散区、省掉单元间金属互连。注意这里的"差值"必须是**同一行高**下量出来的宽度（§3.7 的不变量）。
 
@@ -279,7 +279,7 @@ $$\text{saveArea} = \sum_{\text{选中模式 } i}\Big(\underbrace{\sum_{c\in\tex
 
 要理解后面的"折叠/布局/压缩"，先看一个标准单元在硅上的典型结构：
 
-![标准单元物理结构](D:/AutoCellLibX/doc/figures/cell_structure.png)
+![标准单元物理结构](figures/cell_structure.png)
 
 - **上下两条金属轨**：VDD（顶）和 GND（底），宽度由 `supplysize`（0.72 µm）决定，负责供电；
 - **N 阱**在上半区（`nwellpos`=1.14 µm 以上），里面是 **P 扩散区**，放 **PMOS**；
@@ -294,7 +294,7 @@ $$\text{saveArea} = \sum_{\text{选中模式 } i}\Big(\underbrace{\sum_{c\in\tex
 
 `AutoCell::autoFlow` 用状态机强制按以下顺序执行（每步都对应上面物理结构的一个决策）：
 
-![ASTRAN autoflow 七阶段](D:/AutoCellLibX/doc/figures/astran_autoflow.png)
+![ASTRAN autoflow 七阶段](figures/astran_autoflow.png)
 
 > 失败重试：`autoFlow` 会在失败时把布线轨道数从 2 加到 4、把保守系数 `conservative` 从 0 加到 4 重试；全部失败才抛 `AstranError("Could not generate cell layout automatically")`。前端捕获后**只排除该单元**，不中断整个基准（见 §5.5）。
 
@@ -309,7 +309,7 @@ $$\text{saveArea} = \sum_{\text{选中模式 } i}\Big(\underbrace{\sum_{c\in\tex
 **③ foldTrans（晶体管折叠）**
 如果某个晶体管的**宽度超过扩散区的可用高度**（太"胖"放不下），就把它**拆成多条并联的"腿"**（`width → width/n`，共 n 条），既降低单个扩散区的占用，又保持总驱动能力不变。对**串联**的晶体管链，`seriesFolding` 会保证整条链被一致地拆分，让各腿在竖直堆叠中对齐。
 
-![晶体管折叠](D:/AutoCellLibX/doc/figures/folding.png)
+![晶体管折叠](figures/folding.png)
 
 **④ placeTrans（晶体管排序/布局）**
 决定 P、N 两排晶体管的**排列顺序**。目标是让"同一根栅信号控制的 P 管和 N 管"尽量对齐（栅对齐能共享 poly，省宽度）。算法是 **ThresholdAccept**（一种模拟退火的确定性变体，`cellnetlst.cpp:566`），通过交换/移动排序里的条目来扰动解，用下面的代价函数评估：
@@ -332,7 +332,7 @@ cost = localCongestion + 100 × ( congCost·maxCongestion      # 布线拥塞
 **⑥ compact（压缩）** —— 这是面积收益的关键
 布线后的版图是"合法但松"的。压缩把每个几何图元的左/右/上/下坐标都建成变量（`x_i_a, x_i_b, ...`），把"相邻图形间距 ≥ 工艺规则""不能重叠""对齐到网格"等建成约束，把**单元总宽度**作为优化目标，形成一个 **ILP/LP 模型**写出到 `ILPmodel.lp`，调用外部求解器求解后读回坐标：
 
-![ILP 压缩](D:/AutoCellLibX/doc/figures/compaction_lp.png)
+![ILP 压缩](figures/compaction_lp.png)
 
 目标函数的写法：`width = width_gpos × hGrid`（把宽度吸附到网格），以权重 5000 最小化 `width`，同时叠加若干小的优先级项。模型规模：一个 30 管的复杂单元约 **1.9 万变量 / 3.2 万约束**（COMPLEX1 实测）。
 
@@ -360,7 +360,7 @@ cost = localCongestion + 100 × ( congCost·maxCongestion      # 布线拥塞
 
 前后端**只靠文件交互**，因此"契约"就是一组文件格式与约定。理解它们，就理解了系统最脆弱也最容易出错的地方。
 
-![前后端接口契约](D:/AutoCellLibX/doc/figures/interface_contract.png)
+![前后端接口契约](figures/interface_contract.png)
 
 ### 5.1 `.run` 脚本模板（前端 → ASTRAN）
 
@@ -575,4 +575,4 @@ ASTRAN 原生调用的是商业求解器 **Gurobi** 的命令行 `gurobi_cl`。�
 
 ---
 
-*本文插图均由 [figures/gen_figures.py](D:/AutoCellLibX/doc/figures/gen_figures.py) 以 matplotlib 生成，可重复再生成；算法描述以当前 `main` 分支代码为准。*
+*本文插图均由 [figures/gen_figures.py](figures/gen_figures.py) 以 matplotlib 生成，可重复再生成；算法描述以当前 `main` 分支代码为准。*
