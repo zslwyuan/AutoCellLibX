@@ -5,6 +5,10 @@ pipeline as `pySrc/main.py` in a stage-aware, observable, cancellable run and
 adds the visualisations the command line never had: an interactive GDS layout
 viewer, pattern/design graphs, and area-savings charts.
 
+> 第一次接触本项目？先读 [`doc/IMPLEMENTATION_GUIDE.md`](../doc/IMPLEMENTATION_GUIDE.md)
+> （自底向上实现指南），再回来看本页的界面操作；算法与接口的深度分析在
+> [`doc/ALGORITHM_DESIGN.md`](../doc/ALGORITHM_DESIGN.md)。
+
 ## Run it
 
 ```bash

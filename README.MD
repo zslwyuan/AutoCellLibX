@@ -142,6 +142,7 @@ Some related resultant files are provided in "pySrc/outputs" and below is an exa
 
 | Document | Contents |
 |---|---|
+| [`doc/IMPLEMENTATION_GUIDE.md`](doc/IMPLEMENTATION_GUIDE.md) | **start here**: a bottom-up, 9-layer implementation guide written for a first-time reader (data formats → parsing → encoding → growth → SPICE → area → ASTRAN → integration → GUI), with hands-on exercises |
 | [`doc/ALGORITHM_DESIGN.md`](doc/ALGORITHM_DESIGN.md) | the complete algorithm design (mining, growth, ASTRAN autoflow, interfaces), with figures |
 | [`doc/PROJECT_ANALYSIS.md`](doc/PROJECT_ANALYSIS.md) | directory / module / flow analysis |
 | [`doc/AUDIT_REPORT.md`](doc/AUDIT_REPORT.md) | algorithm + config audit and the repair record (the engineering log) |

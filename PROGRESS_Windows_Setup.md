@@ -3,6 +3,10 @@
 > 更新时间：2026-09-24
 > 目标：在裸 Windows 环境下载并跑通 zslwyuan/AutoCellLibX 全流程，
 > 用开源求解器替换商业 Gurobi（不修改 AutoCellLibX 算法逻辑）。
+>
+> 注：本文是当时的工程日志，文中出现的 `D:\...` 绝对路径是**当时机器上的**
+> 安装位置，仅作历史记录；现在的仓库已自包含（vendored ASTRAN 等），
+> 路径以仓库相对路径为准（见 BUILDING.md）。
 
 ---
 

@@ -1,8 +1,11 @@
 # AutoCellLibX / ASTRAN 技术审查报告
 
 > 审查日期:2026-09-24
-> 审查范围:ASTRAN 源码(D:\astran\Astran\src)、AutoCellLibX layout 生成配置、pattern 提取/生长/组合算法
+> 审查范围:ASTRAN 源码(本仓库 `tools/astran/src`)、AutoCellLibX layout 生成配置、pattern 提取/生长/组合算法
 > 审查视角:半导体 PDK / EDA 算法
+>
+> 阅读路线:初学者先读 [IMPLEMENTATION_GUIDE.md](IMPLEMENTATION_GUIDE.md) 建立全景;
+> 本文是逐缺陷的深度档案,精炼条目索引见 [AGENTS.md](../AGENTS.md)。
 
 本报告分三部分,对应三项任务:①ASTRAN 算法审查;②layout 生成配置审查;③pattern 算法错误修复(已实施)。
 

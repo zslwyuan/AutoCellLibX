@@ -1,7 +1,10 @@
 # AutoCellLibX 项目目录详细分析
 
 > 分析日期:2026-09-24
-> 分析范围:`D:\AutoCellLibX`(git 仓库,当前分支 `main`)
+> 分析范围:本仓库(git 仓库,当前分支 `main`)
+>
+> 阅读路线:初学者先读 [IMPLEMENTATION_GUIDE.md](IMPLEMENTATION_GUIDE.md) 建立全景;
+> 本文是目录/模块级速查手册,按需查阅。
 
 ---
 
@@ -20,7 +23,7 @@
 ## 2. 目录结构总览
 
 ```
-D:\AutoCellLibX
+<repo-root>
 ├── .git/                      # git 仓库
 ├── .gitignore                 # 忽略 __pycache__/ 与 astran
 ├── .vscode/

@@ -54,6 +54,7 @@ See `gui/README.md` for the page-by-page tour.
 | Document | Contents |
 |---|---|
 | `BUILDING.md` | environment, ASTRAN build, run and test commands |
+| `doc/IMPLEMENTATION_GUIDE.md` | bottom-up implementation guide for first-time readers (data formats → … → GUI) |
 | `doc/PROJECT_ANALYSIS.md` | directory/module/flow analysis |
 | `doc/AUDIT_REPORT.md` | algorithm + config audit and the repair record |
 | `doc/LESSONS_LEARNED.md` | why these defects were hard to see, and the debugging moves that found them |

@@ -1,5 +1,7 @@
 # 经验总结(Lessons Learned)
 
+阅读路线:初学者先读 [IMPLEMENTATION_GUIDE.md](IMPLEMENTATION_GUIDE.md) 建立全景,再回来看本文的方法论。
+
 本文归纳 AutoCellLibX × ASTRAN 修复过程中可复用的经验,每条都附本次的**实证**,以便判断何时适用。逐个缺陷的完整记录见 `doc/AUDIT_REPORT.md` §5;面向"下一个改代码的人"的精炼条目见 `AGENTS.md`。
 
 ## 一、方法论(可迁移到其它 EDA/数值流水线)
