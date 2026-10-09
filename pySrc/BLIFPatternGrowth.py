@@ -8,10 +8,12 @@ def growASeqOfClusters(BLIFGraph, clusterSeq, clusterNum, patternNum, paintPatte
 
     clusters = []
     cellsInClusters = set()
-    # remove disabled clusters
+    # Filter out disabled clusters.  With beam growth (growBeamWidth>1) a
+    # head grown later in the same round can contain clusters that an
+    # earlier head just disabled by stealing their cells -- the pool is
+    # only cleaned (removeEmptySeqsAndDisableClusters) after the whole
+    # beam, so a hard assert here is a stale single-head invariant.
     for cluster in clusterSeq.patternClusters:
-        # disabled cluster should have been removed.
-        assert(not cluster.disabled)
         if (not cluster.disabled):
             clusters.append(cluster)
             for cellId in cluster.cellIdsContained:
@@ -181,10 +183,12 @@ def growASeqOfClusters_BasedOn(BLIFGraph, clusterSeq, clusterNum, patternNum, pa
     assert(targetPatternTrace != "")
     clusters = []
     cellsInClusters = set()
-    # remove disabled clusters
+    # Filter out disabled clusters.  With beam growth (growBeamWidth>1) a
+    # head grown later in the same round can contain clusters that an
+    # earlier head just disabled by stealing their cells -- the pool is
+    # only cleaned (removeEmptySeqsAndDisableClusters) after the whole
+    # beam, so a hard assert here is a stale single-head invariant.
     for cluster in clusterSeq.patternClusters:
-        # disabled cluster should have been removed.
-        assert(not cluster.disabled)
         if (not cluster.disabled):
             clusters.append(cluster)
             for cellId in cluster.cellIdsContained:

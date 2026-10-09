@@ -667,3 +667,29 @@ ASTRAN 只给 IOgeometries 里的信号端口打标(route() 把 vdd/gnd 排除�
 - flow_core 与 main.py 无任何等价测试,"faithful port"靠人工评审(P0-5)。
 
 **验证**:194 单测通过(校验未触碰流程代码,仅改文档)。
+
+### 5.18 第十四轮:隐患修复与 P0/P1 优化落地(2026-10-09)
+
+**§5.17 五处代码隐患已全部修复(带回归测试,test_hazard_fixes.py 等)**:
+1. `Astran.loadAstranArea` 缺日志时改为 `raise RuntimeError`(原 `assert(False); return 123` 在 `python -O` 下静默造假宽度);
+2. `main.py` 两个 `>=11` 守卫由 `continue` 改为弹出队首(原写法空转整个迭代预算);`flow_core.py` 两处同步;
+3. `main.py` 第二阶段 `bestRecord-seperate` 改为末尾才打开写盘(原开头 `'w'` 截断,中途崩溃留空文件);
+4. `BLIFPreProc` 未知单元类型改抛 `ValueError`(含类型名与 lib 路径),`PIN=net` 畸形行显式报错;
+5. `DesignNet.addPin` 多驱动网保留 last-wins 但发出 `RuntimeWarning` 并计数(`DesignNet.multiDriverCount`)。
+
+**P0 优化(行为变化已标定)**:
+- P0-1 编码规范化(`canonicalPatternCode`,根在前、子节点排序):trace 字符串因此对既有 outputs 快照改名(如 `[XNOR2X1,XOR2X1,OAI21X1]`→`[XNOR2X1,OAI21X1,XOR2X1]`),重生成时以新名为准。**大基准实测收益显著**(`pySrc/canon_impact.py`):BoomBranchPredictor 2721→1793 组(合并 737 个虚假分裂、回收 21541 个实例)、DCache 2084→1459(13503)、GemminiLoopConv 2829→1787(14588);adder 网表顺序本来就一致,数字不变。
+- P0-2 节省重叠去重(`countUncoveredClusters`):同轮候选共享的簇只计一次;bestRecord 中 clusterNum 变为去重后计数。
+- P0-3 束搜索+预估剪枝:`growASeqOfClusters` 接受 `benefitEstimator`(新增 `pySrc/benefit.py` 的 ShrinkModel,按"尺寸→收缩率"在线标定、取保守 max);`growBeamWidth=2`(globalVariables)/`cfg.grow_beam=2`(GUI)每轮生长前 2 个队首;≥10 单元的队首不再生长(其 11 单元后代在版图阶段必然被剔除)。COMPLEX10 型负收益(−56.05)在其首个观测后会被剪枝。
+- P0-4 可布性第二指标(新增 `pySrc/routability.py`):从 .Astranlog 解析 `Rt. Density` 与 Pathfinder 尝试轮数,报告默认开启;硬门限 `routabilityDensityGate`/`cfg.max_rt_density` 默认 None(先测量后执法)。
+- P0-5 flow_core≡main.py 等价测试:桩 ASTRAN(按 .sp 内容哈希定宽)比较两流程 bestRecord(见 tests/unit/test_flow_parity.py)。
+
+**P1 优化**:
+- P1-7 电气量(新增 `pySrc/electrical.py`):解析 liberty 的 `cell_leakage_power`/引脚电容/LUT 均值延迟代理;模式级汇总含 internal_nets(合并内化的网数=动态功耗节省代理)。report-only,不改选择准则。
+- P1-8 PDK 注册表(新增 `pySrc/pdk_config.py`):freepdk45 与 Astran.py 常量强一致(测试钉住);sky130(8×0.34µm)/gf180(14×0.28µm)为脚手架,.rul 未编写前 raise;`nwellPos` 恒取 H/2 防再次漂移。
+- P1-9 端口顺序变体(新增 `pySrc/portorder.py`):确定性变体集(恒等/电源在前排序/反转/种子洗牌),只重写 .subckt 头部;评估走注入式 runner。
+- P1-11 多行高(`pdk_config.multiRowVariant`):行高翻倍时 nwellpos 自动 H/2;跨 profile 比较必须按 宽×高 面积(不变量 10)。
+
+**已知遗留**:P2(SMT/CP-SAT 引擎、LLM 约束注入、CFET/BSPDN)为研究级,未在本轮实现,见 doc/RESEARCH_AND_OPTIMIZATION.md。
+
+**验证**:233 单测通过(新增 39 个)。

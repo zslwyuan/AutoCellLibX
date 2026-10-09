@@ -176,3 +176,33 @@ def test_growth_without_estimator_keeps_legacy_top1():
     assert len(resSeqs) == 2
     trace = resSeqs[0].patternClusters[0].patternExtensionTrace
     assert "+XOR2X1" in trace                    # frequency-top branch
+
+
+def test_growth_tolerates_beam_disabled_clusters():
+    """Beam growth (grow_beam>1): the first head can disable clusters of a
+    later head's seq by stealing their cells.  Growing that second head
+    must skip the disabled clusters instead of asserting (the pool is only
+    cleaned after the whole beam)."""
+    a1, a2, b1, b2 = (_cell(i) for i in range(4))
+    cells = [a1, a2, b1, b2]
+    _link(a1, a2, 0)
+    _link(a2, b1, 1)          # b1 is growable from seq1 AND belongs to seq2
+    _link(b1, b2, 2)
+    c1 = DesignPatternCluster(0, "[INVX1,INVX1]", cells, [0, 1], 0)
+    c2 = DesignPatternCluster(1, "[INVX1,INVX1]", cells, [2, 3], 1)
+    for c, cl in ((a1, c1), (a2, c1), (b1, c2), (b2, c2)):
+        c.setCluster(cl)
+        c.setClusterId(cl.clusterId)
+    seq1 = DesignPatternClusterSeq("[INVX1,INVX1]")
+    seq1.addCluster(c1)
+    seq2 = DesignPatternClusterSeq("[INVX1,INVX1]")
+    seq2.addCluster(c2)
+
+    # first beam head grows and steals b1, disabling c2
+    grown1, _ = growASeqOfClusters(None, seq1, 2, 2)
+    assert c2.disabled
+
+    # second beam head: only disabled clusters left -> no crash, no growth
+    resSeqs, _ = growASeqOfClusters(None, seq2, 2, 3)
+    assert len(resSeqs) == 1
+    assert resSeqs[0].patternClusters == []

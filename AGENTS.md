@@ -102,6 +102,10 @@ is only in the code is effectively undocumented.
    `dumpedPaterns` in `main.py` is keyed by the trace. Any "have I seen this
    pattern" test must compare traces — comparing a `clusterTypeId` (int)
    against those keys is always true and disables de-duplication entirely.
+   Since 2026-10 the base `[...]` segment is **canonical** (children sorted
+   after the root, `canonicalPatternCode`): the same pattern can appear under
+   a legacy, order-sensitive name in older `outputs/` snapshots — treat the
+   two spellings as the same pattern when comparing across regenerations.
 
 6. **`COMPLEX<n>` ids are assigned per run and are not stable.** The same id
    can name a different pattern in a different run. Never hand-edit
