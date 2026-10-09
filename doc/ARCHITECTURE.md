@@ -48,7 +48,10 @@ gui/flow_core.py     ← 待迁移：第三份控制流副本，下一步改为�
 
 ## 待迁移（按优先级）
 
-1. core/parse（liberty/BLIF/SPICE 解析从 BLIFPreProc/spice 拆出）；
+1. ~~core/parse~~ ✅ 已迁（2026-10-10）：loadLibertyFile/loadBoolGateFromBLIF/
+   genGraphFromLibertyAndBLIF + SPSubcircuit/loadSpiceSubcircuits（AST 逐字），
+   BLIFPreProc 与 spice 变 shim（编排/GNN/导出留在 shim）；
+
 2. ~~core/growth~~ ✅ 已迁（2026-10-10）；
 3. core/evaluate + core/external 门面（把已单职责的小模块收编为一层）；
 4. gui/flow_core 消费 core.pipeline（消灭第三份控制流副本）；
