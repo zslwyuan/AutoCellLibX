@@ -102,6 +102,7 @@ class FlowConfig(object):
         self.ratio_thr = 0.05       # main.py: ratioThr
         self.cnt_thr = 30           # main.py: cntThr
         self.max_cells = 11         # patterns with >= this many cells are skipped
+        self.grow_beam = 2          # heads grown per round (P0-3; 1 = legacy)
         self.do_baseline = True
         self.do_layouts = True
         self.do_phase2 = True
@@ -207,10 +208,12 @@ class FlowRunner(object):
         import BLIFPatternGrowth
         import spice
         import GDSIIAnalysis
+        import benefit
         self._flow = dict(Astran=Astran, BLIFPreProc=BLIFPreProc,
                           BLIFGraphUtil=BLIFGraphUtil,
                           BLIFPatternGrowth=BLIFPatternGrowth,
-                          spice=spice, GDSIIAnalysis=GDSIIAnalysis)
+                          spice=spice, GDSIIAnalysis=GDSIIAnalysis,
+                          benefit=benefit)
         return self._flow
 
     def _rel(self, abs_path):
@@ -469,6 +472,14 @@ class FlowRunner(object):
             oriArea=oriArea, astranArea=astranArea, subckts=None,
             dumpedPaterns={}, detectedPatterns=[], startTime=t0)
 
+        # Online-calibrated shrink model for growth benefit estimation
+        # (P0-3), mirroring main.py: vetoes predicted-loss growth branches
+        # before they cost an ASTRAN run.
+        context["shrinkModel"] = flow["benefit"].ShrinkModel()
+        context["growthBenefitEstimator"] = \
+            flow["benefit"].makeGrowthBenefitEstimator(
+                stdType2AstranArea, context["shrinkModel"])
+
         context["subckts"] = spice.loadSpiceSubcircuits(
             self._rel(self.cfg.spice_lib()))
 
@@ -668,6 +679,8 @@ class FlowRunner(object):
                         continue
                 if newUnitAstranArea <= 0:
                     continue
+                ctx["shrinkModel"].observe(
+                    len(exampleCells), oriUnitAstranArea, newUnitAstranArea)
 
                 n_clusters = len(tmpClusterSeq.patternClusters)
                 counted_clusters = n_clusters
@@ -711,25 +724,46 @@ class FlowRunner(object):
             else:
                 break
 
-            clusterSeq = clusterSeqs[0]
-            assert cfg.ratio_thr > 0
-            if (len(clusterSeq.patternClusters[0].cellIdsContained) *
-                    len(clusterSeq.patternClusters) < cfg.ratio_thr * len(cells)
-                    and len(clusterSeq.patternClusters) < cfg.cnt_thr):
-                break
+            # Beam growth (P0-3, mirrors main.py): grow the first
+            # cfg.grow_beam heads per round; each grown branch is
+            # pre-screened by the benefit estimator so predicted-loss
+            # shapes never cost an ASTRAN run.
+            grown_heads = 0
+            for head_seq in list(clusterSeqs):
+                if grown_heads >= cfg.grow_beam:
+                    break
+                if len(head_seq.patternClusters) == 0:
+                    clusterSeqs.remove(head_seq)
+                    continue
+                head_size = len(head_seq.patternClusters[0].cellIdsContained)
+                if grown_heads == 0:
+                    assert cfg.ratio_thr > 0
+                    if (head_size * len(head_seq.patternClusters) <
+                            cfg.ratio_thr * len(cells)
+                            and len(head_seq.patternClusters) < cfg.cnt_thr):
+                        break
+                if head_size >= cfg.max_cells - 1:
+                    # a grown max_cells+ candidate is excluded at layout
+                    # time anyway; growing it here would only churn the pool
+                    clusterSeqs.remove(head_seq)
+                    continue
+                newSeqOfClusters, patternNum = \
+                    flow["BLIFPatternGrowth"].growASeqOfClusters(
+                        BLIFGraph, head_seq, ctx["clusterNum"], patternNum,
+                        paintPattern=True,
+                        benefitEstimator=ctx["growthBenefitEstimator"])
+                clusterSeqs.remove(head_seq)
+                clusterSeqs += newSeqOfClusters
+                grown_heads += 1
+                if len(newSeqOfClusters) > 1:
+                    # Export under the grown pattern's own id: reusing
+                    # len(clusterSeqs) collides with an id already dumped
+                    # and overwrites its .sp.
+                    flow["spice"].exportSpiceNetlist(
+                        newSeqOfClusters[0], ctx["subckts"],
+                        newSeqOfClusters[0].patternClusters[0].clusterTypeId,
+                        out_dir)
 
-            newSeqOfClusters, patternNum = flow["BLIFPatternGrowth"].growASeqOfClusters(
-                BLIFGraph, clusterSeq, ctx["clusterNum"], patternNum,
-                paintPattern=True)
-
-            # Export under the grown pattern's own id: reusing len(clusterSeqs)
-            # collides with an id already dumped and overwrites its .sp.
-            flow["spice"].exportSpiceNetlist(
-                newSeqOfClusters[0], ctx["subckts"],
-                newSeqOfClusters[0].patternClusters[0].clusterTypeId, out_dir)
-
-            clusterSeqs = clusterSeqs[1:]
-            clusterSeqs += newSeqOfClusters
             clusterSeqs = flow["BLIFGraphUtil"].removeEmptySeqsAndDisableClusters(clusterSeqs)
             clusterSeqs = flow["BLIFGraphUtil"].sortPatternClusterSeqs(clusterSeqs)
 

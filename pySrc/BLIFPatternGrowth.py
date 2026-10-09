@@ -4,7 +4,7 @@ import networkx as nx
 import time
 
 
-def growASeqOfClusters(BLIFGraph, clusterSeq, clusterNum, patternNum, paintPattern=False, featureLen=20):
+def growASeqOfClusters(BLIFGraph, clusterSeq, clusterNum, patternNum, paintPattern=False, featureLen=20, benefitEstimator=None):
 
     clusters = []
     cellsInClusters = set()
@@ -98,12 +98,30 @@ def growASeqOfClusters(BLIFGraph, clusterSeq, clusterNum, patternNum, paintPatte
         print(feature2Neighbors[neighborCode][0].stdCellType.typeName,
               " code: (", neighborCode, ") cnt:", codeCnt)
 
-    # only merge one type neighbor temporarily as an example
-
+    # Merge the best branch whose *estimated* benefit is positive.  Pure
+    # frequency ranking (the old `[:1]`) walked into negative-outcome
+    # shapes (COMPLEX10: -56.05 um^2) and only found out after a 5-10 min
+    # ASTRAN run; the estimator (benefit.py, calibrated online from the
+    # layouts already produced in this run) vetoes those branches up
+    # front when provided.  Branches are tried in frequency order and at
+    # most one is merged, preserving the single-mutation semantics.
     resSeqs = []
     mergedCluster = set()
-    for neighborCode, codeCnt in sortedNeighborCode[:1]:
+    for neighborCode, codeCnt in sortedNeighborCode:
         neighbors = feature2Neighbors[neighborCode]
+
+        if (benefitEstimator is not None and len(clusters) > 0):
+            memberTypeNames = [c.stdCellType.typeName
+                               for c in clusters[0].cellsContained]
+            estBenefit = benefitEstimator(
+                memberTypeNames,
+                neighbors[0].stdCellType.typeName,
+                len(clusters[0].cellsContained) + 1,
+                len(neighbors))
+            if (estBenefit <= 0):
+                print("pruned growth branch (", neighborCode,
+                      "): estimated benefit ", round(estBenefit, 4), " <= 0")
+                continue
 
         neighborsInThisSeqCnt = 0
         for neighbor in neighbors:
@@ -131,6 +149,9 @@ def growASeqOfClusters(BLIFGraph, clusterSeq, clusterNum, patternNum, paintPatte
             targetCluster.addCell(neighbor)
             newClusters.append(targetCluster)
 
+        if (len(newClusters) == 0):
+            continue
+
         print("extended ", len(newClusters), " clusters and new pattern is : ",
               newClusters[0].patternExtensionTrace, " and the size of each clustet is ", len(newClusters[0].cellsContained))
 
@@ -141,6 +162,7 @@ def growASeqOfClusters(BLIFGraph, clusterSeq, clusterNum, patternNum, paintPatte
         patternNum += 1
 
         resSeqs.append(newSeq)
+        break
 
     # record those clusters which did not extend
     clusterSeq.patternClusters = []
@@ -154,7 +176,7 @@ def growASeqOfClusters(BLIFGraph, clusterSeq, clusterNum, patternNum, paintPatte
     return resSeqs, patternNum
 
 
-def growASeqOfClusters_BasedOn(BLIFGraph, clusterSeq, clusterNum, patternNum, paintPattern=False, featureLen=20, targetPatternTrace=""):
+def growASeqOfClusters_BasedOn(BLIFGraph, clusterSeq, clusterNum, patternNum, paintPattern=False, featureLen=20, targetPatternTrace="", benefitEstimator=None):
 
     assert(targetPatternTrace != "")
     clusters = []
@@ -251,12 +273,30 @@ def growASeqOfClusters_BasedOn(BLIFGraph, clusterSeq, clusterNum, patternNum, pa
         print(feature2Neighbors[neighborCode][0].stdCellType.typeName,
               " code: (", neighborCode, ") cnt:", codeCnt)
 
-    # only merge one type neighbor temporarily as an example
-
+    # Merge the best branch whose *estimated* benefit is positive.  Pure
+    # frequency ranking (the old `[:1]`) walked into negative-outcome
+    # shapes (COMPLEX10: -56.05 um^2) and only found out after a 5-10 min
+    # ASTRAN run; the estimator (benefit.py, calibrated online from the
+    # layouts already produced in this run) vetoes those branches up
+    # front when provided.  Branches are tried in frequency order and at
+    # most one is merged, preserving the single-mutation semantics.
     resSeqs = []
     mergedCluster = set()
-    for neighborCode, codeCnt in sortedNeighborCode[:1]:
+    for neighborCode, codeCnt in sortedNeighborCode:
         neighbors = feature2Neighbors[neighborCode]
+
+        if (benefitEstimator is not None and len(clusters) > 0):
+            memberTypeNames = [c.stdCellType.typeName
+                               for c in clusters[0].cellsContained]
+            estBenefit = benefitEstimator(
+                memberTypeNames,
+                neighbors[0].stdCellType.typeName,
+                len(clusters[0].cellsContained) + 1,
+                len(neighbors))
+            if (estBenefit <= 0):
+                print("pruned growth branch (", neighborCode,
+                      "): estimated benefit ", round(estBenefit, 4), " <= 0")
+                continue
 
         neighborsInThisSeqCnt = 0
         for neighbor in neighbors:
@@ -284,6 +324,9 @@ def growASeqOfClusters_BasedOn(BLIFGraph, clusterSeq, clusterNum, patternNum, pa
             targetCluster.addCell(neighbor)
             newClusters.append(targetCluster)
 
+        if (len(newClusters) == 0):
+            continue
+
         print("extended ", len(newClusters), " clusters and new pattern is : ",
               newClusters[0].patternExtensionTrace, " and the size of each clustet is ", len(newClusters[0].cellsContained))
 
@@ -294,6 +337,7 @@ def growASeqOfClusters_BasedOn(BLIFGraph, clusterSeq, clusterNum, patternNum, pa
         patternNum += 1
 
         resSeqs.append(newSeq)
+        break
 
     # record those clusters which did not extend
     clusterSeq.patternClusters = []

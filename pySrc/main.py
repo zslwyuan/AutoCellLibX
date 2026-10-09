@@ -8,6 +8,7 @@ import matplotlib
 from spice import *
 from Astran import *
 from GDSIIAnalysis import *
+from benefit import ShrinkModel, makeGrowthBenefitEstimator
 
 
 def mkdir(pathStr):
@@ -71,6 +72,14 @@ def main():
         stdType2AstranArea = loadAstranGDS()
         astranArea = getArea(cells, stdType2AstranArea)
         print("astranArea=", astranArea)
+
+        # Online-calibrated shrink model for growth benefit estimation
+        # (P0-3): observes each finished layout's new/baseline width ratio
+        # per cell count, and vetoes growth branches whose predicted
+        # benefit is non-positive before they cost an ASTRAN run.
+        shrinkModel = ShrinkModel()
+        growthBenefitEstimator = makeGrowthBenefitEstimator(
+            stdType2AstranArea, shrinkModel)
 
         clusterSeqs = sortPatternClusterSeqs(clusterSeqs)
 
@@ -188,6 +197,8 @@ def main():
                     outputPath, "COMPLEX"+str(patternTraceId))
                 if (newUnitAstranArea <= 0):   # a cached 0 x 0 layout counts nothing
                     continue
+                shrinkModel.observe(len(exampleCells),
+                                    oriUnitAstranArea, newUnitAstranArea)
                 if (oriUnitAstranArea-newUnitAstranArea > 0):
                     uniqueClusters = countUncoveredClusters(
                         tmpClusterSeq.patternClusters, coveredCellIds)
@@ -227,27 +238,46 @@ def main():
             else:
                 break
 
-            clusterSeq = clusterSeqs[0]
+            # Beam growth (P0-3): grow the first growBeamWidth heads per
+            # round instead of only the top one -- the candidate queue is
+            # the beam.  Each grown branch is pre-screened by the benefit
+            # estimator, so predicted-loss shapes (the COMPLEX10 pattern:
+            # -56.05 um^2 on adder) never cost an ASTRAN run.
+            grownHeads = 0
+            for headSeq in list(clusterSeqs):
+                if (grownHeads >= growBeamWidth):
+                    break
+                if (len(headSeq.patternClusters) == 0):
+                    clusterSeqs.remove(headSeq)
+                    continue
+                headSize = len(headSeq.patternClusters[0].cellIdsContained)
+                if (grownHeads == 0):
+                    assert(ratioThr > 0)
+                    if (headSize*len(headSeq.patternClusters) < ratioThr * len(cells)
+                            and len(headSeq.patternClusters) < cntThr):
+                        break
+                if (headSize >= 10):
+                    # a grown 11+-cell candidate is excluded at layout time
+                    # anyway; growing it here would only churn the pool
+                    clusterSeqs.remove(headSeq)
+                    continue
+                newSeqOfClusters, patternNum = growASeqOfClusters(
+                    BLIFGraph, headSeq, clusterNum, patternNum,
+                    paintPattern=True, benefitEstimator=growthBenefitEstimator)
+                clusterSeqs.remove(headSeq)
+                clusterSeqs += newSeqOfClusters
+                grownHeads += 1
+                if (len(newSeqOfClusters) > 1):
+                    # Export the grown netlist under the grown pattern's own
+                    # id.  len(clusterSeqs) collides with ids already used by
+                    # dumped patterns and silently overwrites their .sp files
+                    # (observed: the grown 6-cell pattern overwrote
+                    # COMPLEX9.sp while COMPLEX9.gds remained the 4-cell
+                    # layout).
+                    exportSpiceNetlist(newSeqOfClusters[0], subckts,
+                                       newSeqOfClusters[0].patternClusters[0].clusterTypeId,
+                                       outputPath)
 
-            assert(ratioThr > 0)
-            if (len(clusterSeq.patternClusters[0].cellIdsContained)*len(clusterSeq.patternClusters) < ratioThr * len(cells)
-                    and len(clusterSeq.patternClusters) < cntThr):
-                break
-
-            newSeqOfClusters, patternNum = growASeqOfClusters(
-                BLIFGraph, clusterSeq, clusterNum, patternNum, paintPattern=True)
-
-            # Export the grown netlist under the grown pattern's own id.
-            # len(clusterSeqs) collides with ids already used by dumped
-            # patterns and silently overwrites their .sp files (observed: the
-            # grown 6-cell pattern overwrote COMPLEX9.sp while COMPLEX9.gds
-            # remained the 4-cell layout).
-            exportSpiceNetlist(newSeqOfClusters[0], subckts,
-                               newSeqOfClusters[0].patternClusters[0].clusterTypeId,
-                               outputPath)
-
-            clusterSeqs = clusterSeqs[1:]
-            clusterSeqs += newSeqOfClusters
             clusterSeqs = removeEmptySeqsAndDisableClusters(clusterSeqs)
             clusterSeqs = sortPatternClusterSeqs(clusterSeqs)
 

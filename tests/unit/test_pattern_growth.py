@@ -110,3 +110,69 @@ def test_growth_invariants_on_benchmark(in_pysrc):
             for cid in cl.cellIdsContained:
                 assert cid not in seen, "a cell may not appear in two clusters"
                 seen.add(cid)
+
+
+def _seq_with_two_neighbor_classes():
+    """One 2-cell cluster whose output fans out to two XOR2X1 (count-2
+    feature) and one OR2X1 (count-1 feature)."""
+    def cell(cid, name):
+        t = StdCellType(name)
+        t.addPin("I0", "input")
+        t.addPin("I1", "input")
+        t.addPin("O0", "output")
+        return DesignCell(cid, "c%d" % cid, t)
+
+    cells = [cell(i, n) for i, n in enumerate(
+        ["NAND2X1", "NAND2X1", "XOR2X1", "XOR2X1", "OR2X1"])]
+    c0, c1, x0, x1, o0 = cells
+    _link(c0, c1, 0)
+    net1 = DesignNet(1, "n1")
+    net1.addPin("O0", c1, False)
+    net1.addPin("I0", x0, True)
+    net1.addPin("I0", x1, True)
+    c1.addOutputNet(net1)
+    x0.addInputNet(net1)
+    x1.addInputNet(net1)
+    _link(c1, o0, 2)
+
+    cluster = DesignPatternCluster(0, "[NAND2X1,NAND2X1]", cells, [0, 1], 0)
+    for cid in (0, 1):
+        cells[cid].setCluster(cluster)
+        cells[cid].setClusterId(0)
+    seq = DesignPatternClusterSeq("[NAND2X1,NAND2X1]")
+    seq.addCluster(cluster)
+    return seq
+
+
+def test_growth_prunes_vetoed_branch_and_takes_next():
+    """The top-frequency branch is vetoed by the estimator -> the second
+    branch is grown instead (P0-3)."""
+    seq = _seq_with_two_neighbor_classes()
+
+    def veto_xor(member_types, neighbor_type, new_size, occurrences):
+        return -1.0 if neighbor_type == "XOR2X1" else 100.0
+
+    resSeqs, _ = growASeqOfClusters(
+        None, seq, 1, 1, benefitEstimator=veto_xor)
+    assert len(resSeqs) == 2                     # grown seq + leftover seq
+    trace = resSeqs[0].patternClusters[0].patternExtensionTrace
+    assert "+OR2X1" in trace
+    assert "XOR2X1" not in trace
+
+
+def test_growth_all_branches_pruned_returns_ungrown():
+    seq = _seq_with_two_neighbor_classes()
+    resSeqs, _ = growASeqOfClusters(
+        None, seq, 1, 1, benefitEstimator=lambda *a: -1.0)
+    assert len(resSeqs) == 1
+    assert resSeqs[0] is seq
+    assert seq.patternClusters[0].patternExtensionTrace == \
+        "[NAND2X1,NAND2X1]"
+
+
+def test_growth_without_estimator_keeps_legacy_top1():
+    seq = _seq_with_two_neighbor_classes()
+    resSeqs, _ = growASeqOfClusters(None, seq, 1, 1)
+    assert len(resSeqs) == 2
+    trace = resSeqs[0].patternClusters[0].patternExtensionTrace
+    assert "+XOR2X1" in trace                    # frequency-top branch
