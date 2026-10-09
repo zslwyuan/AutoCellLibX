@@ -31,6 +31,17 @@ gui/flow_core.py     ← 待迁移：第三份控制流副本，下一步改为�
                       （等价测试 test_flow_parity 在迁移前后持续钉住一致性）
 ```
 
+## 代码质量约定（2026-10-10 起）
+
+1. **命名**：新代码一律 snake_case（`_collect_neighbor_features`、`get_flow_logger`）；
+   公开 API 保留历史 camelCase（`loadAstranArea` 等被 gui/测试/文档引用），新增别名
+   不破坏兼容；模块 docstring 标注。
+2. **大函数**：>80 行的函数必须拆分；重复块抽共享 helper（growth 的
+   `_collect_neighbor_features` 已消掉两函数各 ~50 行重复与 4 层嵌套）。
+3. **日志/dfx**：一律走 `core.log.getFlowLogger()`（级别过滤、时间戳、控制台
+   输出），不再散落裸 print；GUI 事件仍经 PipelineHooks。
+4. **多入参**：参数 ≥6 的函数改用配置对象/命名元组（如 FlowConfig）。
+
 ## 迁移原则
 
 1. **行为不变**：每次迁移都先建立/复用回归网（等价测试、机制型单测），迁移后全绿；

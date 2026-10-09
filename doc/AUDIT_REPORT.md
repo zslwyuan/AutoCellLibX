@@ -894,3 +894,10 @@ libgcc_s_seh-1.dll、libstdc++-6.dll、libwinpthread-1.dll、liblzma-5.dll、lib
 | COMPLEX11(新) | — | 3.80 | 新生长模式 |
 
 **收益重估**:bestRecord-adder 总节省 22.8(3.06%)→ **85.5(11.46% vs ASTRAN)**/108.3(13.81% vs GSCL)——COMPLEX10(54×4)首次入选且为正收益;宽度代理 LOO MAPE 16.4% 复现。快照整体(含 COMPLEX11 .sp/.lib/.gds 与 .png)作为一次连贯快照提交。
+
+### 5.32 代码质量收尾:日志系统/重复消除/命名与文档约定(2026-10-10)
+
+- **dfx/日志**:新增 `core/log.py`(getFlowLogger:进程级单例、级别过滤、时间戳、控制台 handler),pipeline 的关键里程碑输出(astranArea/yosys 交叉校验/宽度代理报告)改走日志,CLI 输出不变;测试用 StringIO handler 钉住机制与级别过滤。
+- **大函数/重复**:core/growth 两函数的邻居分类块(各 ~50 行、4 层嵌套)抽为共享 `_collect_neighbor_features`(snake_case),行为不变(测试全绿)。
+- **命名/文档**:ARCHITECTURE.md 新增"代码质量约定"——新代码 snake_case、公开 API 兼容保留、>80 行函数必拆、日志统一入口、≥6 入参改配置对象。
+- **验证**:299 单测全绿(新增 test_log 3 例)。

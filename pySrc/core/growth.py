@@ -10,40 +10,19 @@ replay variant.
 from BLIFGraphUtil import DesignPatternClusterSeq
 
 
-def _absorbable(neighbor, clusterIds):
-    """Whether absorbing ``neighbor`` adds no new escaping output: every
-    load of its output nets must already sit inside the cluster (or be
-    the neighbor itself), so all its outputs stay internalised."""
-    for outNet in neighbor.outputNets:
-        for succ in outNet.succCells:
-            if (succ.id not in clusterIds and succ.id != neighbor.id):
-                return False
-    return True
+def _collect_neighbor_features(clusters, internalizeOnly):
+    """Shared neighbour classification for both growth variants.
 
-
-def growASeqOfClusters(BLIFGraph, clusterSeq, clusterNum, patternNum, paintPattern=False, featureLen=20, benefitEstimator=None, internalizeOnly=False):
-
-    clusters = []
-    cellsInClusters = set()
-    # Filter out disabled clusters.  With beam growth (growBeamWidth>1) a
-    # head grown later in the same round can contain clusters that an
-    # earlier head just disabled by stealing their cells -- the pool is
-    # only cleaned (removeEmptySeqsAndDisableClusters) after the whole
-    # beam, so a hard assert here is a stale single-head invariant.
-    for cluster in clusterSeq.patternClusters:
-        if (not cluster.disabled):
-            clusters.append(cluster)
-            for cellId in cluster.cellIdsContained:
-                # used to detect merging of clusters in this seq (i.e., merge the same patterns)
-                cellsInClusters.add(cellId)
-
-    # count the neighbors of the clusters:
-    visitedNeighbors = set()  # cellsInClusters
-    cluster2Neighbors = []
+    Walks every cluster's member cells, buckets their boundary neighbours
+    by feature code (``TYPE_c<k>i<o>`` / ``...o<k>``), and maps each
+    neighbour back to the cluster it would extend.  ``internalizeOnly``
+    (synthesis-reuse mode) skips neighbours whose outputs would escape.
+    Returns (feature2Neighbors, feature2cnt, neighbor2cluster).
+    """
+    visitedNeighbors = set()
     feature2Neighbors = dict()
     feature2cnt = dict()
     neighbor2cluster = dict()
-
     # iterate all the neighbors of the clusters in the current pattern and classify them
     for cluster in clusters:
         cellOrderId = 0
@@ -110,6 +89,45 @@ def growASeqOfClusters(BLIFGraph, clusterSeq, clusterNum, patternNum, paintPatte
                 feature2cnt[neighborF] = 0
             feature2Neighbors[neighborF].append(neighbor)
             feature2cnt[neighborF] += 1
+    return (feature2Neighbors, feature2cnt, neighbor2cluster)
+
+
+def _absorbable(neighbor, clusterIds):
+    """Whether absorbing ``neighbor`` adds no new escaping output: every
+    load of its output nets must already sit inside the cluster (or be
+    the neighbor itself), so all its outputs stay internalised."""
+    for outNet in neighbor.outputNets:
+        for succ in outNet.succCells:
+            if (succ.id not in clusterIds and succ.id != neighbor.id):
+                return False
+    return True
+
+
+def growASeqOfClusters(BLIFGraph, clusterSeq, clusterNum, patternNum, paintPattern=False, featureLen=20, benefitEstimator=None, internalizeOnly=False):
+
+    clusters = []
+    cellsInClusters = set()
+    # Filter out disabled clusters.  With beam growth (growBeamWidth>1) a
+    # head grown later in the same round can contain clusters that an
+    # earlier head just disabled by stealing their cells -- the pool is
+    # only cleaned (removeEmptySeqsAndDisableClusters) after the whole
+    # beam, so a hard assert here is a stale single-head invariant.
+    for cluster in clusterSeq.patternClusters:
+        if (not cluster.disabled):
+            clusters.append(cluster)
+            for cellId in cluster.cellIdsContained:
+                # used to detect merging of clusters in this seq (i.e., merge the same patterns)
+                cellsInClusters.add(cellId)
+
+    # count the neighbors of the clusters:
+    visitedNeighbors = set()  # cellsInClusters
+    cluster2Neighbors = []
+    feature2Neighbors = dict()
+    feature2cnt = dict()
+    neighbor2cluster = dict()
+
+    feature2Neighbors, feature2cnt, neighbor2cluster =         _collect_neighbor_features(clusters, internalizeOnly)
+
 
     sortedNeighborFeatures = []
     for key in feature2cnt.keys():
@@ -225,74 +243,8 @@ def growASeqOfClusters_BasedOn(BLIFGraph, clusterSeq, clusterNum, patternNum, pa
     feature2cnt = dict()
     neighbor2cluster = dict()
 
-    # iterate all the neighbors of the clusters in the current pattern and classify them
-    for cluster in clusters:
-        cellOrderId = 0
-        thisClusterNeighbors = dict()
-        for cell in cluster.cellsContained:
+    feature2Neighbors, feature2cnt, neighbor2cluster =         _collect_neighbor_features(clusters, internalizeOnly)
 
-            # iterate input predecessors
-            inOrderId = 0
-            for inputNet in cell.inputNets:
-                curNeighbor = inputNet.predCell
-                if (curNeighbor is None):
-                    continue
-                # bypass cells in current cluster or visited
-                if (curNeighbor.clusterId == cluster.clusterId or curNeighbor in visitedNeighbors or curNeighbor.stopType):
-                    continue
-                if (curNeighbor.clusterId != -1):
-                    if (curNeighbor.cluster.clusterTypeId == cluster.clusterTypeId):
-                        continue
-                if (internalizeOnly and not _absorbable(
-                        curNeighbor, cluster.cellIdsContained)):
-                    continue
-                neighbor2cluster[curNeighbor] = cluster
-
-                if (not curNeighbor in thisClusterNeighbors):
-                    thisClusterNeighbors[curNeighbor] = curNeighbor.stdCellType.typeName + "_" + \
-                        "c"+str(cellOrderId)+"i" + str(inOrderId)
-                else:
-                    thisClusterNeighbors[curNeighbor] += "c" + \
-                        str(cellOrderId)+"i" + str(inOrderId)
-
-                inOrderId += 1
-
-            # iterate output successors
-            outOrderId = 0
-            for outputNet in cell.outputNets:
-                for curNeighbor in outputNet.succCells:
-                    # bypass cells in current cluster or visited
-                    if (curNeighbor.clusterId == cluster.clusterId or curNeighbor in visitedNeighbors or curNeighbor.stopType):
-                        continue
-                    if (curNeighbor.clusterId != -1):
-                        if (curNeighbor.cluster.clusterTypeId == cluster.clusterTypeId):
-                            continue
-                    if (internalizeOnly and not _absorbable(
-                            curNeighbor, cluster.cellIdsContained)):
-                        continue
-                    neighbor2cluster[curNeighbor] = cluster
-
-                    if (not curNeighbor in thisClusterNeighbors):
-                        thisClusterNeighbors[curNeighbor] = curNeighbor.stdCellType.typeName + "_" + \
-                            "c" + \
-                            str(cellOrderId)+"o"+str(outOrderId)
-                    else:
-                        thisClusterNeighbors[curNeighbor] += "c" + \
-                            str(cellOrderId)+"o"+str(outOrderId)
-
-                outOrderId += 1
-            cellOrderId += 1
-
-        for neighbor in thisClusterNeighbors.keys():
-            neighborF = thisClusterNeighbors[neighbor]
-            visitedNeighbors.add(neighbor)
-            if (targetPatternTrace.find(clusterSeq.patternExtensionTrace + "+" + neighborF) != 0):
-                continue
-            if (not neighborF in feature2Neighbors.keys()):
-                feature2Neighbors[neighborF] = []
-                feature2cnt[neighborF] = 0
-            feature2Neighbors[neighborF].append(neighbor)
-            feature2cnt[neighborF] += 1
 
     sortedNeighborFeatures = []
     for key in feature2cnt.keys():

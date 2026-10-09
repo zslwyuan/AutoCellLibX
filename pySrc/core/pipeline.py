@@ -12,6 +12,9 @@ import os
 import time
 import glob
 import matplotlib
+from core.log import getFlowLogger
+
+_flowLog = getFlowLogger()
 
 from BLIFPreProc import *
 from BLIFPatternGrowth import *
@@ -124,7 +127,7 @@ def runPipeline(cfg, hooks=None):
                                     complexName=oriStdCellType, commandDir='./originalAstranStdCells/')
         stdType2AstranArea = loadAstranGDS()
         astranArea = getArea(cells, stdType2AstranArea)
-        print("astranArea=", astranArea)
+        _flowLog.info("astranArea=%.2f", astranArea)
         if (hooks is not None):
             hooks.result("cells", cells)
             hooks.result("BLIFGraph", BLIFGraph)
@@ -160,16 +163,16 @@ def runPipeline(cfg, hooks=None):
                 designLibArea += m["area"]
         yosysStat = runYosysStat(cfg.liberty,
                                  cfg.blifDir+"/"+benchmarkName+".blif")
-        print("yosys stat cross-check: ",
-              compareWithFlowArea(yosysStat, designLibArea))
+        _flowLog.info("yosys stat cross-check: %s",
+                      compareWithFlowArea(yosysStat, designLibArea))
         ourTypeCounts = {}
         for tmpCell in cells:
             if (tmpCell.stopType):
                 continue
             tmpType = tmpCell.stdCellType.typeName
             ourTypeCounts[tmpType] = ourTypeCounts.get(tmpType, 0) + 1
-        print("yosys cell-count cross-check: ",
-              compareCellCounts(yosysStat, ourTypeCounts))
+        _flowLog.info("yosys cell-count cross-check: %s",
+                      compareCellCounts(yosysStat, ourTypeCounts))
 
         # Width proxy (P2 phase 1): learned from the layouts already in
         # this repo.  Report-only by default (LOO ~16% MAPE overestimates
@@ -182,11 +185,10 @@ def runPipeline(cfg, hooks=None):
             sorted(glob.glob("./outputs/*/")), transistorCounts,
             stdType2AstranArea)
         if (widthProxy is not None):
-            print("width proxy: n=", proxyReport.get("n"),
-                  " source=", proxyReport.get("source"),
-                  " LOO MAPE=",
-                  None if proxyReport.get("mape") is None
-                  else round(proxyReport["mape"], 4))
+            _flowLog.info("width proxy: n=%s source=%s LOO MAPE=%s",
+                          proxyReport.get("n"), proxyReport.get("source"),
+                          None if proxyReport.get("mape") is None
+                          else round(proxyReport["mape"], 4))
         if (useWidthProxyForGrowth and widthProxy is not None):
             growthBenefitEstimator = makeProxyBenefitEstimator(
                 widthProxy, stdType2AstranArea, transistorCounts)
@@ -535,7 +537,7 @@ def runPipeline(cfg, hooks=None):
 
             stdType2AstranArea = loadAstranGDS()
             astranArea = getArea(cells, stdType2AstranArea)
-            print("astranArea=", astranArea)
+            _flowLog.info("astranArea=%.2f", astranArea)
 
             clusterSeqs = sortPatternClusterSeqs(clusterSeqs)
 
