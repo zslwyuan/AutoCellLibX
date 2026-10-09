@@ -44,11 +44,12 @@ gui/flow_core.py     ← 待迁移：第三份控制流副本，下一步改为�
 | main.py → 薄 CLI | 重写（22 行） | 同上 |
 | 可变全局 → FlowConfig | 新数据类，默认值=旧行为 | test_config（新增） |
 | heuristicLabel...×2 → core/seeding | AST 逐字提取，BLIFPreProc shim | test_clustering/encoding/reuse 全绿 |
+| growASeqOfClusters(+_BasedOn) → core/growth | AST 逐字提取，BLIFPatternGrowth shim | test_pattern_growth/benefit 全绿 |
 
 ## 待迁移（按优先级）
 
 1. core/parse（liberty/BLIF/SPICE 解析从 BLIFPreProc/spice 拆出）；
-2. core/growth（growASeqOfClusters 从 BLIFPatternGrowth 拆出，含 _BasedOn）；
+2. ~~core/growth~~ ✅ 已迁（2026-10-10）；
 3. core/evaluate + core/external 门面（把已单职责的小模块收编为一层）；
 4. gui/flow_core 消费 core.pipeline（消灭第三份控制流副本）；
 5. 性能层：CP-SAT 后端默认化、宽度代理训练管线化（见 RESEARCH_AND_OPTIMIZATION）。
