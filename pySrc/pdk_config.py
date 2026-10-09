@@ -8,15 +8,18 @@ variable, not a constant to bury in code.
 
 This module collects each PDK's geometry and technology-file pointers
 into one registry.  ``freepdk45`` reproduces the validated GSCL45
-constants in Astran.py (the test suite pins the equivalence); the
-``sky130`` / ``gf180`` entries are SCAFFOLDS: library geometry taken
-from the public PDK documentation, but the ASTRAN .rul rule files for
-them do not exist yet, so they raise unless explicitly enabled.  Adding
-a real PDK means: write its .rul + .map, calibrate the geometry here,
-then re-validate DRC on a few cells.
+constants in Astran.py (the test suite pins the equivalence).  The
+``sky130`` / ``gf180`` entries have their .rul rule files written
+(status ``draft``) from primary LEF sources -- geometry is real, but no
+DRC deck has been run on generated cells yet, so they still require the
+explicit ``allowScaffold=True`` opt-in and the registry marks them
+``draft``, not ``validated``.  Finishing a PDK means: run a few cells,
+check them against the PDK's own DRC deck (ASTRAN's internal rules are
+placeholders for unverified rows -- see the .rul headers), then flip the
+status.
 
 Usage:
-    from pdk_config import getPdk, pdkGeometryDict
+    from pdk_config import getPdk, pdkGeometryDict, loadTechnologyRul
     pdk = getPdk("freepdk45")
     script = buildAstranCommands(..., geometry=pdkGeometryDict(pdk))
 """
@@ -39,7 +42,7 @@ class PdkProfile(object):
         self.cellTemplate = cellTemplate
         self.technologyRul = technologyRul
         self.gdsMap = gdsMap
-        self.status = status            # "validated" | "scaffold"
+        self.status = status            # "validated" | "draft" | "scaffold"
         self.notes = notes
 
     @property
@@ -66,34 +69,36 @@ _PDK_REGISTRY = {
         status="validated",
         notes="GSCL45: row = 13 x 0.19 = 2.47um = CoreSite height; "
               "M1-pitch grid; abutment supply rails 2 x 0.13um."),
-    # --- scaffolds: geometry from the public docs, .rul/.map NOT yet
-    # written -- enabling requires authoring the technology files and
-    # re-validating DRC (see doc/RESEARCH_AND_OPTIMIZATION.md P1-8).
+    # --- second PDKs: .rul written from primary LEF sources (2026-10-09,
+    # see doc/RESEARCH_AND_OPTIMIZATION.md P1-8), DRC deck not yet run --
+    # status "draft": geometry is real, cells are not yet validated.
     "sky130": PdkProfile(
         name="sky130",
         cellsHeight=8, hGrid=0.34, vGrid=0.34,
         supplySize=0.48, cellTemplate="Tapless",
         technologyRul=os.path.join(
             _REPO_DIR, "tools", "astran", "build", "Work",
-            "tech_sky130.rul"),          # TODO: does not exist yet
-        status="scaffold",
-        notes="sky130_fd_sc_hd: row 2.72um = 8 x 0.34um (li1 pitch "
-              "0.34um); supply per hd library convention. NEEDS .rul."),
+            "tech_sky130.rul"),
+        status="draft",
+        notes="sky130_fd_sc_hd: row 2.72um = 8 x 0.34um (SITE unithd); "
+              "met1 w/s 0.14/0.14; rails VPWR/VGND met1 0.48 + li1 0.17. "
+              "NEEDS PDK DRC validation."),
     "gf180": PdkProfile(
         name="gf180",
-        cellsHeight=14, hGrid=0.28, vGrid=0.28,
-        supplySize=0.44, cellTemplate="Tapless",
+        cellsHeight=7, hGrid=0.56, vGrid=0.56,
+        supplySize=0.60, cellTemplate="Tapless",
         technologyRul=os.path.join(
             _REPO_DIR, "tools", "astran", "build", "Work",
-            "tech_gf180.rul"),           # TODO: does not exist yet
-        status="scaffold",
-        notes="gf180mcu 7-track: row 3.92um = 14 x 0.28um (met1 pitch "
-              "0.28um per PDK docs). NEEDS .rul."),
+            "tech_gf180.rul"),
+        status="draft",
+        notes="gf180mcu 7T: row 3.92um = 7 x 0.56um (SITE "
+              "GF018hv5v_mcu_sc7); met1 w/s 0.230/0.230; rails VDD/VSS "
+              "met1 0.60. NEEDS PDK DRC validation."),
 }
 
 
 def getPdk(name, allowScaffold=False):
-    """Look up a PDK profile by name; scaffolds are opt-in."""
+    """Look up a PDK profile by name; non-validated PDKs are opt-in."""
     if (name not in _PDK_REGISTRY):
         raise KeyError(
             "unknown PDK %r; available: %s"
@@ -101,7 +106,7 @@ def getPdk(name, allowScaffold=False):
     pdk = _PDK_REGISTRY[name]
     if (pdk.status != "validated" and not allowScaffold):
         raise RuntimeError(
-            "PDK %r is a %s (no validated .rul yet); pass "
+            "PDK %r is %s (no DRC-validated cells yet); pass "
             "allowScaffold=True to experiment. %s"
             % (name, pdk.status, pdk.notes))
     return pdk
@@ -121,6 +126,36 @@ def pdkGeometryDict(pdk):
         "nwellPos": pdk.nwellPos,
         "cellTemplate": pdk.cellTemplate,
     }
+
+
+def loadTechnologyRul(path):
+    """Parse an ASTRAN .rul file; dict with techName/minstep/vdd/mlayers
+    and a {name: (cif, gds, tech)} layer map.  Deterministic; a corrupt
+    or missing file raises so a wrong PDK cannot be silently enabled.
+    """
+    tech = {"techName": None, "minstep": None, "vdd": None,
+            "mlayers": None, "layers": {}}
+    with open(path, 'r', errors="ignore") as f:
+        for line in f:
+            line = line.strip()
+            if (not line or line.startswith("*")):
+                continue
+            parts = line.split()
+            if (not parts):
+                continue
+            if (parts[0] == "TECHNAME"):
+                tech["techName"] = parts[1]
+            elif (parts[0] == "MINSTEP"):
+                tech["minstep"] = float(parts[1])
+            elif (parts[0] == "VDD"):
+                tech["vdd"] = float(parts[1])
+            elif (parts[0] == "MLAYERS"):
+                tech["mlayers"] = int(parts[1])
+            elif (len(parts) >= 4):
+                # layer-map rows: NAME CIF GDSII TECH (rule rows are 2-token)
+                tech["layers"][parts[0]] = (parts[1], int(parts[2]),
+                                            parts[3])
+    return tech
 
 
 def multiRowVariant(pdk, rowMultiplier=2):

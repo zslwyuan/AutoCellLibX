@@ -1,8 +1,14 @@
 """Unit tests for pySrc/pdk_config.py (P1-8)."""
+import os
+
 import pytest
 
 import Astran
-from pdk_config import (PdkProfile, getPdk, listPdks, pdkGeometryDict)
+from pdk_config import (PdkProfile, getPdk, listPdks, loadTechnologyRul,
+                        pdkGeometryDict)
+
+_REQUIRED_LAYERS = ("CONT", "POLY", "NDIF", "PDIF", "NWEL", "PWEL",
+                    "VIA1", "MET1", "MET2", "MET1P", "CELLBOX")
 
 
 def test_freepdk45_matches_astran_constants():
@@ -36,7 +42,7 @@ def test_geometry_dict_feeds_build_astran_commands():
     assert 'set celltemplate "Tapless"' in script
 
 
-def test_scaffold_pdks_require_opt_in():
+def test_draft_pdks_require_opt_in():
     for name, status in listPdks().items():
         if status == "validated":
             continue
@@ -44,6 +50,33 @@ def test_scaffold_pdks_require_opt_in():
             getPdk(name)
         pdk = getPdk(name, allowScaffold=True)
         assert pdk.rowHeightUm > 0
+
+
+def test_second_pdk_geometry_matches_verified_lef():
+    """Corrected against primary LEF sources (2026-10-09): sky130 SITE
+    unithd 0.46 x 2.72 (8 tracks x 0.34); gf180 SITE GF018hv5v_mcu_sc7
+    0.56 x 3.92 (7 tracks x 0.56); rails 0.48 / 0.60."""
+    sky = getPdk("sky130", allowScaffold=True)
+    assert (sky.cellsHeight, sky.hGrid, sky.supplySize) == (8, 0.34, 0.48)
+    assert sky.rowHeightUm == pytest.approx(2.72)
+    gf = getPdk("gf180", allowScaffold=True)
+    assert (gf.cellsHeight, gf.hGrid, gf.supplySize) == (7, 0.56, 0.60)
+    assert gf.rowHeightUm == pytest.approx(3.92)
+
+
+def test_second_pdk_rul_files_exist_and_parse():
+    for name in ("sky130", "gf180"):
+        pdk = getPdk(name, allowScaffold=True)
+        assert os.path.exists(pdk.technologyRul), name
+        tech = loadTechnologyRul(pdk.technologyRul)
+        assert tech["techName"], name
+        assert tech["minstep"] == pytest.approx(0.005), name
+        assert tech["vdd"] == pytest.approx(1.8), name
+        assert tech["mlayers"] >= 4, name
+        for layer in _REQUIRED_LAYERS:
+            assert layer in tech["layers"], (name, layer)
+        # the layer map keeps the GSCL45 streams ASTRAN's writer expects
+        assert tech["layers"]["MET1"][1] == 49, name
 
 
 def test_unknown_pdk_raises():
