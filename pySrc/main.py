@@ -9,6 +9,7 @@ from spice import *
 from Astran import *
 from GDSIIAnalysis import *
 from benefit import ShrinkModel, makeGrowthBenefitEstimator
+from routability import loadCellRoutability
 
 
 def mkdir(pathStr):
@@ -199,6 +200,23 @@ def main():
                     continue
                 shrinkModel.observe(len(exampleCells),
                                     oriUnitAstranArea, newUnitAstranArea)
+                # Second metric beside width (P0-4): ASTRAN's own routing
+                # congestion, parsed from the cell's log.  Reported always;
+                # enforced only when routabilityDensityGate is set.
+                rtMetrics = loadCellRoutability(
+                    outputPath, "COMPLEX"+str(patternTraceId))
+                if (rtMetrics is not None):
+                    print("routability ", "COMPLEX"+str(patternTraceId),
+                          ": ", rtMetrics.asDict())
+                if (rtMetrics is not None
+                        and routabilityDensityGate is not None
+                        and rtMetrics.rtDensity > routabilityDensityGate):
+                    print("WARNING :", benchmarkName,
+                          " COMPLEX"+str(patternTraceId),
+                          " rtDensity", rtMetrics.rtDensity,
+                          "> gate", routabilityDensityGate,
+                          "; excluding the pattern")
+                    continue
                 if (oriUnitAstranArea-newUnitAstranArea > 0):
                     uniqueClusters = countUncoveredClusters(
                         tmpClusterSeq.patternClusters, coveredCellIds)

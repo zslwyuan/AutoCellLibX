@@ -103,6 +103,7 @@ class FlowConfig(object):
         self.cnt_thr = 30           # main.py: cntThr
         self.max_cells = 11         # patterns with >= this many cells are skipped
         self.grow_beam = 2          # heads grown per round (P0-3; 1 = legacy)
+        self.max_rt_density = None  # routability gate (P0-4); None = report only
         self.do_baseline = True
         self.do_layouts = True
         self.do_phase2 = True
@@ -209,11 +210,12 @@ class FlowRunner(object):
         import spice
         import GDSIIAnalysis
         import benefit
+        import routability
         self._flow = dict(Astran=Astran, BLIFPreProc=BLIFPreProc,
                           BLIFGraphUtil=BLIFGraphUtil,
                           BLIFPatternGrowth=BLIFPatternGrowth,
                           spice=spice, GDSIIAnalysis=GDSIIAnalysis,
-                          benefit=benefit)
+                          benefit=benefit, routability=routability)
         return self._flow
 
     def _rel(self, abs_path):
@@ -682,6 +684,23 @@ class FlowRunner(object):
                 ctx["shrinkModel"].observe(
                     len(exampleCells), oriUnitAstranArea, newUnitAstranArea)
 
+                # Second metric beside width (P0-4): routing congestion
+                # parsed from the cell's own log; reported in the pattern
+                # event, enforced only when cfg.max_rt_density is set.
+                rt_metrics = flow["routability"].loadCellRoutability(
+                    out_dir, "COMPLEX%d" % patternTraceId)
+                if rt_metrics is not None:
+                    self._log("可布性 / routability COMPLEX%d: %s"
+                              % (patternTraceId, rt_metrics.asDict()))
+                if (rt_metrics is not None
+                        and cfg.max_rt_density is not None
+                        and rt_metrics.rtDensity > cfg.max_rt_density):
+                    self._log("COMPLEX%d rtDensity %d > gate %d，剔除 / "
+                              "excluded by routability gate"
+                              % (patternTraceId, rt_metrics.rtDensity,
+                                 cfg.max_rt_density), "warn")
+                    continue
+
                 n_clusters = len(tmpClusterSeq.patternClusters)
                 counted_clusters = n_clusters
                 if oriUnitAstranArea - newUnitAstranArea > 0:
@@ -707,6 +726,7 @@ class FlowRunner(object):
                     "orig_width_um": oriUnitAstranArea,
                     "save_unit": oriUnitAstranArea - newUnitAstranArea,
                     "save_total": (oriUnitAstranArea - newUnitAstranArea) * counted_clusters,
+                    "routability": rt_metrics.asDict() if rt_metrics else None,
                     "out_dir": out_dir,
                 })
 
