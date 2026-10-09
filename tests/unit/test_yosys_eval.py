@@ -63,3 +63,107 @@ def test_compare_mapped_area():
     assert r["area_saved"] == pytest.approx(10.0)
     assert r["area_saved_pct"] == pytest.approx(10.0)
     assert r["complex_instances"] == 5
+
+
+def test_abc_uses_function_matched_custom_cell(in_pysrc):
+    """Pins the corrected conclusion (AUDIT 5.25): abc's liberty mapping
+    is cone-driven -- a single-output cell whose function matches the
+    logic IS used, so complex_used=0 on adder is a cone-matching issue,
+    not a multi-output skip (which a second-output variant also disproves).
+    Self-skips when the vendored abc-capable yosys is unavailable."""
+    import subprocess
+    from yosys_eval import buildExtendedLiberty
+    from yosys_import import findYosys
+    exe = findYosys()
+    if (exe is None):
+        pytest.skip("no yosys executable")
+    base = open("../stdCelllib/gscl45nm.lib").read()
+    frag = """
+  cell (C2O) {
+    area : 6.0;
+    cell_leakage_power : 1.0;
+    pin (A) { direction : input; capacitance : 0.002; }
+    pin (B) { direction : input; capacitance : 0.002; }
+    pin (C) { direction : input; capacitance : 0.002; }
+    pin (D) { direction : input; capacitance : 0.002; }
+    pin (Y) {
+      direction : output;
+      capacitance : 0;
+      function : "((A B)+(C D))";
+      timing() {
+        related_pin : "A";
+        cell_rise(delay_template_6x6) {
+          index_1 ("0.1, 0.5, 1.2, 3, 4, 5");
+          index_2 ("0.06, 0.24, 0.48, 0.9, 1.2, 1.8");
+          values ( \
+            "0.1, 0.1, 0.1, 0.1, 0.1, 0.1", \
+            "0.1, 0.1, 0.1, 0.1, 0.1, 0.1", \
+            "0.1, 0.1, 0.1, 0.1, 0.1, 0.1", \
+            "0.1, 0.1, 0.1, 0.1, 0.1, 0.1", \
+            "0.1, 0.1, 0.1, 0.1, 0.1, 0.1", \
+            "0.1, 0.1, 0.1, 0.1, 0.1, 0.1");
+        }
+        cell_fall(delay_template_6x6) {
+          index_1 ("0.1, 0.5, 1.2, 3, 4, 5");
+          index_2 ("0.06, 0.24, 0.48, 0.9, 1.2, 1.8");
+          values ( \
+            "0.1, 0.1, 0.1, 0.1, 0.1, 0.1", \
+            "0.1, 0.1, 0.1, 0.1, 0.1, 0.1", \
+            "0.1, 0.1, 0.1, 0.1, 0.1, 0.1", \
+            "0.1, 0.1, 0.1, 0.1, 0.1, 0.1", \
+            "0.1, 0.1, 0.1, 0.1, 0.1, 0.1", \
+            "0.1, 0.1, 0.1, 0.1, 0.1, 0.1");
+        }
+        rise_transition(delay_template_6x6) {
+          index_1 ("0.1, 0.5, 1.2, 3, 4, 5");
+          index_2 ("0.06, 0.24, 0.48, 0.9, 1.2, 1.8");
+          values ( \
+            "0.1, 0.1, 0.1, 0.1, 0.1, 0.1", \
+            "0.1, 0.1, 0.1, 0.1, 0.1, 0.1", \
+            "0.1, 0.1, 0.1, 0.1, 0.1, 0.1", \
+            "0.1, 0.1, 0.1, 0.1, 0.1, 0.1", \
+            "0.1, 0.1, 0.1, 0.1, 0.1, 0.1", \
+            "0.1, 0.1, 0.1, 0.1, 0.1, 0.1");
+        }
+        fall_transition(delay_template_6x6) {
+          index_1 ("0.1, 0.5, 1.2, 3, 4, 5");
+          index_2 ("0.06, 0.24, 0.48, 0.9, 1.2, 1.8");
+          values ( \
+            "0.1, 0.1, 0.1, 0.1, 0.1, 0.1", \
+            "0.1, 0.1, 0.1, 0.1, 0.1, 0.1", \
+            "0.1, 0.1, 0.1, 0.1, 0.1, 0.1", \
+            "0.1, 0.1, 0.1, 0.1, 0.1, 0.1", \
+            "0.1, 0.1, 0.1, 0.1, 0.1, 0.1", \
+            "0.1, 0.1, 0.1, 0.1, 0.1, 0.1");
+        }
+      }
+    }
+  }
+"""
+    import os, re, tempfile
+    lib_text = buildExtendedLiberty(base, [frag])
+    with tempfile.NamedTemporaryFile("w", suffix=".lib",
+                                     delete=False) as f:
+        f.write(lib_text)
+        lib_path = f.name
+    with tempfile.NamedTemporaryFile("w", suffix=".v",
+                                     delete=False) as f:
+        f.write("module top(input a, b, c, d, output y);"
+                " assign y = (a & b) | (c & d); endmodule\n")
+        v_path = f.name
+    try:
+        proc = subprocess.run(
+            [exe, "-Q", "-T",
+             "-p", ("read_liberty -lib %s; read -sv %s; synth -top top; "
+                    "abc -liberty %s; stat -json" % (lib_path, v_path,
+                                                     lib_path))],
+            capture_output=True, text=True, timeout=300)
+        m = re.search(r"\{.*\}", proc.stdout + proc.stderr, re.S)
+        assert m is not None, (proc.returncode, (proc.stderr or "")[-200:])
+        import json
+        hist = list(json.loads(m.group(0))["modules"].values())[0][
+            "num_cells_by_type"]
+        assert hist.get("C2O", 0) >= 1, hist
+    finally:
+        os.unlink(lib_path)
+        os.unlink(v_path)
