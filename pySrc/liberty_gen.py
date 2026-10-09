@@ -91,18 +91,42 @@ def _clusterInterface(members, electricalMetrics):
     inputs, outputs = [], []
     edges = {k: set() for k in range(len(members))}
     netDriver = {}                    # net id -> (memberIdx, pinName)
+
+    def netsOf(cell, pinIdx, refNames, netNames, nets):
+        """All DesignNet objects belonging to one pin: name-matched when
+        the flow populated netNames, positional otherwise (a pin may fan
+        out over several nets -- zip() would silently drop the rest)."""
+        name = netNames[pinIdx] if pinIdx < len(netNames) else None
+        matched = [n for n in nets if n.name == name] if name else []
+        if (matched):
+            return matched
+        return [nets[pinIdx]] if pinIdx < len(nets) else []
+
     for k, cell in enumerate(members):
-        for pinName, net in zip(cell.inputPinRefNames, cell.inputNets):
-            if (net.predCell is None or net.predCell.id not in inside):
+        for i, pinName in enumerate(cell.inputPinRefNames):
+            nets = netsOf(cell, i, cell.inputPinRefNames,
+                          cell.inputNetNames, cell.inputNets)
+            if (not nets):
+                # no net object at all -> driven from outside the cluster
                 inputs.append((k, pinName))
-        for pinName, net in zip(cell.outputPinRefNames, cell.outputNets):
-            netDriver[net.id] = (k, pinName)
-            if (len(net.succCells) == 0
-                    or not all(s.id in inside for s in net.succCells)):
+                continue
+            for net in nets:
+                if (net.predCell is None or net.predCell.id not in inside):
+                    inputs.append((k, pinName))
+                    break
+        for i, pinName in enumerate(cell.outputPinRefNames):
+            escaped = False
+            for net in netsOf(cell, i, cell.outputPinRefNames,
+                              cell.outputNetNames, cell.outputNets):
+                netDriver[net.id] = (k, pinName)
+                if (len(net.succCells) == 0
+                        or not all(s.id in inside for s in net.succCells)):
+                    escaped = True
+                for succCell in net.succCells:
+                    if (succCell.id in inside):
+                        edges[k].add(indexOf[succCell.id])
+            if (escaped):
                 outputs.append((k, pinName))
-            for succCell in net.succCells:
-                if (succCell.id in inside):
-                    edges[k].add(indexOf[succCell.id])
     return inputs, outputs, edges, netDriver
 
 
@@ -191,7 +215,14 @@ def _sweepSta(members, edges, outputs, outLoadPf, inSlewNs,
 
 def _composeFunction(outPin, members, netDriver, libFunctions, portNameOf):
     """Boolean function of one interface output pin, composed through
-    the members' own liberty functions (None when uncomposable)."""
+    the members' own liberty functions (None when uncomposable).
+
+    Members share pin names (NAND2X1 and OR2X1 both have A/B), so the
+    substitution map of an outer member would also hit the *inner*
+    expressions' same-named pins.  Each member's function is therefore
+    tokenised with a unique ``@@<k>@@<pin>@@`` placeholder first, then
+    the map is applied in one pass -- tokens cannot collide with
+    anything inside a sub-expression."""
     def exprOf(memberIdx, pinName, depth):
         if (depth > len(members) + 1):
             return None
@@ -200,10 +231,19 @@ def _composeFunction(outPin, members, netDriver, libFunctions, portNameOf):
         if (func is None):
             return None
         cell = members[memberIdx]
+        # unique-ify this member's own pins
+        tokenMap = {}
+        for pName in cell.inputPinRefNames:
+            token = "@@%d@@%s@@" % (memberIdx, pName)
+            func = re.sub(r"(?<![A-Za-z0-9_])" + re.escape(pName) +
+                          r"(?![A-Za-z0-9_])", token, func)
+            tokenMap[pName] = token
         pinExpr = {}
-        for pName, net in zip(cell.inputPinRefNames, cell.inputNets):
-            if (net.predCell is None):
-                pinExpr[pName] = portNameOf(memberIdx, pName)
+        for i, pName in enumerate(cell.inputPinRefNames):
+            token = tokenMap[pName]
+            net = cell.inputNets[i] if i < len(cell.inputNets) else None
+            if (net is None or net.predCell is None):
+                pinExpr[token] = portNameOf(memberIdx, pName)
                 continue
             found = None
             for kk, cc in enumerate(members):
@@ -211,13 +251,13 @@ def _composeFunction(outPin, members, netDriver, libFunctions, portNameOf):
                     found = kk
                     break
             if (found is None):
-                pinExpr[pName] = portNameOf(memberIdx, pName)
+                pinExpr[token] = portNameOf(memberIdx, pName)
             else:
                 _drvK, drvPin = netDriver[net.id]
                 sub = exprOf(found, drvPin, depth + 1)
                 if (sub is None):
                     return None
-                pinExpr[pName] = sub
+                pinExpr[token] = sub
         return _substitute(func, pinExpr)
     return exprOf(outPin[0], outPin[1], 0)
 

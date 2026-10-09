@@ -825,3 +825,16 @@ libgcc_s_seh-1.dll、libstdc++-6.dll、libwinpthread-1.dll、liblzma-5.dll、lib
 **推论**:让综合器直接复用生成单元,单靠"把 .lib 放进扩展库"不够——要么(a)在挖掘/生长时约束**单输出模式**且保持函数简单常见(如 ab+cd 这类),要么(b)按本流程的会计口径**预实例化替换**(COMPLEX9 直接替换 60 处 = 5.50%,这才是收益的正解)。(a)与 (b)可叠加。
 
 **验证**:新增 test_yosys_eval 真实用例(自跳过):C2O 精确匹配实验固化,防回归。
+
+### 5.26 综合复用路径打通:单输出+简单函数约束(2026-10-10)
+
+**目标**:让生成的 COMPLEX 单元能被 abc 逻辑映射复用(AUDIT 5.25 的推论:abc 只选"函数锥匹配"的单元,adder 现有 4 个单元全多输出,0 用)。实现四件套:
+
+1. **复用资格判定(pySrc/reuse.py)**:`reuseEligible(cluster)` = 单输出(仅一个逃逸成员输出脚)+ 函数 support≤4、逻辑深度≤4(深度只数"含运算符或≥2 操作数"的括号层,组合包裹不计)。组合函数复用 liberty_gen 的 `_composeFunction`。
+2. **生长偏置(internalizeOnly)**:`growASeqOfClusters(+_BasedOn)` 新增 `internalizeOnly`——只吸收"输出负载全部落在簇内"的邻居,吸收不新增逃逸输出,单输出性保持。
+3. **流程接线**:main.py/flow_core 逐候选报告 reuse 资格;`requireReuseEligible`/`cfg.require_reuse_eligible` 可选门限(默认关,打开即只收单输出简单函数模式)。
+4. **两个接口修复**(真 bug):① `_clusterInterface` 的 zip 截断改为按网名/位置配对,且"无网对象的外部输入"正确判为接口输入(修复前生成片段 inputs=0,abc 提前失败);② `_composeFunction` 成员引脚同名串扰——先做 `@@k@@pin@@` 唯一令牌化再单遍替换(修复前组合函数串入他成员的同名引脚)。
+
+**端到端验证(真实 abc)**:单输出合成簇 [NAND2,NAND2,OR2](函数 ¬(ab)∨¬(cd),support 4/深度 4)→ .lib 片段 → 扩展库 → 设计 `y=~(a&b)|~(c&d)` → **ABC RESULTS: COMPLEX_SO cells: 1** ✓。另修 yosys abc 在 Windows 的临时目录混合分隔符问题(测试内 TMP/TEMP 正斜杠化)。固化测试:test_reuse 4 例(含真实 abc 端到端,自跳过)。
+
+**现状与下一步**:adder 现有模式均多输出(测试钉住 top-10 全不合格),复用路径需在"复用模式"下重跑挖掘(`requireReuseEligible=True` + 生长 `internalizeOnly`),预期得到单输出简单函数的新模式族。280 单测通过。

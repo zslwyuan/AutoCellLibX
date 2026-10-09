@@ -16,6 +16,7 @@ from yosys_import import (runYosysStat, compareWithFlowArea,
                           compareCellCounts)
 from layout_sanity import checkLayout
 from liberty_gen import generateComplexLiberty, loadLibertyFunctions
+from reuse import reuseEligible
 from width_proxy import (WidthProxy, collectSamples,
                          countTransistorsPerType, evaluateLOO,
                          makeProxyBenefitEstimator)
@@ -280,6 +281,18 @@ def main():
                     exampleCells, cellElectricalMetrics)
                 print("electrical ", "COMPLEX"+str(patternTraceId),
                       ": ", elecMetrics)
+                # Synthesis-reuse eligibility (AUDIT 5.25): abc only uses
+                # single-output, simple-function cells.  Reported always;
+                # enforced when requireReuseEligible is set.
+                reuseInfo = reuseEligible(exampleCells, libFunctions)
+                print("reuse ", "COMPLEX"+str(patternTraceId), ": ",
+                      reuseInfo)
+                if (requireReuseEligible and not reuseInfo["eligible"]):
+                    print("WARNING :", benchmarkName,
+                          " COMPLEX"+str(patternTraceId),
+                          " not synthesis-reuse eligible (",
+                          reuseInfo["reason"], "); excluding the pattern")
+                    continue
                 timingMetrics = patternTimingPower(
                     exampleCells, cellTimingPower, cellElectricalMetrics)
                 print("timing/power ", "COMPLEX"+str(patternTraceId),

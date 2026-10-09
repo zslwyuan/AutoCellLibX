@@ -106,6 +106,7 @@ class FlowConfig(object):
         self.max_rt_density = None  # routability gate (P0-4); None = report only
         self.layout_sanity_gate = True   # structural layout gate (P2 phase 0)
         self.use_width_proxy_for_growth = False  # P2 phase 1; report-only default
+        self.require_reuse_eligible = False  # synthesis-reuse gate (AUDIT 5.25)
         self.do_baseline = True
         self.do_layouts = True
         self.do_phase2 = True
@@ -219,6 +220,7 @@ class FlowRunner(object):
         import layout_sanity
         import width_proxy
         import liberty_gen
+        import reuse
         self._flow = dict(Astran=Astran, BLIFPreProc=BLIFPreProc,
                           BLIFGraphUtil=BLIFGraphUtil,
                           BLIFPatternGrowth=BLIFPatternGrowth,
@@ -228,7 +230,7 @@ class FlowRunner(object):
                           yosys_import=yosys_import,
                           layout_sanity=layout_sanity,
                           width_proxy=width_proxy,
-                          liberty_gen=liberty_gen)
+                          liberty_gen=liberty_gen, reuse=reuse)
         return self._flow
 
     def _rel(self, abs_path):
@@ -770,6 +772,18 @@ class FlowRunner(object):
                 timing_metrics = flow["timing_power"].patternTimingPower(
                     exampleCells, ctx["cellTimingPower"],
                     ctx["cellElectricalMetrics"])
+                # Synthesis-reuse eligibility (AUDIT 5.25): abc only uses
+                # single-output simple-function cells; report always, gate
+                # when cfg.require_reuse_eligible is set.
+                reuse_info = flow["reuse"].reuseEligible(
+                    exampleCells, ctx["libFunctions"])
+                if (self.cfg.require_reuse_eligible
+                        and not reuse_info["eligible"]):
+                    self._log("COMPLEX%d 不可综合复用（%s），剔除 / not "
+                              "synthesis-reuse eligible, excluded"
+                              % (patternTraceId, reuse_info["reason"]),
+                              "warn")
+                    continue
                 proxy_width = None
                 if ctx["widthProxy"] is not None:
                     proxy_width = ctx["widthProxy"].predict(
@@ -834,6 +848,7 @@ class FlowRunner(object):
                     "electrical": elec_metrics,
                     "timing_power": timing_metrics,
                     "width_proxy_pred": proxy_width,
+                    "reuse": reuse_info,
                     "out_dir": out_dir,
                 })
 

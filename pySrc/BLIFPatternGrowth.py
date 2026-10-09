@@ -4,7 +4,18 @@ import networkx as nx
 import time
 
 
-def growASeqOfClusters(BLIFGraph, clusterSeq, clusterNum, patternNum, paintPattern=False, featureLen=20, benefitEstimator=None):
+def _absorbable(neighbor, clusterIds):
+    """Whether absorbing ``neighbor`` adds no new escaping output: every
+    load of its output nets must already sit inside the cluster (or be
+    the neighbor itself), so all its outputs stay internalised."""
+    for outNet in neighbor.outputNets:
+        for succ in outNet.succCells:
+            if (succ.id not in clusterIds and succ.id != neighbor.id):
+                return False
+    return True
+
+
+def growASeqOfClusters(BLIFGraph, clusterSeq, clusterNum, patternNum, paintPattern=False, featureLen=20, benefitEstimator=None, internalizeOnly=False):
 
     clusters = []
     cellsInClusters = set()
@@ -45,6 +56,9 @@ def growASeqOfClusters(BLIFGraph, clusterSeq, clusterNum, patternNum, paintPatte
                 if (curNeighbor.clusterId != -1):
                     if (curNeighbor.cluster.clusterTypeId == cluster.clusterTypeId):
                         continue
+                if (internalizeOnly and not _absorbable(
+                        curNeighbor, cluster.cellIdsContained)):
+                    continue
                 neighbor2cluster[curNeighbor] = cluster
 
                 if (not curNeighbor in thisClusterNeighbors):
@@ -66,6 +80,9 @@ def growASeqOfClusters(BLIFGraph, clusterSeq, clusterNum, patternNum, paintPatte
                     if (curNeighbor.clusterId != -1):
                         if (curNeighbor.cluster.clusterTypeId == cluster.clusterTypeId):
                             continue
+                    if (internalizeOnly and not _absorbable(
+                            curNeighbor, cluster.cellIdsContained)):
+                        continue
                     neighbor2cluster[curNeighbor] = cluster
 
                     if (not curNeighbor in thisClusterNeighbors):
@@ -178,7 +195,7 @@ def growASeqOfClusters(BLIFGraph, clusterSeq, clusterNum, patternNum, paintPatte
     return resSeqs, patternNum
 
 
-def growASeqOfClusters_BasedOn(BLIFGraph, clusterSeq, clusterNum, patternNum, paintPattern=False, featureLen=20, targetPatternTrace="", benefitEstimator=None):
+def growASeqOfClusters_BasedOn(BLIFGraph, clusterSeq, clusterNum, patternNum, paintPattern=False, featureLen=20, targetPatternTrace="", benefitEstimator=None, internalizeOnly=False):
 
     assert(targetPatternTrace != "")
     clusters = []
@@ -220,6 +237,9 @@ def growASeqOfClusters_BasedOn(BLIFGraph, clusterSeq, clusterNum, patternNum, pa
                 if (curNeighbor.clusterId != -1):
                     if (curNeighbor.cluster.clusterTypeId == cluster.clusterTypeId):
                         continue
+                if (internalizeOnly and not _absorbable(
+                        curNeighbor, cluster.cellIdsContained)):
+                    continue
                 neighbor2cluster[curNeighbor] = cluster
 
                 if (not curNeighbor in thisClusterNeighbors):
@@ -241,6 +261,9 @@ def growASeqOfClusters_BasedOn(BLIFGraph, clusterSeq, clusterNum, patternNum, pa
                     if (curNeighbor.clusterId != -1):
                         if (curNeighbor.cluster.clusterTypeId == cluster.clusterTypeId):
                             continue
+                    if (internalizeOnly and not _absorbable(
+                            curNeighbor, cluster.cellIdsContained)):
+                        continue
                     neighbor2cluster[curNeighbor] = cluster
 
                     if (not curNeighbor in thisClusterNeighbors):

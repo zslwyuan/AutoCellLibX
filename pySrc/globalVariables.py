@@ -24,3 +24,9 @@ layoutSanityGate = True
 # training layouts exist.
 useWidthProxyForGrowth = False
 
+# Synthesis-reuse gate (AUDIT 5.25): when set, only single-output patterns
+# with simple common functions (support<=4, depth<=2) are accepted -- the
+# only class abc's cone-driven mapping can ever pick up.  Off by default:
+# it would exclude every current adder pattern (all multi-output).
+requireReuseEligible = False
+
