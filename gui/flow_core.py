@@ -218,6 +218,7 @@ class FlowRunner(object):
         import yosys_import
         import layout_sanity
         import width_proxy
+        import liberty_gen
         self._flow = dict(Astran=Astran, BLIFPreProc=BLIFPreProc,
                           BLIFGraphUtil=BLIFGraphUtil,
                           BLIFPatternGrowth=BLIFPatternGrowth,
@@ -226,7 +227,8 @@ class FlowRunner(object):
                           electrical=electrical, timing_power=timing_power,
                           yosys_import=yosys_import,
                           layout_sanity=layout_sanity,
-                          width_proxy=width_proxy)
+                          width_proxy=width_proxy,
+                          liberty_gen=liberty_gen)
         return self._flow
 
     def _rel(self, abs_path):
@@ -498,6 +500,8 @@ class FlowRunner(object):
             flow["electrical"].loadCellElectricalMetrics(
                 str(self.cfg.liberty()))
         context["cellTimingPower"] = flow["timing_power"].loadTimingPower(
+            str(self.cfg.liberty()))
+        context["libFunctions"] = flow["liberty_gen"].loadLibertyFunctions(
             str(self.cfg.liberty()))
 
         # Yosys re-import: design-level area/histogram cross-check
@@ -787,6 +791,19 @@ class FlowRunner(object):
                     self._log("COMPLEX%d 版图体检未过，剔除 / failed sanity, "
                               "excluded" % patternTraceId, "warn")
                     continue
+
+                # Liberty fragment for the generated cell (mirrors main.py):
+                # area from the layout width, timing/power from the LUT
+                # mini-STA sweep; written on change only.
+                lib_text, _lib_report = flow["liberty_gen"].generateComplexLiberty(
+                    tmpClusterSeq, cell_name, newUnitAstranArea,
+                    ctx["cellTimingPower"], ctx["cellElectricalMetrics"],
+                    ctx["libFunctions"])
+                lib_path = os.path.join(out_dir, cell_name + ".lib")
+                if (not os.path.exists(lib_path)
+                        or open(lib_path).read() != lib_text):
+                    with open(lib_path, "w") as fh:
+                        fh.write(lib_text)
 
                 n_clusters = len(tmpClusterSeq.patternClusters)
                 counted_clusters = n_clusters

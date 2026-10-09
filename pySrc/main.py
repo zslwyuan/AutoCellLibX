@@ -15,6 +15,7 @@ from timing_power import loadTimingPower, patternTimingPower
 from yosys_import import (runYosysStat, compareWithFlowArea,
                           compareCellCounts)
 from layout_sanity import checkLayout
+from liberty_gen import generateComplexLiberty, loadLibertyFunctions
 from width_proxy import (WidthProxy, collectSamples,
                          countTransistorsPerType, evaluateLOO,
                          makeProxyBenefitEstimator)
@@ -101,6 +102,7 @@ def main():
         # Delay/power from the liberty LUTs (mini-STA per candidate) and
         # a Yosys re-import for design-level cross-check (user priority).
         cellTimingPower = loadTimingPower("../stdCelllib/gscl45nm.lib")
+        libFunctions = loadLibertyFunctions("../stdCelllib/gscl45nm.lib")
         designLibArea = 0.0
         for tmpCell in cells:
             m = cellElectricalMetrics.get(tmpCell.stdCellType.typeName)
@@ -307,6 +309,19 @@ def main():
                           " COMPLEX"+str(patternTraceId),
                           " failed layout sanity; excluding the pattern")
                     continue
+                # Liberty fragment for the generated cell (area from the
+                # layout width, leakage/caps from the base lib, timing and
+                # power from the LUT mini-STA sweep): the data a downstream
+                # flow needs to reuse the cell.  Written on change only.
+                libText, libReport = generateComplexLiberty(
+                    tmpClusterSeq, "COMPLEX"+str(patternTraceId),
+                    newUnitAstranArea, cellTimingPower,
+                    cellElectricalMetrics, libFunctions)
+                libPath = outputPath+"/COMPLEX"+str(patternTraceId)+".lib"
+                if ((not os.path.exists(libPath))
+                        or open(libPath).read() != libText):
+                    with open(libPath, 'w') as libFh:
+                        libFh.write(libText)
                 if (oriUnitAstranArea-newUnitAstranArea > 0):
                     uniqueClusters = countUncoveredClusters(
                         tmpClusterSeq.patternClusters, coveredCellIds)

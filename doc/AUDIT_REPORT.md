@@ -761,3 +761,21 @@ libgcc_s_seh-1.dll、libstdc++-6.dll、libwinpthread-1.dll、liblzma-5.dll、lib
 - 新增自跳过式真实用例 `test_run_stat_real_yosys_if_available`(有 yosys 时断言 707/192)。
 
 **验证**:266 单测通过。
+
+### 5.22 COMPLEX 单元的 Liberty 表征生成(2026-10-09)
+
+**问题**:ASTRAN 重生成版图后,.sp 不需要重生成(挖掘产物、ASTRAN 输入、缓存契约看 mtime);但 COMPLEX 单元**在库中没有任何 .lib 条目**——库只覆盖 31 个基础单元,下游复用(重映射/STA/交叉验证)缺 delay/power/area。
+
+**实现(pySrc/liberty_gen.py)**:对每个生成的 COMPLEX 单元输出 .lib 片段——
+- **area** = 版图宽度 × 行高(锚定校验:NAND2X1 LEF 0.76×2.47=1.877200 与其 lib area 精确相等);
+- **leakage** = 成员 `cell_leakage_power` 求和(管数不变);
+- **引脚电容** = 接口输入引脚即基础单元引脚,直接取基础 lib 的 pin 电容(实测 COMPLEX1 引脚值与库逐位一致);
+- **timing** = 成员 DAG 上的迷你 STA 在基础库 6×6(负载×摆率)网格上扫描,生成标准 delay/transition LUT(布局前估计:worst-arc、无线 RC,片段内注明);
+- **power** = internal_power 表按成员 LUT 能量同网格扫描;
+- **function** = 成员 liberty function 字符串按内部网全括号替换组合(空格=AND、+=OR、^=XOR、!=NOT),组合失败时留注释占位。
+
+**接线**:main.py/flow_core 在校验门通过后写出 `COMPLEX<n>.lib`(写变化才落盘,不动 mtime 契约);与 .sp/.gds 同目录。
+
+**局限与下一步**:时序/功耗为布局前估计(无寄生);签署级表征需 SPICE——.sp 已可直接喂 ngspice(未来校验通道);function 组合依赖基础 function 字符串,个别特殊单元(DS0000/P0002 形式)不可组合时降级为注释。
+
+**验证**:269 单测通过(新增 test_liberty_gen.py:函数库解析、全词替换、真实簇生成+liberty.parser 回读)。
