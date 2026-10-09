@@ -44,7 +44,14 @@
 objective 2,722,000（FEASIBLE，**−0.11%**）、width 532 DBU——版图宽度一致，
 目标值略优。过程中修复两处移植缺陷：inf 系数未随 CBC 解析器丢弃（后端改为
 复用 `gurobi_cl._parse_terms` 单一来源）、`0.000000` 字面量误触缩放（检测改
-为"非零小数"）。 |
+为"非零小数"）。
+
+**端到端版图实验**（2026-10-09，沙盒双单元对照，详见 AUDIT_REPORT §5.20）：
+COMPLEX1 上 CBC@180s 崩溃到 9.31µm、CP-SAT 同期 3.61µm（比历史 CBC@300s 的
+4.37 还窄 17%）；COMPLEX0 上 CBC 2.28µm（与历史一致）、CP-SAT 2.09µm（−8%）。
+全部过阶段 0 校验门、repair pass 0 违例、层/标签计数一致。**建议下一步把默认
+后端切为 CP-SAT**（已可用 `GUROBI_CL_SOLVER=cpsat`，缺 ortools 自动回退）；
+切换属会改变全部后续单元宽度的策略决定，故未在本轮执行。 |
 
 **排在第三的原因**：边界清晰（LP in → .sol out）、有现成黄金对照（CBC 结果），
 是四个"换引擎"项里风险最低的。SMT folding+placement、SO3-Cell、CoP&R 都
