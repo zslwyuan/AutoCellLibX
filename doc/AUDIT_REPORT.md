@@ -727,3 +727,23 @@ libgcc_s_seh-1.dll、libstdc++-6.dll、libwinpthread-1.dll、liblzma-5.dll、lib
 **阶段 3-5(文档化立项,见 doc/P2_MERGE_PLAN.md)**:LLM 出约束/TOPCELL 拓扑生成(待阶段 1 评估);SMT folding+placement 先作 ≤12 管参考实现给 ASTRAN 打分;CoP&R 的 AllSAT 可复用阶段 2 的 CP-SAT 通道;SO3-Cell 因求解成本(44 管 7.2h)与本流程预算不兼容暂缓;NVCell2/RL、DiSPlace/TransOpt、CFET/BSPDN 结论性不合入(架构不匹配或超出库扩展器定位)。
 
 **验证**:263 单测通过;对拍结果见提交记录与 P2_MERGE_PLAN 状态。
+
+### 5.20 CP-SAT 端到端版图实验(2026-10-09,沙盒,未触碰跟踪产物)
+
+**方法**:同一 `COMPLEX1.sp`/`COMPLEX0.sp` 各跑两遍完整 ASTRAN(placement/route 确定,仅压缩求解器不同),`GUROBI_CL_TIME_LIMIT=180`,沙盒输出,版图过 layout_sanity 校验门。
+
+**结果(决定性)**:
+
+| 单元 | 后端 | 目标值 | 宽度 | 校验门 | repair pass |
+|---|---|---|---|---|---|
+| COMPLEX1 | CBC@180s | 1.895e7 | 9.31µm(49 格) | (异常组,日志 0 违例) | 0 |
+| COMPLEX1 | **CP-SAT@180s** | **7.44e6** | **3.61µm(19 格)** | ✅ 通过 | 0 |
+| COMPLEX1 | (历史 CBC@300s 跟踪产物) | — | 4.37µm | ✅ | — |
+| COMPLEX0 | CBC@180s | — | 2.28µm(与历史一致) | ✅ 通过 | 0 |
+| COMPLEX0 | **CP-SAT@180s** | — | **2.09µm(−8%)** | ✅ 通过 | 0 |
+
+**解读**:COMPLEX0(小模型)上 CBC 精确复现历史宽度,CP-SAT 再压 8%;COMPLEX1(大模型)上 CBC@180s 的 incumbent 质量崩溃(9.31),而 CP-SAT 同期拿到 3.61——目标值差 2.5×。与文献共识一致(CBC 在 big-M 模型上"找解快、收敛慢"),也与对拍实验(ILPmodel 上 CP-SAT −0.11%)方向一致。层/标签计数两后端一致(active 57、poly 149、M1 409、标签 8),证实是同一电路的更紧打包。
+
+**建议(未执行)**:将默认后端切为 CP-SAT(`GUROBI_CL_SOLVER=cpsat` 已可用,或改 gurobi_cl.py 默认值,ortools 缺失自动回退 CBC)。默认切换会改变后续所有生成单元的宽度,属策略决定,留给用户拍板;切换后建议整基准重生成并更新 outputs 快照。
+
+**yosys 安装尝试失败**:MSYS2 pacman 数据库 PGP 签名损坏(ucrt64/clang64/msys 库),未做系统级修复;`yosys_import` 保持优雅降级,装好后直接可用(用户可在 oss-cad-suite 或修好 pacman 后获得)。
