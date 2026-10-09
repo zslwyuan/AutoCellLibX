@@ -2,13 +2,12 @@ import os
 import blifparser.blifparser as blifparser
 from globalVariables import *
 from BLIFGraphUtil import *
+from core.seeding import heuristicLabelSomeNodesAndGetInitialClusters, heuristicLabelSomeNodesAndGetInitialClusters_BasedOn
 import networkx as nx
 import numpy as np
 import networkx as nx
 import time
 from liberty.parser import parse_liberty
-
-
 class S2VGraph(object):
     def __init__(self, g, label, node_tags=None, node_features=None):
         '''
@@ -27,22 +26,11 @@ class S2VGraph(object):
         self.edge_mat = 0
 
         self.max_neighbor = 0
-
-
 def softmax(x):
     """Compute softmax values for each sets of scores in x."""
     e_x = np.exp(x - np.max(x))
     return e_x / e_x.sum()
-
-
-# parse_liberty (via liberty-parser + sympy boolean functions) is the dominant
-# cost of every design parse, and the GUI/flow parse the same library many
-# times per process.  Cache the parsed cell dict per (path, mtime): the
-# StdCellType objects are read-only after loadLibertyFile returns, so sharing
-# them across parses is safe.
 _liberty_cache = {}
-
-
 def loadLibertyFile(fileName):
     key = (os.path.abspath(fileName), os.path.getmtime(fileName))
     if key in _liberty_cache:
@@ -74,8 +62,6 @@ def loadLibertyFile(fileName):
 
     _liberty_cache[key] = stdCellLib
     return stdCellLib
-
-
 def loadBoolGateFromBLIF(blif, stdCellLib):
     for boolFunc in blif.booleanfunctions:
         truthTableStr = "bool-"+str(boolFunc.truthtable)
@@ -85,8 +71,6 @@ def loadBoolGateFromBLIF(blif, stdCellLib):
                 newStdCellType.addPin("IN"+str(i), 'input')
             newStdCellType.addPin("OUT0", 'output')
             stdCellLib[truthTableStr] = newStdCellType
-
-
 def genGraphFromLibertyAndBLIF(libFileName, blifFileName):
 
     stdCellLib = loadLibertyFile(libFileName)
@@ -215,8 +199,6 @@ def genGraphFromLibertyAndBLIF(libFileName, blifFileName):
                 cell.stopType = True
 
     return BLIFGraph, cells, netlist, stdCellTypesForFeature
-
-
 def extractAndEncodeSubgraph_Tree(cells, rootNode, depthLimit=2, clusterId=None):
     depths = [0]
     tree = [rootNode]
@@ -251,8 +233,6 @@ def extractAndEncodeSubgraph_Tree(cells, rootNode, depthLimit=2, clusterId=None)
             cells[cellId].setClusterId(clusterId)
 
     return tree, encodes
-
-
 def canonicalPatternCode(code):
     """Canonical pattern-code string for a raw encode list.
 
@@ -269,9 +249,6 @@ def canonicalPatternCode(code):
     canon = code[:1] + sorted(code[1:])
     return str(canon).replace(
         "\'", "").replace("\\", "").replace("\"", "").replace(" ", "")
-
-
-
 def _escapeOutputCount(cells, tree):
     """Number of escaping member output pins of a seed tree (== the
     complex cell's output pins): a member output pin whose loads are not
@@ -285,152 +262,6 @@ def _escapeOutputCount(cells, tree):
                     or not all(s.id in inside for s in outNet.succCells)):
                 count += 1
     return count
-
-
-def heuristicLabelSomeNodesAndGetInitialClusters(BLIFGraph, cells, netlist, singleOutputSeeds=False):
-
-    treeDepth = 1
-
-    pattern2RootCells = dict()
-    for cell in cells:
-        shouldBypass = False
-        for typeKey in bypassTypes:
-            if (cell.stdCellType.typeName.find(typeKey) >= 0):
-                shouldBypass = True
-                break
-        if (shouldBypass):
-            continue
-        tree, code = extractAndEncodeSubgraph_Tree(cells, cell.id, treeDepth)
-        if (len(tree) < 2):
-            continue
-        if (singleOutputSeeds and _escapeOutputCount(cells, tree) != 1):
-            continue
-        codeStr = canonicalPatternCode(code)
-        if (codeStr.find("bool-") >= 0):
-            continue
-        if (not codeStr in pattern2RootCells.keys()):
-            pattern2RootCells[codeStr] = []
-        pattern2RootCells[codeStr].append(cell.id)
-
-    pattern2Cnt = []
-    for key in pattern2RootCells.keys():
-        pattern2Cnt.append((key, len(pattern2RootCells[key])))
-    sorted_by_second = sorted(pattern2Cnt, key=lambda tup: -tup[1])
-    print("top pattern types: ", sorted_by_second[:30])
-
-    patternToBeLabeled = []
-    labelId = 0
-    labeledCnt = 0
-    clusterCellsCnt = 0
-
-    initialClusterSeqs = []
-    for tmpType in sorted_by_second[:30]:
-        patternToBeLabeled.append(tmpType[0])
-        newSeq = DesignPatternClusterSeq(tmpType[0])
-        for cellId in pattern2RootCells[tmpType[0]]:
-            BLIFGraph.nodes()[cellId]['nodeLabel'] = labelId
-            tree, code = extractAndEncodeSubgraph_Tree(   # color the nodes in a pattern
-                cells, cellId, treeDepth, labeledCnt)
-            if (tree is None):
-                continue
-            code = canonicalPatternCode(code)
-            newCluster = DesignPatternCluster(
-                labeledCnt, code, cells, tree, labelId)
-            for cellId in tree:
-                cells[cellId].setCluster(newCluster)
-
-            newSeq.addCluster(newCluster)
-            labeledCnt += 1
-            clusterCellsCnt += len(tree)
-        if (len(newSeq.patternClusters) > 0):
-            initialClusterSeqs.append(newSeq)
-            labelId += 1
-        else:
-            del newSeq
-
-    resSeqs = sortPatternClusterSeqs(initialClusterSeqs)
-
-    print("labeled ", labeledCnt, " nodes (", labeledCnt /
-          BLIFGraph.number_of_nodes()*100, "%)")
-    print("clustered ", clusterCellsCnt, " nodes (", clusterCellsCnt /
-          BLIFGraph.number_of_nodes()*100, "%)")
-
-    return resSeqs, labeledCnt
-
-
-def heuristicLabelSomeNodesAndGetInitialClusters_BasedOn(BLIFGraph, cells, netlist, targetPatternTrace, singleOutputSeeds=False):
-
-    treeDepth = 1
-
-    pattern2RootCells = dict()
-    for cell in cells:
-        shouldBypass = False
-        for typeKey in bypassTypes:
-            if (cell.stdCellType.typeName.find(typeKey) >= 0):
-                shouldBypass = True
-                break
-        if (shouldBypass):
-            continue
-        tree, code = extractAndEncodeSubgraph_Tree(cells, cell.id, treeDepth)
-        if (len(tree) < 2):
-            continue
-        if (singleOutputSeeds and _escapeOutputCount(cells, tree) != 1):
-            continue
-        codeStr = canonicalPatternCode(code)
-        if (codeStr.find("bool-") >= 0):
-            continue
-        if (targetPatternTrace.find(codeStr) != 0):
-            continue
-        if (not codeStr in pattern2RootCells.keys()):
-            pattern2RootCells[codeStr] = []
-        pattern2RootCells[codeStr].append(cell.id)
-
-    pattern2Cnt = []
-    for key in pattern2RootCells.keys():
-        pattern2Cnt.append((key, len(pattern2RootCells[key])))
-    sorted_by_second = sorted(pattern2Cnt, key=lambda tup: -tup[1])
-    print("top pattern types: ", sorted_by_second[:30])
-
-    patternToBeLabeled = []
-    labelId = 0
-    labeledCnt = 0
-    clusterCellsCnt = 0
-
-    initialClusterSeqs = []
-    for tmpType in sorted_by_second[:30]:
-        patternToBeLabeled.append(tmpType[0])
-        newSeq = DesignPatternClusterSeq(tmpType[0])
-        for cellId in pattern2RootCells[tmpType[0]]:
-            BLIFGraph.nodes()[cellId]['nodeLabel'] = labelId
-            tree, code = extractAndEncodeSubgraph_Tree(   # color the nodes in a pattern
-                cells, cellId, treeDepth, labeledCnt)
-            if (tree is None):
-                continue
-            code = canonicalPatternCode(code)
-            newCluster = DesignPatternCluster(
-                labeledCnt, code, cells, tree, labelId)
-            for cellId in tree:
-                cells[cellId].setCluster(newCluster)
-
-            newSeq.addCluster(newCluster)
-            labeledCnt += 1
-            clusterCellsCnt += len(tree)
-        if (len(newSeq.patternClusters) > 0):
-            initialClusterSeqs.append(newSeq)
-            labelId += 1
-        else:
-            del newSeq
-
-    resSeqs = sortPatternClusterSeqs(initialClusterSeqs)
-
-    print("labeled ", labeledCnt, " nodes (", labeledCnt /
-          BLIFGraph.number_of_nodes()*100, "%)")
-    print("clustered ", clusterCellsCnt, " nodes (", clusterCellsCnt /
-          BLIFGraph.number_of_nodes()*100, "%)")
-
-    return resSeqs, labeledCnt
-
-
 def convertBLIFGraphIntoDataset(BLIFGraph, stdCellTypesForFeature, maxNumType=36):
 
     print('converting BLIF Graph Into Dataset data')
@@ -492,8 +323,6 @@ def convertBLIFGraphIntoDataset(BLIFGraph, stdCellTypesForFeature, maxNumType=36
     print("# data: %d" % len(node_features))
 
     return g_list, maxLabel+1
-
-
 def loadDataAndPreprocess(libFileName="sky130_fd_sc_hd__tt_025C_1v80.lib", blifFileName="rocket.blif", startTime=0, bypassInitialCluster=False, singleOutputSeeds=False):
     BLIFGraph, cells, netlist, stdCellTypesForFeature = genGraphFromLibertyAndBLIF(
         libFileName, blifFileName)
@@ -515,19 +344,13 @@ def loadDataAndPreprocess(libFileName="sky130_fd_sc_hd__tt_025C_1v80.lib", blifF
     print("loadDataAndPreprocess done. time esclaped: ", endTime-startTime)
 
     return BLIFGraph, cells, netlist, stdCellTypesForFeature, dataset, maxLabelIndex, initialClusterSeqs, clusterNum
-
-
 def getArea(cells, type2Area):
     resArea = 0
     for cell in cells:
         if (cell.stdCellType.typeName in type2Area.keys()):
             resArea += type2Area[cell.stdCellType.typeName]
     return resArea
-
-
 def main():
     loadDataAndPreprocess()
-
-
 if __name__ == '__main__':
     main()

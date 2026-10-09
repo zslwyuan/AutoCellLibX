@@ -153,13 +153,14 @@ def _run_main_flow(sandbox, monkeypatch):
     main's own detectedPatterns/dumpedPaterns; phase2_targets is the target
     trace sequence its phase 2 re-derived, in iteration order.
     """
-    import main
+    import core.pipeline
+    import core.config
 
     tracker = _DumpTracker()
     phase2_targets = []
-    real_draw = main.drawColorfulFigureForGraphWithAttributes
-    real_export = main.exportSpiceNetlist
-    real_based_on = main.heuristicLabelSomeNodesAndGetInitialClusters_BasedOn
+    real_draw = core.pipeline.drawColorfulFigureForGraphWithAttributes
+    real_export = core.pipeline.exportSpiceNetlist
+    real_based_on =         core.pipeline.heuristicLabelSomeNodesAndGetInitialClusters_BasedOn
 
     def spy_draw(*args, **kwargs):
         tracker.on_draw(kwargs.get("save_to_file", ""))
@@ -175,16 +176,19 @@ def _run_main_flow(sandbox, monkeypatch):
         phase2_targets.append(trace)
         return real_based_on(graph, cells, netlist, trace)
 
-    monkeypatch.setattr("main.runAstranForNetlist",
+    monkeypatch.setattr("core.pipeline.runAstranForNetlist",
                         _fake_run_astran_for_netlist)
-    monkeypatch.setattr("main.drawColorfulFigureForGraphWithAttributes",
-                        spy_draw)
-    monkeypatch.setattr("main.exportSpiceNetlist", spy_export)
     monkeypatch.setattr(
-        "main.heuristicLabelSomeNodesAndGetInitialClusters_BasedOn",
+        "core.pipeline.drawColorfulFigureForGraphWithAttributes",
+        spy_draw)
+    monkeypatch.setattr("core.pipeline.exportSpiceNetlist", spy_export)
+    monkeypatch.setattr(
+        "core.pipeline.heuristicLabelSomeNodesAndGetInitialClusters_BasedOn",
         spy_based_on)
     monkeypatch.chdir(sandbox["pysrc"])
-    main.main()
+    cfg = core.config.FlowConfig.from_env()
+    cfg.astranBuildPath = "stub"          # enable the (stubbed) layout path
+    core.pipeline.runPipeline(cfg)
     return (os.path.join(sandbox["pysrc"], "outputs", "adder"),
             tracker, phase2_targets)
 
