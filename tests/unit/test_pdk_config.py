@@ -49,3 +49,17 @@ def test_scaffold_pdks_require_opt_in():
 def test_unknown_pdk_raises():
     with pytest.raises(KeyError):
         getPdk("no-such-pdk")
+
+
+def test_multi_row_variant_geometry():
+    from pdk_config import multiRowVariant
+    base = getPdk("freepdk45")
+    dbl = multiRowVariant(base, 2)
+    assert dbl.cellsHeight == 26
+    assert dbl.rowHeightUm == pytest.approx(4.94)
+    assert dbl.nwellPos == pytest.approx(2.47)     # equal wells at any H
+    geom = pdkGeometryDict(dbl)
+    script = Astran.buildAstranCommands(
+        "g", "t", "n", "C0", ".", geometry=geom)
+    assert "set rowheight 26" in script
+    assert "set nwellpos 2.47" in script

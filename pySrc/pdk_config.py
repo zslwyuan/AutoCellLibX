@@ -121,3 +121,25 @@ def pdkGeometryDict(pdk):
         "nwellPos": pdk.nwellPos,
         "cellTemplate": pdk.cellTemplate,
     }
+
+
+def multiRowVariant(pdk, rowMultiplier=2):
+    """Multi-row-height variant of a profile (roadmap P1-11).
+
+    Complexes past ~20 transistors can trade doubled row height for a
+    much smaller width (Optimal Layout Synthesis of Multi-Row Standard
+    Cells, ICCAD'24; the ASP-DAC'25 follow-up adds intra-cell
+    routability to the objective).  nwellPos stays H/2 automatically, so
+    the equal-well invariant holds at any multiplier.  Width comparisons
+    against single-row cells are only meaningful as area (width x
+    height) -- AGENTS.md invariant 10 applies.
+    """
+    return PdkProfile(
+        name="%s_x%drows" % (pdk.name, rowMultiplier),
+        cellsHeight=pdk.cellsHeight * rowMultiplier,
+        hGrid=pdk.hGrid, vGrid=pdk.vGrid,
+        supplySize=pdk.supplySize, cellTemplate=pdk.cellTemplate,
+        technologyRul=pdk.technologyRul, gdsMap=pdk.gdsMap,
+        status=pdk.status,
+        notes="multi-row variant of %s (%d rows); %s"
+              % (pdk.name, rowMultiplier, pdk.notes))
