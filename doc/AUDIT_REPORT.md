@@ -642,3 +642,28 @@ ASTRAN 只给 IOgeometries 里的信号端口打标(route() 把 vdd/gnd 排除�
 - ③ 邻居探索两个缺陷:(a) 上一轮 BFS 重写丢了"收集时封顶"——常见类型深度 2 一层可收数千节点,spring 布局(UI 线程)卡死 → 恢复收集期 `MAX_NEIGHBOURHOOD` 上限(实测 div 深度 2 收 21 节点封顶);(b) INVX1 冒烟测试的 GDS 包围盒断言(bb<5 用户单位)在 GDS UNITS 校准提交后过时——GDS 的 UNITS 记录按设计不可信(AGENTS.md 不变式 1,查看器按日志校准),测试改为以日志 Cell Size 为权威 + GDS 非退化矩形检查。
 
 **验证**:194 单测 + 3 集成测试全绿;新 ASTRAN 求解链路(无窗口 popen + pythonw 包装)在日志中 OPTIMAL、0.57×2.47µm、修复通道 0 违规。
+
+### 5.17 第十三轮:全层实现校验(2026-10-09)
+
+**范围**:对照 doc/IMPLEMENTATION_GUIDE.md 九层模型逐条校验方案与代码(独立代理分头取证,file:line 可溯),并运行完整单测(194 passed)。完整报告在 `doc/LAYER_VERIFICATION.md`,此处只登记缺陷档案。
+
+**文档错误(已修订)**:
+- 指南 L1:NAND2X1 的 SPICE 宽度写成 0.205µm(实为 0.5µm)、引脚序写成 `A B Y VCC GND`(实为 `VCC Y GND A B`);LEF 宽度写成 1.14(实为 0.76,1.14 是 AND2X1);
+- 指南 L7:`.run` 示例 `nwellpos 1.0825` 为旧几何残留(实为 1.235=H/2),且漏 `set celltemplate "Tapless"` 行;"autoflow 七阶段"实为五阶段+独立 select/export 命令,place 是 Threshold Accept(退火变体)非教科书 SA;
+- `AGENTS.md` option-3 条目:"COMPLEX1 needs the recovery at H=2.47"是 1.0825 旧几何残留——现行几何下 adder 四单元全部首解可行,重试一次未触发(已改为"安全网而非常态"的表述)。
+
+**代码隐患(记录在案,未改行为)**:
+1. `pySrc/Astran.py:45-46`:日志缺 `Cell Size` 行时 `assert(False); return 123`——`python -O` 下 assert 被剥离会静默返回 123µm 假宽度(应改抛异常);
+2. `pySrc/main.py:247-248`:`bestRecord-seperate` 在逐模式循环之前以 `'w'` 打开,循环中途异常会留下空/半截记录;
+3. `pySrc/main.py:92`:`cellIdsContained>=11` 用 `continue` 跳过但队首未弹出,依赖后续分支弹出才不死循环(脆弱);
+4. `pySrc/BLIFPreProc.py:123-124`:库中找不到 `.subckt` 类型直接 `assert(False)`;`BLIFGraphUtil.py:82-84` 多驱动网静默覆盖 `predCell`,均无告警;
+5. `pySrc/GDSIIAnalysis.py:18-21` 注释仍写"基线 H=3.2/本地 2.6"(现行 2.47),且两个 `load*GDS*` 函数名误导(实际读 LEF/日志)——文档漂移,行为正确。
+
+**算法层面风险(转化为优化路线图的动机,详见 doc/RESEARCH_AND_OPTIMIZATION.md)**:
+- 编码不对子节点排序(`BLIFPreProc.py:222-235` 无 sort):根节点多输入类型不同时,同构实例会得到不同编码→频次系统性低估(P0-1);
+- 节省求和无重叠去重:不同模式的簇可共享单元(`setCluster` 覆盖),`main.py:185-188` 直接求和会重复计收益(P0-2);
+- 生长宽度恒为 1(`BLIFPatternGrowth.py:104` 的 `[:1]`)且不知面积:COMPLEX10 实证负收益(−56.05,bestRecord-seperateadder:5)(P0-3);
+- 唯一归属为破坏式 enforcement:占用冲突时整个旧簇被 `disabled=True`,无收益比较(`BLIFPatternGrowth.py:118-120`);
+- flow_core 与 main.py 无任何等价测试,"faithful port"靠人工评审(P0-5)。
+
+**验证**:194 单测通过(校验未触碰流程代码,仅改文档)。

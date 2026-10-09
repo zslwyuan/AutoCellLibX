@@ -9,6 +9,10 @@
 >
 > 配套文档：[ALGORITHM_DESIGN.md](ALGORITHM_DESIGN.md)（算法的数学细节）、
 > [PROJECT_ANALYSIS.md](PROJECT_ANALYSIS.md)（目录与模块全览）、
+> [LAYER7_ASTRAN.md](LAYER7_ASTRAN.md)（第 7 层 ASTRAN 原理深潜）、
+> [LAYER_VERIFICATION.md](LAYER_VERIFICATION.md)（九层实现逐条校验报告）、
+> [RESEARCH_AND_OPTIMIZATION.md](RESEARCH_AND_OPTIMIZATION.md)（2023–2026 文献
+> 综述与优化路线图）、
 > [AUDIT_REPORT.md](AUDIT_REPORT.md)（缺陷档案与修复记录）、
 > [AGENTS.md](../AGENTS.md)（给改代码的人的不变量清单）。
 
@@ -70,6 +74,8 @@
 
 `.subckt` 行就是"这里放了一个 NAND2X1，它的输入 A 接信号 g_12……"。
 `.names` 是真值表形式的功能门，前端会把它当成类型为 `bool-...` 的虚拟单元。
+（上例是示意；adder.blif 里实际只有 3 条 `.names`，是 `$false/$true/$undef`
+常量门。）
 **注意**：BLIF 里只有"连接关系"，没有晶体管、没有版图。
 
 ### 1.2 Liberty（.lib）——单元的引脚字典
@@ -91,9 +97,10 @@ cell (NAND2X1) {
 `stdCelllib/cellsAstranFriendly.sp` 里每个单元是若干晶体管：
 
 ```
-.subckt NAND2X1 A B Y VCC GND
-Mn0 Y A net_1 GND NMOS W=0.205u L=0.05u
-Mp0 Y A VCC VCC PMOS W=0.205u L=0.05u
+.subckt NAND2X1 VCC Y GND A B
+M0 Y A VCC VCC PMOS W=0.5u L=0.05u
+M1 Y B VCC VCC PMOS W=0.5u L=0.05u
+M2 Y A net_1 GND NMOS W=0.5u L=0.05u
 ...
 ```
 
@@ -102,7 +109,7 @@ Mp0 Y A VCC VCC PMOS W=0.205u L=0.05u
 
 ### 1.4 LEF——单元的版图摘要
 
-`stdCelllib/gscl45nm.lef` 每个单元一行尺寸：`SIZE 1.14 BY 2.47`。
+`stdCelllib/gscl45nm.lef` 每个单元一行尺寸：`SIZE 0.76 BY 2.47`（NAND2X1）。
 面积对比只从这里拿"标称宽度"（第 6 层）。
 
 ### 1.5 GDSII——版图几何
@@ -173,6 +180,12 @@ print(g.number_of_nodes(), g.number_of_edges())   # 710 803
 **编码相同 ⇒ 结构等价**（在这个粒度下）。于是"找同构子图"退化成"按字符串
 分组"——线性时间。
 
+**两个已知边界**（校验发现，详见 [LAYER_VERIFICATION.md](LAYER_VERIFICATION.md)
+§L3）：编码只拼类型名，不区分引脚排列/跨边扇出，所以"等价"是启发式而非证明；
+且子节点**按网线枚举顺序拼接、不做排序**——根节点的几个输入类型不同时，
+同构实例可能得到不同编码而被拆成两类（频次被低估）。adder 现有结果靠网表
+生成顺序一致而幸免；这是挖掘层最值得修的缺陷（优化路线图 P0-1）。
+
 **为什么这个粒度是够的**：标准单元类型本身就是对内部电路的抽象
 （"NAND2X1"已经代表了一个固定的 4 管结构），所以"类型组成的树相同"就足以
 保证"晶体管级结构相同"。这是整个系统最漂亮的一步：**利用领域知识（单元库）
@@ -207,6 +220,14 @@ print(g.number_of_nodes(), g.number_of_edges())   # 710 803
 这串 trace 就是模式的**唯一身份**：`patternExtensionTrace`。全系统对"见过
 没有"的判断都比较 trace，不比较整数 id（id 每次运行临时分配——比较 id 是
 一个真实发生过的 bug，见 `AGENTS.md` 不变量 5）。
+
+**两个指南原本没说的真相**（校验发现）：
+1. 生长**不知道面积**，停止靠事后回看——链条末端 COMPLEX10 实际是负收益
+   （`bestRecord-seperateadder`：−56.05），"先长再看亏不亏"是本层的策略性
+   短板（优化路线图 P0-3 的动机）；
+2. "一个实例只属于一个单元"的 enforcement 是**破坏式**的：想吸收的邻居已被
+   别的模式占用时，直接把对方的簇整个 `disabled=True` 踢掉，没有收益比较
+   （`BLIFPatternGrowth.py:118-120`）。
 
 ---
 
@@ -260,6 +281,9 @@ Mcl0#0 VCC cl1#Y cl0#a_2_6# VCC PMOS W=1u L=0.05u
 
 ## 第 7 层 · ASTRAN：把晶体管网表变成版图
 
+> 本节给出原理级展开；逐行源码地图（每个阶段的入口函数、代价函数、踩坑位置）
+> 见配套文档 **[LAYER7_ASTRAN.md](LAYER7_ASTRAN.md)**。
+
 **输入**：一个 `.sp`（如 COMPLEX1.sp）+ `.rul` 规则 + `.run` 脚本（几何参数）；
 **输出**：`.gds` + `.Astranlog`。调用方式是 `Astran --shell xxx.run`，
 `.run` 是一个命令脚本（`outputs/adder/COMPLEX1.run` 的真实内容）：
@@ -270,35 +294,49 @@ load technology "D:\...\tech_freePDK45.rul"
 load netlist "D:\...\COMPLEX1.sp"
 set rowheight 13                        # 行高 = 13 × 0.19 = 2.47 µm（GSCL45 同高）
 set grid 0.19 0.19                      # 布线网格 = 库的 M1 节距
-set supplysize 0.26                     # 电源轨
-set nwellpos 1.0825                     # N 阱下沿 = H/2 → P/N 阱等高
+set supplysize 0.26                     # 电源轨总宽（上下各 0.13，与库 abutment 轨一致）
+set nwellpos 1.235                      # N 阱下沿 = H/2 → P/N 扩散区等高
+set celltemplate "Tapless"              # 单元内不放衬底接触（省宽度）
 cellgen select COMPLEX1
-cellgen autoflow                        # 下面七阶段全自动
+cellgen autoflow                        # 下面五个阶段全自动（含失败重试）
 export layout COMPLEX1 ./outputs/adder/COMPLEX1.gds
 ```
 
-`autoflow` 的七个阶段，每个都在回答一个版图问题：
+每条 `set` 都在回答"这个单元长什么样"：行高固定 ⇒ 面积 ∝ 宽度（第 6 层的
+根基）；`nwellpos` 取行高一半 ⇒ P 管区和 N 管区可用高度相等（历史上取过
+1.0825，两侧不等高、小的一侧成为宽度瓶颈，见 AUDIT_REPORT）。
 
-| 阶段 | 问题 | 方法 |
+`autoflow` 内部的阶段链条（源码：`tools/astran/src/autocell2.cpp:140-169`），
+每个阶段在回答一个版图问题：
+
+| 阶段 | 问题 | 方法（与关键细节） |
 |---|---|---|
-| ① select | 网表里有什么管子？ | 展平层次化子电路 |
-| ② calcArea | 摆在哪一行里？ | 行高/电源轨/轨道位置初始化 |
-| ③ fold | 管子太宽放不下？ | 一根宽管拆成多根并联"腿" |
-| ④ place | P/N 两排管子怎么排序？ | 模拟退火：同栅对齐省 poly、布线短 |
-| ⑤ route | 内部连线怎么走？ | Pathfinder 式迭代拆线重布 |
-| ⑥ compact | 版图还能多窄？ | **ILP**：坐标是变量、间距规则是约束、宽度最小化 |
-| ⑦ export | 交付什么？ | 写 GDS + 在日志打印 Cell Size |
+| ① select（独立命令） | 网表里有什么管子？ | 递归展平层次化子电路：内部网加实例后缀防撞名、端口按实例顺序重命名——**这就是端口顺序影响版图的通道** |
+| ② calcArea | 几何框架怎么摆？ | 由 rowheight/grid/supplysize/nwellpos 推出布线轨道位置和 P/N 可用扩散高度 `nSize/pSize`；`posNWell` 是 **N 阱下沿**而非中线 |
+| ③ fold | 管子太宽放不下？ | 行高钉死了单管最大宽度；孤立宽管拆 `ceil(W/size)` 条并联腿，串联链**整链同腿数**折叠保持对称 |
+| ④ place | P/N 两排管子怎么排序？ | **Threshold Accept**（模拟退火的确定性变体，无 srand → 结果可复现）：代价 = 栅错位 + 扩散间断数 + 总宽 + 线长估计 + 拥塞；P/N 不等长补 GAP |
+| ⑤ route | 内部连线怎么走？ | **Pathfinder 协商布线**：允许拥塞地布，冲突节点历史代价递增把网"挤开"，迭代拆线重布直到无冲突（上限 8000 轮） |
+| ⑥ compact | 版图还能多窄？ | **ILP**：坐标是变量、间距规则是约束、宽度最小化（目标里 width 权重 5000 绝对主导） |
+| ⑦ export（独立命令） | 交付什么？ | 写 GDS（层号查 .rul 映射）+ 日志打印 `Cell Size`；0×0 盒被跳过——所以求解失败导出的是**空单元** |
+
+外层还有两圈容错循环（`autocell2.cpp:140-169`）：内圈从 2 条轨道起逐步加轨
+直到预估拥塞可接受；外圈在 compact 失败时 `conservative++`——收缩扩散区给
+布线让路，最多 4 次，仍失败则整个单元报错、前端剔除该模式。
 
 ILP 压缩的直观理解：把每个图形的左右上下坐标当成变量，把"相邻图形间距 ≥
 规则值"写成约束（大约 2–6 万个变量/约束），让 CBC 求解器把总宽度压到最小。
-求解 300 秒封顶（找得到可行解就收），因为压缩只影响"多窄"，不影响合法性。
+成对图形的位置关系是**三选一析取**（B 在 A 右边 / 上边 / 对角右上），用
+`b1+b2+b3=1` 和大 M=20000 实现"选中才生效"。求解 300 秒封顶（找得到可行解
+就收），因为压缩只影响"多窄"，不影响合法性。
 
 **耗时与失败模式**（排障时第一眼看日志）：
 
-- 一个单元 5–10 分钟，大头是布局退火 + ILP；
+- 一个单元 5–10 分钟，大头是布局迭代 + Pathfinder 布线 + ILP；
 - 日志出现 `Cell Size (W x H): 0 x 0` ⇒ 求解失败，该模式被剔除；
-- `INFEASIBLE` ⇒ 适配层会去掉过紧的第三类间距约束重试
-  （`AGENTS.md` 的"option-3 重试"条目）。
+- `INFEASIBLE`（被证明不可行，不是超时）⇒ 适配层去掉过紧的第三类对角间距
+  析取重建模型重试，ASTRAN 的修复 pass 随后强制真实间距
+  （`AGENTS.md` 的"option-3 重试"条目；现行 2.47 µm 等井高几何下 adder 的
+  四个单元均未触发，它是安全网而非常态）。
 
 ---
 

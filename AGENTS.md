@@ -165,8 +165,11 @@ is only in the code is effectively undocumented.
   real spacing on the solved coordinates. This fires only on a *proved*
   `INFEASIBLE`, never on a timeout — a model that is merely too hard for the
   budget must keep its exact constraints so the normal escalation still
-  reproduces the same cell. COMPLEX1 needs the recovery at H = 2.47 — expect
-  the log to show "retrying without the option-3 spacing disjuncts".
+  reproduces the same cell. The recovery is a safety net, not the norm: with the
+  current H = 2.47 µm equal-well geometry (`nwellpos 1.235`) all four adder
+  complexes solve feasible on the first attempt — the retry was needed under the
+  old 1.0825 geometry (see `doc/AUDIT_REPORT.md`). Grep the logs for
+  "retrying without the option-3 spacing disjuncts" to check whether it fired.
 - **Every disjunctive keep-away constraint needs its own big-M term.** The
   repair pass in `compact()` inserts four binaries per violating pair; each of
   the four constraints must carry `+ RELAXATION` with coefficient
