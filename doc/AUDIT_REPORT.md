@@ -857,3 +857,10 @@ libgcc_s_seh-1.dll、libstdc++-6.dll、libwinpthread-1.dll、liblzma-5.dll、lib
 **过程修复**:① _BasedOn 分组仍用旧无序编码(与规范化 trace 前缀匹配失配)——补 canonicalPatternCode;② 实验手写片段引脚名必须与函数/验证设计同名(否则 abc 视为无效单元);③ 等价测试 spy 补新参数。
 
 **验证**:281 单测通过;reuse_experiment 内置 abc 证明自跳过式。
+
+### 5.28 架构重构:flow_core 消费 core.pipeline,第三份控制流副本消灭(2026-10-10)
+
+- core/pipeline 增加 PipelineHooks 观察者接口(stage/log/pattern/metric/record/check_cancel/run_layout/result,默认 no-op,CLI 行为不变);路径全部参数化(liberty/spiceLib/blifDir 来自 FlowConfig,不再硬编码 gscl45nm)。
+- gui/flow_core._mine/_phase2 改为委托 core.pipeline.runPipeline:_GuiPipelineHooks 桥接 GUI 事件面、取消、_generate_complex_layout 布局器(含 do_layouts 关闭时落盘宽度回退);ctx 状态经 result 捕获回填,页面继续可用。
+- 等价测试(test_flow_parity)spy 重定向到 core.pipeline(GUI 与 CLI 现为同一实现),仍钉住两出口一致。
+- 架构文档 ARCHITECTURE.md 更新;285 单测全绿。

@@ -53,6 +53,7 @@ gui/flow_core.py     ← 待迁移：第三份控制流副本，下一步改为�
    BLIFPreProc 与 spice 变 shim（编排/GNN/导出留在 shim）；
 
 2. ~~core/growth~~ ✅ 已迁（2026-10-10）；
-3. core/evaluate + core/external 门面（把已单职责的小模块收编为一层）；
-4. gui/flow_core 消费 core.pipeline（消灭第三份控制流副本）；
+3. ~~gui/flow_core 消费 core.pipeline~~ ✅ 已迁（2026-10-10）：_mine/_phase2 委托
+   runPipeline，_GuiPipelineHooks 桥接事件/取消/布局器，spy 重定向；
+4. core/evaluate + core/external 门面（把已单职责的小模块收编为一层）；
 5. 性能层：CP-SAT 后端默认化、宽度代理训练管线化（见 RESEARCH_AND_OPTIMIZATION）。

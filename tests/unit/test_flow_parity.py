@@ -253,11 +253,12 @@ def _run_gui_flow(sandbox, monkeypatch):
         phase2_targets.append(trace)
         return real_based_on(graph, cells, netlist, trace)
 
-    monkeypatch.setattr(BLIFGraphUtil,
-                        "drawColorfulFigureForGraphWithAttributes", spy_draw)
-    monkeypatch.setattr(spice, "exportSpiceNetlist", spy_export)
+    import core.pipeline
     monkeypatch.setattr(
-        BLIFPreProc,
+        core.pipeline, "drawColorfulFigureForGraphWithAttributes", spy_draw)
+    monkeypatch.setattr(core.pipeline, "exportSpiceNetlist", spy_export)
+    monkeypatch.setattr(
+        core.pipeline,
         "heuristicLabelSomeNodesAndGetInitialClusters_BasedOn", spy_based_on)
 
     summary_box = {}

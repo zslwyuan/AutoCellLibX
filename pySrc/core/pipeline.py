@@ -39,7 +39,45 @@ def mkdir(pathStr):
         os.mkdir(pathStr)
 
 
-def runPipeline(cfg):
+
+
+class PipelineHooks(object):
+    """Observer interface for runPipeline (GUI / experiments / tests).
+
+    All methods are no-ops by default: with ``hooks=None`` the pipeline
+    behaves exactly like the CLI.  ``run_layout`` lets a host supply its
+    own layout runner (the GUI needs Popen + CREATE_NO_WINDOW + custom
+    geometry); returning ``None`` means "excluded this pattern".
+    ``check_cancel`` should raise to abort the run.
+    """
+
+    def stage(self, name, status, message="", extra=None):
+        pass
+
+    def log(self, message, level="info"):
+        pass
+
+    def pattern(self, info):
+        pass
+
+    def metric(self, info):
+        pass
+
+    def record(self, kind, info):
+        pass
+
+    def check_cancel(self):
+        pass
+
+    def run_layout(self, pattern_trace_id):
+        return None
+
+    def result(self, key, value):
+        pass
+
+
+def runPipeline(cfg, hooks=None):
+
     os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
     # Dual-mode coexistence (AUDIT 5.26): AUTOCELL_REUSE_MODE=1 runs the
     # mining with the synthesis-reuse constraints (single-output, simple
@@ -77,9 +115,9 @@ def runPipeline(cfg):
         print("=================================================================================\n",
               benchmarkName, "\n=================================================================================\n")
         # load liberty/spice/design BLIF
-        subckts = loadSpiceSubcircuits("../stdCelllib/cellsAstranFriendly.sp")
+        subckts = loadSpiceSubcircuits(cfg.spiceLib)
         BLIFGraph, cells, netlist, stdCellTypesForFeature, dataset, maxLabelIndex, clusterSeqs, clusterNum = loadDataAndPreprocess(
-            libFileName="../stdCelllib/gscl45nm.lib", blifFileName="../benchmark/blif/"+benchmarkName+".blif", startTime=startTime, singleOutputSeeds=reuseMode)
+            libFileName=cfg.liberty, blifFileName=cfg.blifDir+"/"+benchmarkName+".blif", startTime=startTime, singleOutputSeeds=reuseMode)
         oriArea = getArea(cells, stdType2GSCLArea)
         print("originalArea=", oriArea)
 
@@ -94,11 +132,20 @@ def runPipeline(cfg):
                     continue
                 runAstranForNetlist(AstranPath=ASTRANBuildPath, gurobiPath=GUROBI_CL,
                                     technologyPath=ASTRAN_TECHNOLOGY,
-                                    spiceNetlistPath='../stdCelllib/cellsAstranFriendly.sp',
+                                    spiceNetlistPath=cfg.spiceLib,
                                     complexName=oriStdCellType, commandDir='./originalAstranStdCells/')
         stdType2AstranArea = loadAstranGDS()
         astranArea = getArea(cells, stdType2AstranArea)
         print("astranArea=", astranArea)
+        if (hooks is not None):
+            hooks.result("cells", cells)
+            hooks.result("BLIFGraph", BLIFGraph)
+            hooks.result("clusterSeqs", clusterSeqs)
+            hooks.result("stdType2GSCLArea", stdType2GSCLArea)
+            hooks.result("stdType2AstranArea", stdType2AstranArea)
+            hooks.result("oriArea", oriArea)
+            hooks.result("astranArea", astranArea)
+            hooks.stage("parse", "done", "parsed %d cells" % len(cells))
 
         # Online-calibrated shrink model for growth benefit estimation
         # (P0-3): observes each finished layout's new/baseline width ratio
@@ -112,20 +159,19 @@ def runPipeline(cfg):
         # capacitance / delay proxy from the liberty file, plus the count
         # of nets the merge internalises (dynamic-power saving proxy).
         # Reported only -- the selection metric stays width-based.
-        cellElectricalMetrics = loadCellElectricalMetrics(
-            "../stdCelllib/gscl45nm.lib")
+        cellElectricalMetrics = loadCellElectricalMetrics(cfg.liberty)
 
         # Delay/power from the liberty LUTs (mini-STA per candidate) and
         # a Yosys re-import for design-level cross-check (user priority).
-        cellTimingPower = loadTimingPower("../stdCelllib/gscl45nm.lib")
-        libFunctions = loadLibertyFunctions("../stdCelllib/gscl45nm.lib")
+        cellTimingPower = loadTimingPower(cfg.liberty)
+        libFunctions = loadLibertyFunctions(cfg.liberty)
         designLibArea = 0.0
         for tmpCell in cells:
             m = cellElectricalMetrics.get(tmpCell.stdCellType.typeName)
             if (m is not None and m["area"] is not None):
                 designLibArea += m["area"]
-        yosysStat = runYosysStat("../stdCelllib/gscl45nm.lib",
-                                 "../benchmark/blif/"+benchmarkName+".blif")
+        yosysStat = runYosysStat(cfg.liberty,
+                                 cfg.blifDir+"/"+benchmarkName+".blif")
         print("yosys stat cross-check: ",
               compareWithFlowArea(yosysStat, designLibArea))
         ourTypeCounts = {}
@@ -141,8 +187,7 @@ def runPipeline(cfg):
         # this repo.  Report-only by default (LOO ~16% MAPE overestimates
         # compact shapes -- it would have vetoed COMPLEX9); opt into
         # growth pruning via useWidthProxyForGrowth.
-        transistorCounts = countTransistorsPerType(
-            "../stdCelllib/cellsAstranFriendly.sp")
+        transistorCounts = countTransistorsPerType(cfg.spiceLib)
         widthProxySamples = collectSamples(
             sorted(glob.glob("./outputs/*/")),
             transistorCounts, stdType2AstranArea)
@@ -172,6 +217,11 @@ def runPipeline(cfg):
         benchmarkFailure = False
 
         for i in range(0, topThr):
+            if (hooks is not None):
+                hooks.check_cancel()
+                hooks.stage("mine", "running",
+                            "iteration %d/%d" % (i + 1, topThr),
+                            (i, topThr))
             if (len(clusterSeqs) == 0 or len(clusterSeqs[0].patternClusters) == 0):
                 break
             if (len(clusterSeqs[0].patternClusters[0].cellIdsContained) >= 11):
@@ -207,6 +257,13 @@ def runPipeline(cfg):
                     continue
                 if (len(tmpClusterSeq.patternClusters[0].cellIdsContained) >= 11):
                     continue
+                if (hooks is not None):
+                    hooks.check_cancel()
+                    hooks.log("pattern #%d '%s' x%d (size=%d)"
+                              % (patternTraceId,
+                                 tmpClusterSeq.patternExtensionTrace,
+                                 len(tmpClusterSeq.patternClusters),
+                                 len(tmpClusterSeq.patternClusters[0].cellIdsContained)))
                 print("dealing with pattern#", patternTraceId, " with ", len(
                     tmpClusterSeq.patternClusters), " clusters (size=", len(tmpClusterSeq.patternClusters[0].cellIdsContained), ")")
 
@@ -225,11 +282,21 @@ def runPipeline(cfg):
                 exportSpiceNetlist(tmpClusterSeq, subckts, str(patternTraceId),
                                    outputPath)
 
-                # if ASTRAN is available, run it to get the layout and area evaluation
-                if (ASTRANBuildPath != ""):
+                # if ASTRAN is available (or a host layout runner is
+                # provided), run it to get the layout and area evaluation
+                if (ASTRANBuildPath != "" or hooks is not None):
+                    if (hooks is not None):
+                        newWidth = hooks.run_layout(patternTraceId)
+                        if (newWidth is None):
+                            print("WARNING :", benchmarkName,
+                                  " COMPLEX"+str(patternTraceId),
+                                  " layout hook returned None; excluding the pattern")
+                            continue
                     gdsPath = outputPath+'/COMPLEX'+str(patternTraceId)+'.gds'
                     spPath = outputPath+'/COMPLEX'+str(patternTraceId)+'.sp'
-                    if (astranLayoutIsStale(gdsPath, spPath)):
+                    if (hooks is not None):
+                        pass  # layout already produced by the hook
+                    elif (astranLayoutIsStale(gdsPath, spPath)):
                         if (len(tmpClusterSeq.patternClusters[0].cellIdsContained) < 11):
                             try:
                                 runAstranForNetlist(AstranPath=ASTRANBuildPath, gurobiPath=GUROBI_CL,
@@ -366,10 +433,22 @@ def runPipeline(cfg):
                 break
 
             print("saveArea=", saveArea, " / ", saveArea/astranArea*100, "%")
+            if (hooks is not None):
+                hooks.metric({"benchmark": benchmarkName, "iteration": i,
+                              "save_area": saveArea,
+                              "ratio": saveArea/astranArea*100 if astranArea else 0.0,
+                              "best": bestSaveArea})
             if (saveArea > bestSaveArea):
                 bestSaveArea = saveArea
                 lastSaveGSCLArea = saveGSCLArea
                 lastComplexSelection = complexSelection
+                if (hooks is not None):
+                    hooks.record("best", {
+                        "benchmark": benchmarkName,
+                        "path": outputPath+"/bestRecord-"+benchmarkName,
+                        "save_area": saveArea,
+                        "ratio": saveArea/astranArea*100 if astranArea else 0.0,
+                        "selection": list(complexSelection)})
                 fileResult = open(outputPath+"/bestRecord-"+benchmarkName, 'w')
                 print(bestSaveArea, " <- compared to Astran GDS area",
                       file=fileResult)
@@ -442,12 +521,16 @@ def runPipeline(cfg):
         # bestRecord-seperate is opened only at the end: opening it with 'w'
         # up front erases the previous record, and a crash mid-loop would
         # leave an empty file (the writes below happen after the loop anyway).
+        if (hooks is not None):
+            hooks.stage("phase2", "running", "%d records" % len(detectedPatterns))
         for targetPatternTrace in detectedPatterns:
+            if (hooks is not None):
+                hooks.check_cancel()
             if (targetPatternTrace in countedSet):
                 continue
 
             BLIFGraph, cells, netlist, stdCellTypesForFeature, dataset, maxLabelIndex, clusterSeqs, clusterNum = loadDataAndPreprocess(
-                libFileName="../stdCelllib/gscl45nm.lib", blifFileName="../benchmark/blif/"+benchmarkName+".blif", startTime=startTime, bypassInitialCluster=True)
+                libFileName=cfg.liberty, blifFileName=cfg.blifDir+"/"+benchmarkName+".blif", startTime=startTime, bypassInitialCluster=True)
 
             clusterSeqs, clusterNum = heuristicLabelSomeNodesAndGetInitialClusters_BasedOn(
                 BLIFGraph, cells, netlist, targetPatternTrace, singleOutputSeeds=reuseMode)
@@ -577,6 +660,11 @@ def runPipeline(cfg):
                 clusterSeqs = removeEmptySeqsAndDisableClusters(clusterSeqs)
                 clusterSeqs = sortPatternClusterSeqs(clusterSeqs)
 
+        if (hooks is not None):
+            hooks.result("recordPatternDetails", recordPatternDetails)
+            hooks.result("bestSaveArea", bestSaveArea)
+            hooks.result("runtime", time.time() - startTime)
+            hooks.stage("mine", "done", "best saveArea=%.2f" % bestSaveArea)
         recordPatternDetails = sorted(recordPatternDetails,
                                       key=lambda x: -x[0])
         fileResult = open(

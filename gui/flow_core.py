@@ -172,6 +172,51 @@ class Hooks(object):
         pass
 
 
+
+class _GuiPipelineHooks(object):
+    """Bridges core.pipeline events to the GUI's own hook surface."""
+
+    def __init__(self, runner, ctx):
+        self.runner = runner
+        self.ctx = ctx
+        self.captured = {}
+
+    def stage(self, name, status, message="", extra=None):
+        self.runner._stage(name, status, message, extra)
+
+    def log(self, message, level="info"):
+        self.runner._log(message, level)
+
+    def pattern(self, info):
+        self.runner.hooks.pattern(info)
+
+    def metric(self, info):
+        self.runner.hooks.metric(info)
+
+    def record(self, kind, info):
+        merged = dict(info)
+        merged.setdefault("kind", kind)
+        self.runner.hooks.record(merged)
+
+    def check_cancel(self):
+        self.runner._check_cancel()
+
+    def run_layout(self, pattern_trace_id):
+        if not (self.runner.cfg.do_layouts
+                and self.runner.astran_available()):
+            name = "COMPLEX%d" % pattern_trace_id
+            try:
+                import Astran
+                return Astran.loadAstranArea(self.ctx["out_dir"], name)
+            except Exception:                    # noqa: BLE001
+                return None
+        return self.runner._generate_complex_layout(
+            self.ctx, pattern_trace_id)
+
+    def result(self, key, value):
+        self.captured[key] = value
+        self.ctx[key] = value
+
 class FlowRunner(object):
     def __init__(self, config, hooks=None, cancel_event=None):
         self.cfg = config
@@ -651,267 +696,37 @@ class FlowRunner(object):
 
     # ------------------------------------------------------------ mining loop
     def _mine(self, ctx, clusterSeqs):
-        """Port of main.py lines 89-215 (the greedy iteration)."""
-        flow, hooks, cfg = ctx["flow"], self.hooks, self.cfg
-        out_dir, cells = ctx["out_dir"], ctx["cells"]
-        BLIFGraph = ctx["BLIFGraph"]
-        dumpedPaterns, detectedPatterns = ctx["dumpedPaterns"], ctx["detectedPatterns"]
+        """Delegate the mining to core.pipeline (ARCHITECTURE: one
+        control-flow implementation for CLI and GUI; the GUI's own hook
+        surface receives the events and its layout runner is used)."""
+        import core.pipeline
+        import core.config
 
-        patternNum = len(clusterSeqs)
-        bestSaveArea = 0.0
-        lastSaveGSCLArea = 0.0
-        lastComplexSelection = []
         bench = ctx["bench"]
-        total_it = cfg.top_thr
+        cfg = core.config.FlowConfig(
+            topThr=self.cfg.top_thr,
+            ratioThr=self.cfg.ratio_thr,
+            cntThr=self.cfg.cnt_thr,
+            benchmarks=(bench,),
+            growBeamWidth=self.cfg.grow_beam,
+            routabilityDensityGate=self.cfg.max_rt_density,
+            layoutSanityGate=self.cfg.layout_sanity_gate,
+            useWidthProxyForGrowth=self.cfg.use_width_proxy_for_growth,
+            requireReuseEligible=self.cfg.require_reuse_eligible,
+            liberty=self._rel(self.cfg.liberty()),
+            spiceLib=self._rel(self.cfg.spice_lib()),
+            blifDir=self._rel(os.path.dirname(self._blif_path(bench))),
+            astranBuildPath=("x" if (self.cfg.do_layouts
+                                    and self.astran_available()) else ""),
+        )
+        hooks = _GuiPipelineHooks(self, ctx)
+        core.pipeline.runPipeline(cfg, hooks=hooks)
+        for k, v in hooks.captured.items():
+            ctx[k] = v
+        ctx.setdefault("detectedPatterns", [])
+        ctx.setdefault("dumpedPaterns", {})
 
-        for i in range(0, cfg.top_thr):
-            self._check_cancel()
-            if len(clusterSeqs) == 0 or len(clusterSeqs[0].patternClusters) == 0:
-                break
-            if len(clusterSeqs[0].patternClusters[0].cellIdsContained) >= cfg.max_cells:
-                # Pop, don't just continue: re-testing the same oversized
-                # head would burn the whole iteration budget doing nothing.
-                clusterSeqs = clusterSeqs[1:]
-                continue
 
-            self._stage("mine", "running", "第 %d/%d 轮迭代 / iteration %d"
-                        % (i + 1, total_it, i + 1), (i, total_it))
-            saveArea = 0.0
-            saveGSCLArea = 0.0
-            complexSelection = []
-            # Cells already claimed by a candidate counted this round (see
-            # main.py): overlapping clusters are counted once.
-            coveredCellIds = set()
-            for j in range(0, cfg.top_thr):
-                self._check_cancel()
-                if j >= len(clusterSeqs):
-                    break
-                tmpClusterSeq = clusterSeqs[j]
-                patternTraceId = tmpClusterSeq.patternClusters[0].clusterTypeId
-                patternSubgraph = BLIFGraph.subgraph(
-                    tmpClusterSeq.patternClusters[0].cellIdsContained)
-
-                # A pattern's identity is its trace: a later iteration can
-                # reproduce the same pattern under a new clusterTypeId. Skipping
-                # it keeps the area savings from double-counting it.
-                if tmpClusterSeq.patternExtensionTrace in dumpedPaterns:
-                    continue
-                if len(tmpClusterSeq.patternClusters[0].cellIdsContained) >= cfg.max_cells:
-                    continue
-
-                self._log("处理模式 / pattern #%d '%s' ×%d (size=%d)"
-                          % (patternTraceId, tmpClusterSeq.patternExtensionTrace,
-                             len(tmpClusterSeq.patternClusters),
-                             len(tmpClusterSeq.patternClusters[0].cellIdsContained)))
-
-                coverage = (len(tmpClusterSeq.patternClusters[0].cellIdsContained) *
-                            len(tmpClusterSeq.patternClusters))
-                if coverage < cfg.ratio_thr * len(cells) and \
-                        len(tmpClusterSeq.patternClusters) < cfg.cnt_thr:
-                    self._log("模式过小被跳过 / pattern too small: coverage=%d << %d"
-                              % (coverage, len(cells)), "warn")
-                    break
-                dumpedPaterns[tmpClusterSeq.patternExtensionTrace] = patternTraceId
-                detectedPatterns.append(tmpClusterSeq.patternExtensionTrace)
-
-                flow["BLIFGraphUtil"].drawColorfulFigureForGraphWithAttributes(
-                    patternSubgraph,
-                    save_to_file=os.path.join(out_dir, "COMPLEX%d.png" % patternTraceId),
-                    withLabel=True, figsize=(20, 20))
-
-                flow["spice"].exportSpiceNetlist(
-                    tmpClusterSeq, ctx["subckts"], str(patternTraceId), out_dir)
-
-                # Layout + area for this candidate.
-                width = None
-                if cfg.do_layouts and self.astran_available():
-                    width = self._generate_complex_layout(ctx, patternTraceId)
-                    if width is None:
-                        continue
-
-                if width is not None and width <= 0:
-                    continue
-
-                exampleCells = [cells[cid] for cid in
-                                tmpClusterSeq.patternClusters[0].cellIdsContained]
-                oriUnitAstranArea = flow["BLIFPreProc"].getArea(
-                    exampleCells, ctx["stdType2AstranArea"])
-                oriUnitGSCLArea = flow["BLIFPreProc"].getArea(
-                    exampleCells, ctx["stdType2GSCLArea"])
-                newUnitAstranArea = width
-                if newUnitAstranArea is None:
-                    try:
-                        newUnitAstranArea = flow["Astran"].loadAstranArea(
-                            out_dir, "COMPLEX%d" % patternTraceId)
-                    except Exception:                   # noqa: BLE001
-                        continue
-                if newUnitAstranArea <= 0:
-                    continue
-                ctx["shrinkModel"].observe(
-                    len(exampleCells), oriUnitAstranArea, newUnitAstranArea)
-
-                # Second metric beside width (P0-4): routing congestion
-                # parsed from the cell's own log; reported in the pattern
-                # event, enforced only when cfg.max_rt_density is set.
-                rt_metrics = flow["routability"].loadCellRoutability(
-                    out_dir, "COMPLEX%d" % patternTraceId)
-                if rt_metrics is not None:
-                    self._log("可布性 / routability COMPLEX%d: %s"
-                              % (patternTraceId, rt_metrics.asDict()))
-                if (rt_metrics is not None
-                        and cfg.max_rt_density is not None
-                        and rt_metrics.rtDensity > cfg.max_rt_density):
-                    self._log("COMPLEX%d rtDensity %d > gate %d，剔除 / "
-                              "excluded by routability gate"
-                              % (patternTraceId, rt_metrics.rtDensity,
-                                 cfg.max_rt_density), "warn")
-                    continue
-
-                elec_metrics = flow["electrical"].patternElectricalMetrics(
-                    exampleCells, ctx["cellElectricalMetrics"])
-                timing_metrics = flow["timing_power"].patternTimingPower(
-                    exampleCells, ctx["cellTimingPower"],
-                    ctx["cellElectricalMetrics"])
-                # Synthesis-reuse eligibility (AUDIT 5.25): abc only uses
-                # single-output simple-function cells; report always, gate
-                # when cfg.require_reuse_eligible is set.
-                reuse_info = flow["reuse"].reuseEligible(
-                    exampleCells, ctx["libFunctions"])
-                if (self.cfg.require_reuse_eligible
-                        and not reuse_info["eligible"]):
-                    self._log("COMPLEX%d 不可综合复用（%s），剔除 / not "
-                              "synthesis-reuse eligible, excluded"
-                              % (patternTraceId, reuse_info["reason"]),
-                              "warn")
-                    continue
-                proxy_width = None
-                if ctx["widthProxy"] is not None:
-                    proxy_width = ctx["widthProxy"].predict(
-                        len(exampleCells),
-                        sum(ctx["transistorCounts"].get(
-                            c.stdCellType.typeName, 0)
-                            for c in exampleCells),
-                        oriUnitAstranArea)
-
-                # Structural layout sanity (P2 phase 0, mirrors main.py).
-                cell_name = "COMPLEX%d" % patternTraceId
-                sanity = flow["layout_sanity"].checkLayout(
-                    os.path.join(out_dir, cell_name + ".gds"),
-                    logPath=os.path.join(out_dir, cell_name + ".Astranlog"))
-                if not sanity.ok():
-                    self._log("版图体检 / layout sanity %s: %s"
-                              % (cell_name, sanity.asDict()), "warn")
-                if cfg.layout_sanity_gate and not sanity.ok():
-                    self._log("COMPLEX%d 版图体检未过，剔除 / failed sanity, "
-                              "excluded" % patternTraceId, "warn")
-                    continue
-
-                # Liberty fragment for the generated cell (mirrors main.py):
-                # area from the layout width, timing/power from the LUT
-                # mini-STA sweep; written on change only.
-                lib_text, _lib_report = flow["liberty_gen"].generateComplexLiberty(
-                    tmpClusterSeq, cell_name, newUnitAstranArea,
-                    ctx["cellTimingPower"], ctx["cellElectricalMetrics"],
-                    ctx["libFunctions"])
-                lib_path = os.path.join(out_dir, cell_name + ".lib")
-                if (not os.path.exists(lib_path)
-                        or open(lib_path).read() != lib_text):
-                    with open(lib_path, "w") as fh:
-                        fh.write(lib_text)
-
-                n_clusters = len(tmpClusterSeq.patternClusters)
-                counted_clusters = n_clusters
-                if oriUnitAstranArea - newUnitAstranArea > 0:
-                    counted_clusters = flow["BLIFGraphUtil"].countUncoveredClusters(
-                        tmpClusterSeq.patternClusters, coveredCellIds)
-                    if counted_clusters == 0:
-                        continue
-                    complexSelection.append((
-                        "COMPLEX%d" % patternTraceId, counted_clusters,
-                        len(tmpClusterSeq.patternClusters[0].cellIdsContained),
-                        tmpClusterSeq.patternExtensionTrace))
-                    saveArea += (oriUnitAstranArea - newUnitAstranArea) * counted_clusters
-                    saveGSCLArea += (oriUnitGSCLArea - newUnitAstranArea) * counted_clusters
-
-                hooks.pattern({
-                    "name": "COMPLEX%d" % patternTraceId,
-                    "id": patternTraceId,
-                    "trace": tmpClusterSeq.patternExtensionTrace,
-                    "clusters": counted_clusters,
-                    "size": len(tmpClusterSeq.patternClusters[0].cellIdsContained),
-                    "coverage": coverage,
-                    "width_um": newUnitAstranArea,
-                    "orig_width_um": oriUnitAstranArea,
-                    "save_unit": oriUnitAstranArea - newUnitAstranArea,
-                    "save_total": (oriUnitAstranArea - newUnitAstranArea) * counted_clusters,
-                    "routability": rt_metrics.asDict() if rt_metrics else None,
-                    "electrical": elec_metrics,
-                    "timing_power": timing_metrics,
-                    "width_proxy_pred": proxy_width,
-                    "reuse": reuse_info,
-                    "out_dir": out_dir,
-                })
-
-            self._check_cancel()
-            ratio = saveArea / ctx["astranArea"] * 100 if ctx["astranArea"] else 0.0
-            self._log("本轮节省 / saveArea=%.2f (%.2f%%)" % (saveArea, ratio))
-            self.hooks.metric({"benchmark": bench, "iteration": i, "save_area": saveArea,
-                               "ratio": ratio, "best": bestSaveArea})
-            if saveArea > bestSaveArea:
-                bestSaveArea = saveArea
-                lastSaveGSCLArea = saveGSCLArea
-                lastComplexSelection = complexSelection
-                self._write_best_record(ctx, bestSaveArea, lastSaveGSCLArea,
-                                        lastComplexSelection)
-            else:
-                break
-
-            # Beam growth (P0-3, mirrors main.py): grow the first
-            # cfg.grow_beam heads per round; each grown branch is
-            # pre-screened by the benefit estimator so predicted-loss
-            # shapes never cost an ASTRAN run.
-            grown_heads = 0
-            for head_seq in list(clusterSeqs):
-                if grown_heads >= cfg.grow_beam:
-                    break
-                if len(head_seq.patternClusters) == 0:
-                    clusterSeqs.remove(head_seq)
-                    continue
-                head_size = len(head_seq.patternClusters[0].cellIdsContained)
-                if grown_heads == 0:
-                    assert cfg.ratio_thr > 0
-                    if (head_size * len(head_seq.patternClusters) <
-                            cfg.ratio_thr * len(cells)
-                            and len(head_seq.patternClusters) < cfg.cnt_thr):
-                        break
-                if head_size >= cfg.max_cells - 1:
-                    # a grown max_cells+ candidate is excluded at layout
-                    # time anyway; growing it here would only churn the pool
-                    clusterSeqs.remove(head_seq)
-                    continue
-                newSeqOfClusters, patternNum = \
-                    flow["BLIFPatternGrowth"].growASeqOfClusters(
-                        BLIFGraph, head_seq, ctx["clusterNum"], patternNum,
-                        paintPattern=True,
-                        benefitEstimator=ctx["growthBenefitEstimator"])
-                clusterSeqs.remove(head_seq)
-                clusterSeqs += newSeqOfClusters
-                grown_heads += 1
-                if len(newSeqOfClusters) > 1:
-                    # Export under the grown pattern's own id: reusing
-                    # len(clusterSeqs) collides with an id already dumped
-                    # and overwrites its .sp.
-                    flow["spice"].exportSpiceNetlist(
-                        newSeqOfClusters[0], ctx["subckts"],
-                        newSeqOfClusters[0].patternClusters[0].clusterTypeId,
-                        out_dir)
-
-            clusterSeqs = flow["BLIFGraphUtil"].removeEmptySeqsAndDisableClusters(clusterSeqs)
-            clusterSeqs = flow["BLIFGraphUtil"].sortPatternClusterSeqs(clusterSeqs)
-
-        ctx["bestSaveArea"] = bestSaveArea
-        ctx["runtime"] = time.time() - ctx["startTime"]
-        self._stage("mine", "done", "best saveArea=%.2f µm" % bestSaveArea)
 
     def _generate_complex_layout(self, ctx, patternTraceId):
         """Run ASTRAN for one COMPLEX cell; None means 'exclude this pattern'.
@@ -977,134 +792,14 @@ class FlowRunner(object):
 
     # ------------------------------------------------------------- phase 2
     def _phase2(self, ctx):
-        """Port of main.py lines 244-387 (per-pattern detail records)."""
-        flow, cfg = ctx["flow"], self.cfg
-        out_dir, bench = ctx["out_dir"], ctx["bench"]
-        dumpedPaterns = ctx["dumpedPaterns"]
-        detectedPatterns = list(ctx["detectedPatterns"])
-        detectedPatterns.reverse()
+        """Phase-2 per-pattern records ran inside core.pipeline (see
+        _mine); this wrapper surfaces the captured records."""
+        records = ctx.get("recordPatternDetails") or []
+        self._stage("phase2", "done", "%d per-pattern records" % len(records))
+        for rec in records:
+            self.hooks.record("seperate", {"trace": rec[-1], "row": rec})
 
-        countedSet = set()
-        recordPatternDetails = []
-        path = os.path.join(out_dir, "bestRecord-seperate" + bench)
-        oriArea = ctx["oriArea"]
-        astranArea = ctx["astranArea"]
 
-        for idx, targetPatternTrace in enumerate(detectedPatterns):
-            self._check_cancel()
-            if targetPatternTrace in countedSet:
-                continue
-            self._stage("phase2", "running",
-                        "模式 %d/%d / pattern %d/%d"
-                        % (idx + 1, len(detectedPatterns), idx + 1,
-                           len(detectedPatterns)),
-                        (idx, len(detectedPatterns)))
-
-            (BLIFGraph, cells, netlist, _types) = \
-                flow["BLIFPreProc"].genGraphFromLibertyAndBLIF(
-                    self._rel(self.cfg.liberty()),
-                    self._rel(self._blif_path(bench)))
-            clusterSeqs, clusterNum = \
-                flow["BLIFPreProc"].heuristicLabelSomeNodesAndGetInitialClusters_BasedOn(
-                    BLIFGraph, cells, netlist, targetPatternTrace)
-
-            stdType2AstranArea = flow["GDSIIAnalysis"].loadAstranGDS()
-            stdType2GSCLArea = ctx["stdType2GSCLArea"]
-            clusterSeqs = flow["BLIFGraphUtil"].sortPatternClusterSeqs(clusterSeqs)
-            patternNum = len(clusterSeqs)
-
-            for _i in range(0, 10):
-                self._check_cancel()
-                if len(clusterSeqs) == 0 or len(clusterSeqs[0].patternClusters) == 0:
-                    break
-                if len(clusterSeqs[0].patternClusters[0].cellIdsContained) >= cfg.max_cells:
-                    # Pop, don't just continue (same fix as the phase-1 loop).
-                    clusterSeqs = clusterSeqs[1:]
-                    continue
-
-                saveArea = 0.0
-                saveGSCLArea = 0.0
-                complexSelection = []
-                touch = False
-                tmpClusterSeq = None
-                for j in range(0, 1):
-                    if j >= len(clusterSeqs):
-                        break
-                    tmpClusterSeq = clusterSeqs[j]
-                    if tmpClusterSeq.patternExtensionTrace not in dumpedPaterns:
-                        break       # grew past the dumped patterns: nothing to record
-                    patternTraceId = dumpedPaterns[tmpClusterSeq.patternExtensionTrace]
-
-                    exampleCells = [cells[cid] for cid in
-                                    tmpClusterSeq.patternClusters[0].cellIdsContained]
-                    complexSelection.append((
-                        "COMPLEX%d" % patternTraceId,
-                        len(tmpClusterSeq.patternClusters),
-                        len(tmpClusterSeq.patternClusters[0].cellIdsContained),
-                        tmpClusterSeq.patternExtensionTrace))
-                    oriUnitAstranArea = flow["BLIFPreProc"].getArea(
-                        exampleCells, stdType2AstranArea)
-                    oriUnitGSCLArea = flow["BLIFPreProc"].getArea(
-                        exampleCells, stdType2GSCLArea)
-                    try:
-                        newUnitAstranArea = flow["Astran"].loadAstranArea(
-                            out_dir, "COMPLEX%d" % patternTraceId)
-                    except Exception:                    # noqa: BLE001
-                        self._log("%s 无可用版图，跳过 / no usable layout"
-                                  % ("COMPLEX%d" % patternTraceId), "warn")
-                        continue
-                    if newUnitAstranArea <= 0:
-                        self._log("%s 宽度为 0，跳过 / zero width; skipped"
-                                  % ("COMPLEX%d" % patternTraceId), "warn")
-                        continue
-                    n_clusters = len(tmpClusterSeq.patternClusters)
-                    saveArea += (oriUnitAstranArea - newUnitAstranArea) * n_clusters
-                    saveGSCLArea += (oriUnitGSCLArea - newUnitAstranArea) * n_clusters
-                    touch = True
-
-                if tmpClusterSeq is None:
-                    break
-                if touch and tmpClusterSeq.patternExtensionTrace not in countedSet:
-                    countedSet.add(tmpClusterSeq.patternExtensionTrace)
-                    recordPatternDetails.append((
-                        saveArea, saveArea / astranArea * 100 if astranArea else 0.0,
-                        len(tmpClusterSeq.patternClusters),
-                        len(tmpClusterSeq.patternClusters[0].cellIdsContained),
-                        (len(tmpClusterSeq.patternClusters[0].cellIdsContained) *
-                         len(tmpClusterSeq.patternClusters)),
-                        "COMPLEX%d" % patternTraceId,
-                        tmpClusterSeq.patternExtensionTrace))
-                    if targetPatternTrace == complexSelection[0][3]:
-                        break
-
-                clusterSeq = clusterSeqs[0]
-                if (len(clusterSeq.patternClusters[0].cellIdsContained) *
-                        len(clusterSeq.patternClusters) < cfg.ratio_thr * len(cells)
-                        and len(clusterSeq.patternClusters) < cfg.cnt_thr):
-                    break
-
-                newSeqOfClusters, patternNum = \
-                    flow["BLIFPatternGrowth"].growASeqOfClusters_BasedOn(
-                        BLIFGraph, clusterSeq, clusterNum, patternNum,
-                        paintPattern=True, targetPatternTrace=targetPatternTrace)
-                clusterSeqs = clusterSeqs[1:]
-                clusterSeqs += newSeqOfClusters
-                clusterSeqs = flow["BLIFGraphUtil"].removeEmptySeqsAndDisableClusters(clusterSeqs)
-                clusterSeqs = flow["BLIFGraphUtil"].sortPatternClusterSeqs(clusterSeqs)
-
-        recordPatternDetails = sorted(recordPatternDetails, key=lambda x: -x[0])
-        with open(path, "w") as fh:
-            print("| designOverallArea | saveArea | saveRatio | patternCnt | "
-                  "patternSize | patternCoverage | patternName | patternCode |",
-                  file=fh)
-            for (saveArea, saveRatio, patternCnt, patternSize, patternCoverage,
-                 patternName, patternCode) in recordPatternDetails:
-                print('|', oriArea, '|', saveArea, '|', saveRatio, '|', patternCnt,
-                      '|', patternSize, '|', patternCoverage, '|', patternName,
-                      '|', patternCode, '|', file=fh)
-        self.hooks.record({"benchmark": bench, "path": path, "kind": "separate",
-                           "rows": len(recordPatternDetails)})
-        self._stage("phase2", "done", "%d pattern records" % len(recordPatternDetails))
 
 
 def clean_outputs(benchmark):
