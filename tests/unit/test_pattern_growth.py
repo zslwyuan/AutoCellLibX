@@ -12,7 +12,7 @@ from blif_graph_util import (
     DesignNet,
     DesignPatternCluster,
     DesignPatternClusterSeq,
-    sortPatternClusterSeqs,
+    sort_pattern_cluster_seqs,
 )
 from blif_pattern_growth import grow_sequence_of_clusters
 
@@ -22,17 +22,17 @@ BLIF = "../benchmark/blif/adder.blif"
 
 def _cell(cid, name="INVX1"):
     t = StdCellType(name)
-    t.addPin("I0", "input")
-    t.addPin("O0", "output")
+    t.add_pin("I0", "input")
+    t.add_pin("O0", "output")
     return DesignCell(cid, "c%d" % cid, t)
 
 
-def _link(src, dst, netId):
-    net = DesignNet(netId, "n%d" % netId)
-    net.addPin("O0", src, False)
-    net.addPin("I0", dst, True)
-    src.addOutputNet(net)
-    dst.addInputNet(net)
+def _link(src, dst, net_id):
+    net = DesignNet(net_id, "n%d" % net_id)
+    net.add_pin("O0", src, False)
+    net.add_pin("I0", dst, True)
+    src.add_output_net(net)
+    dst.add_input_net(net)
 
 
 def test_output_side_does_not_absorb_same_pattern_cluster():
@@ -46,22 +46,22 @@ def test_output_side_does_not_absorb_same_pattern_cluster():
 
     c1 = DesignPatternCluster(0, "[INVX1,INVX1]", cells, [x1.id, x2.id], 0)
     c2 = DesignPatternCluster(1, "[INVX1,INVX1]", cells, [y1.id, y2.id], 0)
-    for cid in c1.cellIdsContained:
-        cells[cid].setCluster(c1)
-        cells[cid].setClusterId(0)
-    for cid in c2.cellIdsContained:
-        cells[cid].setCluster(c2)
-        cells[cid].setClusterId(1)
+    for cid in c1.cell_ids:
+        cells[cid].set_cluster(c1)
+        cells[cid].set_cluster_id(0)
+    for cid in c2.cell_ids:
+        cells[cid].set_cluster(c2)
+        cells[cid].set_cluster_id(1)
 
     seq = DesignPatternClusterSeq("[INVX1,INVX1]")
-    seq.addCluster(c1)
-    seq.addCluster(c2)
+    seq.add_cluster(c1)
+    seq.add_cluster(c2)
 
     grow_sequence_of_clusters(None, seq, 2, 2)
 
     assert not c2.disabled, "sibling same-pattern cluster must not be disabled"
-    assert y1.id not in c1.cellIdsContained
-    assert c1.cellIdsContained == [x1.id, x2.id]
+    assert y1.id not in c1.cell_ids
+    assert c1.cell_ids == [x1.id, x2.id]
 
 
 def test_input_side_does_not_absorb_same_pattern_cluster():
@@ -75,39 +75,39 @@ def test_input_side_does_not_absorb_same_pattern_cluster():
 
     c1 = DesignPatternCluster(0, "[INVX1,INVX1]", cells, [x1.id, x2.id], 0)
     c2 = DesignPatternCluster(1, "[INVX1,INVX1]", cells, [y1.id, y2.id], 0)
-    for cid in c1.cellIdsContained:
-        cells[cid].setCluster(c1)
-        cells[cid].setClusterId(0)
-    for cid in c2.cellIdsContained:
-        cells[cid].setCluster(c2)
-        cells[cid].setClusterId(1)
+    for cid in c1.cell_ids:
+        cells[cid].set_cluster(c1)
+        cells[cid].set_cluster_id(0)
+    for cid in c2.cell_ids:
+        cells[cid].set_cluster(c2)
+        cells[cid].set_cluster_id(1)
 
     seq = DesignPatternClusterSeq("[INVX1,INVX1]")
-    seq.addCluster(c1)
-    seq.addCluster(c2)
+    seq.add_cluster(c1)
+    seq.add_cluster(c2)
 
     grow_sequence_of_clusters(None, seq, 2, 2)
 
     assert not c2.disabled
-    assert y2.id not in c1.cellIdsContained
+    assert y2.id not in c1.cell_ids
 
 
 def test_growth_invariants_on_benchmark(in_pysrc):
-    from blif_preproc import loadDataAndPreprocess
+    from blif_preproc import load_data_and_preprocess
 
-    G, cells, netlist, types, ds, ml, seqs, cn = loadDataAndPreprocess(
-        libFileName=LIB, blifFileName=BLIF, startTime=0)
-    seqs = sortPatternClusterSeqs(seqs)
+    G, cells, netlist, types, ds, ml, seqs, cn = load_data_and_preprocess(
+        lib_file_name=LIB, blif_file_name=BLIF, start_time=0)
+    seqs = sort_pattern_cluster_seqs(seqs)
 
-    newSeqs, patternNum = grow_sequence_of_clusters(
+    new_seqs, pattern_num = grow_sequence_of_clusters(
         G, seqs[0], len(seqs), len(seqs))
 
-    assert patternNum >= len(seqs)
-    for s in newSeqs:
-        assert len(s.patternClusters) > 0
+    assert pattern_num >= len(seqs)
+    for s in new_seqs:
+        assert len(s.pattern_clusters) > 0
         seen = set()
-        for cl in s.patternClusters:
-            for cid in cl.cellIdsContained:
+        for cl in s.pattern_clusters:
+            for cid in cl.cell_ids:
                 assert cid not in seen, "a cell may not appear in two clusters"
                 seen.add(cid)
 
@@ -117,9 +117,9 @@ def _seq_with_two_neighbor_classes():
     feature) and one OR2X1 (count-1 feature)."""
     def cell(cid, name):
         t = StdCellType(name)
-        t.addPin("I0", "input")
-        t.addPin("I1", "input")
-        t.addPin("O0", "output")
+        t.add_pin("I0", "input")
+        t.add_pin("I1", "input")
+        t.add_pin("O0", "output")
         return DesignCell(cid, "c%d" % cid, t)
 
     cells = [cell(i, n) for i, n in enumerate(
@@ -127,20 +127,20 @@ def _seq_with_two_neighbor_classes():
     c0, c1, x0, x1, o0 = cells
     _link(c0, c1, 0)
     net1 = DesignNet(1, "n1")
-    net1.addPin("O0", c1, False)
-    net1.addPin("I0", x0, True)
-    net1.addPin("I0", x1, True)
-    c1.addOutputNet(net1)
-    x0.addInputNet(net1)
-    x1.addInputNet(net1)
+    net1.add_pin("O0", c1, False)
+    net1.add_pin("I0", x0, True)
+    net1.add_pin("I0", x1, True)
+    c1.add_output_net(net1)
+    x0.add_input_net(net1)
+    x1.add_input_net(net1)
     _link(c1, o0, 2)
 
     cluster = DesignPatternCluster(0, "[NAND2X1,NAND2X1]", cells, [0, 1], 0)
     for cid in (0, 1):
-        cells[cid].setCluster(cluster)
-        cells[cid].setClusterId(0)
+        cells[cid].set_cluster(cluster)
+        cells[cid].set_cluster_id(0)
     seq = DesignPatternClusterSeq("[NAND2X1,NAND2X1]")
-    seq.addCluster(cluster)
+    seq.add_cluster(cluster)
     return seq
 
 
@@ -152,29 +152,29 @@ def test_growth_prunes_vetoed_branch_and_takes_next():
     def veto_xor(member_types, neighbor_type, new_size, occurrences):
         return -1.0 if neighbor_type == "XOR2X1" else 100.0
 
-    resSeqs, _ = grow_sequence_of_clusters(
-        None, seq, 1, 1, benefitEstimator=veto_xor)
-    assert len(resSeqs) == 2                     # grown seq + leftover seq
-    trace = resSeqs[0].patternClusters[0].patternExtensionTrace
+    res_seqs, _ = grow_sequence_of_clusters(
+        None, seq, 1, 1, benefit_estimator=veto_xor)
+    assert len(res_seqs) == 2                     # grown seq + leftover seq
+    trace = res_seqs[0].pattern_clusters[0].pattern_extension_trace
     assert "+OR2X1" in trace
     assert "XOR2X1" not in trace
 
 
 def test_growth_all_branches_pruned_returns_ungrown():
     seq = _seq_with_two_neighbor_classes()
-    resSeqs, _ = grow_sequence_of_clusters(
-        None, seq, 1, 1, benefitEstimator=lambda *a: -1.0)
-    assert len(resSeqs) == 1
-    assert resSeqs[0] is seq
-    assert seq.patternClusters[0].patternExtensionTrace == \
+    res_seqs, _ = grow_sequence_of_clusters(
+        None, seq, 1, 1, benefit_estimator=lambda *a: -1.0)
+    assert len(res_seqs) == 1
+    assert res_seqs[0] is seq
+    assert seq.pattern_clusters[0].pattern_extension_trace == \
         "[NAND2X1,NAND2X1]"
 
 
 def test_growth_without_estimator_keeps_legacy_top1():
     seq = _seq_with_two_neighbor_classes()
-    resSeqs, _ = grow_sequence_of_clusters(None, seq, 1, 1)
-    assert len(resSeqs) == 2
-    trace = resSeqs[0].patternClusters[0].patternExtensionTrace
+    res_seqs, _ = grow_sequence_of_clusters(None, seq, 1, 1)
+    assert len(res_seqs) == 2
+    trace = res_seqs[0].pattern_clusters[0].pattern_extension_trace
     assert "+XOR2X1" in trace                    # frequency-top branch
 
 
@@ -191,18 +191,18 @@ def test_growth_tolerates_beam_disabled_clusters():
     c1 = DesignPatternCluster(0, "[INVX1,INVX1]", cells, [0, 1], 0)
     c2 = DesignPatternCluster(1, "[INVX1,INVX1]", cells, [2, 3], 1)
     for c, cl in ((a1, c1), (a2, c1), (b1, c2), (b2, c2)):
-        c.setCluster(cl)
-        c.setClusterId(cl.clusterId)
+        c.set_cluster(cl)
+        c.set_cluster_id(cl.cluster_id)
     seq1 = DesignPatternClusterSeq("[INVX1,INVX1]")
-    seq1.addCluster(c1)
+    seq1.add_cluster(c1)
     seq2 = DesignPatternClusterSeq("[INVX1,INVX1]")
-    seq2.addCluster(c2)
+    seq2.add_cluster(c2)
 
     # first beam head grows and steals b1, disabling c2
     grown1, _ = grow_sequence_of_clusters(None, seq1, 2, 2)
     assert c2.disabled
 
     # second beam head: only disabled clusters left -> no crash, no growth
-    resSeqs, _ = grow_sequence_of_clusters(None, seq2, 2, 3)
-    assert len(resSeqs) == 1
-    assert resSeqs[0].patternClusters == []
+    res_seqs, _ = grow_sequence_of_clusters(None, seq2, 2, 3)
+    assert len(res_seqs) == 1
+    assert res_seqs[0].pattern_clusters == []

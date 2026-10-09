@@ -35,10 +35,10 @@ _VALUES_RE = re.compile(r"[-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?")
 _electrical_cache = {}
 
 
-def _sliceBlocks(text, keyword, startPos=0):
+def _sliceBlocks(text, keyword, start_pos=0):
     """Yield (args, body) for each ``keyword (args) { ... }`` block whose
-    opening brace starts at nesting depth 1 relative to startPos."""
-    idx = startPos
+    opening brace starts at nesting depth 1 relative to start_pos."""
+    idx = start_pos
     while (True):
         m = re.search(re.escape(keyword) + r"\s*\(([^)]*)\)\s*\{",
                       text[idx:])
@@ -57,81 +57,81 @@ def _sliceBlocks(text, keyword, startPos=0):
         idx = pos
 
 
-def loadCellElectricalMetrics(libFileName):
-    """{typeName: {leakage, input_cap, delay_proxy}} for one .lib file."""
-    key = (os.path.abspath(libFileName), os.path.getmtime(libFileName))
+def load_cell_electrical_metrics(lib_file_name):
+    """{type_name: {leakage, input_cap, delay_proxy}} for one .lib file."""
+    key = (os.path.abspath(lib_file_name), os.path.getmtime(lib_file_name))
     if (key in _electrical_cache):
         # Copy per entry: callers must not pollute the shared cache.
         return {k: dict(v) for k, v in _electrical_cache[key].items()}
 
-    text = open(libFileName).read()
+    text = open(lib_file_name).read()
     metrics = {}
-    for cellArgs, cellBody in _sliceBlocks(text, "cell"):
-        name = cellArgs.split()[0] if cellArgs else cellArgs
-        m = _LEAK_RE.search(cellBody)
+    for cell_args, cell_body in _sliceBlocks(text, "cell"):
+        name = cell_args.split()[0] if cell_args else cell_args
+        m = _LEAK_RE.search(cell_body)
         leakage = float(m.group(1)) if m else 0.0
-        m = _AREA_RE.search(cellBody)
+        m = _AREA_RE.search(cell_body)
         area = float(m.group(1)) if m else None
-        inputCap = 0.0
-        pinCaps = {}
-        delayVals = []
-        for pinArgs, pinBody in _sliceBlocks(cellBody, "pin"):
-            dirM = _DIR_RE.search(pinBody)
-            capM = _CAP_RE.search(pinBody)
-            if (capM):
-                pinCaps[pinArgs] = float(capM.group(1))
-            if (dirM and dirM.group(1) == "input" and capM):
-                inputCap += float(capM.group(1))
+        input_cap = 0.0
+        pin_caps = {}
+        delay_vals = []
+        for pin_args, pin_body in _sliceBlocks(cell_body, "pin"):
+            dir_m = _DIR_RE.search(pin_body)
+            cap_m = _CAP_RE.search(pin_body)
+            if (cap_m):
+                pin_caps[pin_args] = float(cap_m.group(1))
+            if (dir_m and dir_m.group(1) == "input" and cap_m):
+                input_cap += float(cap_m.group(1))
         for kind in ("cell_rise", "cell_fall"):
-            for _args, tableBody in _sliceBlocks(cellBody, kind):
-                vpos = tableBody.find("values")
+            for _args, table_body in _sliceBlocks(cell_body, kind):
+                vpos = table_body.find("values")
                 if (vpos >= 0):
-                    delayVals.extend(
+                    delay_vals.extend(
                         float(v) for v in
-                        _VALUES_RE.findall(tableBody[vpos:]))
+                        _VALUES_RE.findall(table_body[vpos:]))
         metrics[name] = {
             "leakage": leakage,
             "area": area,
-            "input_cap": inputCap,
-            "pin_caps": pinCaps,
-            "delay_proxy": (sum(delayVals) / len(delayVals)
-                            if delayVals else None),
+            "input_cap": input_cap,
+            "pin_caps": pin_caps,
+            "delay_proxy": (sum(delay_vals) / len(delay_vals)
+                            if delay_vals else None),
         }
 
     _electrical_cache[key] = metrics
     return metrics
 
 
-def patternElectricalMetrics(exampleCells, cellMetrics):
+def pattern_electrical_metrics(example_cells, cell_metrics):
     """Aggregate member-cell metrics for one pattern instance.
 
     ``internal_nets`` counts member output nets whose loads are all
     inside the pattern: each is a wire-capacitance (and its driver
     energy) removed from the outside world by the merge.
     """
-    inside = set(c.id for c in exampleCells)
-    leakageSum = 0.0
-    areaSum = 0.0
-    inputCapSum = 0.0
-    delayVals = []
-    internalNets = 0
-    for cell in exampleCells:
-        m = cellMetrics.get(cell.stdCellType.typeName)
+    inside = set(c.id for c in example_cells)
+    leakage_sum = 0.0
+    area_sum = 0.0
+    input_cap_sum = 0.0
+    delay_vals = []
+    internal_nets = 0
+    for cell in example_cells:
+        m = cell_metrics.get(cell.std_cell_type.type_name)
         if (m is not None):
-            leakageSum += m["leakage"]
-            areaSum += m.get("area") or 0.0
-            inputCapSum += m["input_cap"]
+            leakage_sum += m["leakage"]
+            area_sum += m.get("area") or 0.0
+            input_cap_sum += m["input_cap"]
             if (m["delay_proxy"] is not None):
-                delayVals.append(m["delay_proxy"])
-        for outNet in cell.outputNets:
-            if (len(outNet.succCells) > 0
-                    and all(s.id in inside for s in outNet.succCells)):
-                internalNets += 1
+                delay_vals.append(m["delay_proxy"])
+        for out_net in cell.output_nets:
+            if (len(out_net.succ_cells) > 0
+                    and all(s.id in inside for s in out_net.succ_cells)):
+                internal_nets += 1
     return {
-        "leakage_sum": leakageSum,
-        "area_sum": areaSum,
-        "input_cap_sum": inputCapSum,
-        "delay_proxy_avg": (sum(delayVals) / len(delayVals)
-                            if delayVals else None),
-        "internal_nets": internalNets,
+        "leakage_sum": leakage_sum,
+        "area_sum": area_sum,
+        "input_cap_sum": input_cap_sum,
+        "delay_proxy_avg": (sum(delay_vals) / len(delay_vals)
+                            if delay_vals else None),
+        "internal_nets": internal_nets,
     }

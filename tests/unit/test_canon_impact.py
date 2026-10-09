@@ -1,22 +1,22 @@
 """Unit tests for pySrc/canon_impact.py (P1-10 prototype)."""
 from blif_graph_util import StdCellType, DesignCell, DesignNet
-from canon_impact import canonicalizationImpact
+from canon_impact import canonicalization_impact
 
 
 def _cell(cid, name):
     t = StdCellType(name)
-    t.addPin("I0", "input")
-    t.addPin("I1", "input")
-    t.addPin("O0", "output")
+    t.add_pin("I0", "input")
+    t.add_pin("I1", "input")
+    t.add_pin("O0", "output")
     return DesignCell(cid, "c%d" % cid, t)
 
 
 def _link(src, src_pin, dst, dst_pin, nid):
     net = DesignNet(nid, "n%d" % nid)
-    net.addPin(src_pin, src, False)
-    net.addPin(dst_pin, dst, True)
-    src.addOutputNet(net)
-    dst.addInputNet(net)
+    net.add_pin(src_pin, src, False)
+    net.add_pin(dst_pin, dst, True)
+    src.add_output_net(net)
+    dst.add_input_net(net)
 
 
 def test_merges_order_split_instances():
@@ -32,18 +32,18 @@ def test_merges_order_split_instances():
     _link(cells[3], "O0", cells[5], "I0", 2)
     _link(cells[4], "O0", cells[5], "I1", 3)
 
-    report = canonicalizationImpact(cells)
-    assert report["legacyGroups"] == 2        # order-sensitive split
-    assert report["canonicalGroups"] == 1     # merged by canonical form
-    assert report["mergedGroups"] == 1
-    assert report["recoveredInstances"] == 1  # 2-instance group vs biggest 1
+    report = canonicalization_impact(cells)
+    assert report["legacy_groups"] == 2        # order-sensitive split
+    assert report["canonical_groups"] == 1     # merged by canonical form
+    assert report["merged_groups"] == 1
+    assert report["recovered_instances"] == 1  # 2-instance group vs biggest 1
 
 
 def test_adder_report_structure(in_pysrc):
     from blif_preproc import gen_graph_from_liberty_and_blif
     _, cells, _, _ = gen_graph_from_liberty_and_blif(
         "../stdCelllib/gscl45nm.lib", "../benchmark/blif/adder.blif")
-    report = canonicalizationImpact(cells)
-    assert report["canonicalGroups"] <= report["legacyGroups"]
-    assert report["codedCells"] > 0
-    assert report["mergedGroups"] >= 0
+    report = canonicalization_impact(cells)
+    assert report["canonical_groups"] <= report["legacy_groups"]
+    assert report["coded_cells"] > 0
+    assert report["merged_groups"] >= 0

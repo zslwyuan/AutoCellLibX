@@ -1,7 +1,7 @@
 import os
 
-verilogList = ["./boomModule/vFiles/*.v"]  # "./gemmini/*.v"]
-# verilogList = ["./EPFL/arithmetic/log2/verilog/log2.v",
+verilog_list = ["./boomModule/v_files/*.v"]  # "./gemmini/*.v"]
+# verilog_list = ["./EPFL/arithmetic/log2/verilog/log2.v",
 #                "./EPFL/arithmetic/sqrt/verilog/sqrt.v",
 #                "./EPFL/arithmetic/hypotenuse/verilog/hyp.v",
 #                "./EPFL/arithmetic/bar/verilog/bar.v",
@@ -22,7 +22,7 @@ verilogList = ["./boomModule/vFiles/*.v"]  # "./gemmini/*.v"]
 #                "./EPFL/random_control/decoder/verilog/dec.v",
 #                "./EPFL/random_control/router/verilog/router.v"]
 
-# synTemplate = """
+# syn_template = """
 # read_liberty -lib ../stdCelllib/gscl45nm.lib
 # read -sv TARGETVERILOG
 # hierarchy -top top
@@ -47,7 +47,7 @@ verilogList = ["./boomModule/vFiles/*.v"]  # "./gemmini/*.v"]
 # write_blif OUTPUTPATH/BENCHMARKNAME.blif
 # """
 
-synTemplate = """
+syn_template = """
 read_liberty -lib ../stdCelllib/gscl45nm.lib
 read -sv TARGETVERILOG
 hierarchy -top RegisterFileSynthesizable
@@ -73,14 +73,14 @@ write_blif OUTPUTPATH/BoomRegisterFile.blif
 """
 
 
-outputPath = "/home/zslwyuan-laptop/Softwares/yosys/blifPatternExtraction_Jingsong/benchmark/blif/"
-yosysPath = "/home/zslwyuan-laptop/Softwares/yosys/yosys"
+output_path = "/home/zslwyuan-laptop/Softwares/yosys/blifPatternExtraction_Jingsong/benchmark/blif/"
+yosys_path = "/home/zslwyuan-laptop/Softwares/yosys/yosys"
 
-for targetVerilog in verilogList:
-    benchmarkName = targetVerilog.split("/")[-1].split(".")[0]
-    outputStr = synTemplate.replace(
-        "BENCHMARKNAME", benchmarkName).replace("OUTPUTPATH", outputPath).replace("TARGETVERILOG", targetVerilog)
-    synScript = open("syn.ys", 'w')
-    print(outputStr, file=synScript)
-    synScript.close()
-    os.system(yosysPath+" syn.ys")
+for target_verilog in verilog_list:
+    benchmark_name = target_verilog.split("/")[-1].split(".")[0]
+    output_str = syn_template.replace(
+        "BENCHMARKNAME", benchmark_name).replace("OUTPUTPATH", output_path).replace("TARGETVERILOG", target_verilog)
+    syn_script = open("syn.ys", 'w')
+    print(output_str, file=syn_script)
+    syn_script.close()
+    os.system(yosys_path+" syn.ys")

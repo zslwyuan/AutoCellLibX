@@ -1,6 +1,6 @@
 """Regenerate specific ASTRAN cells from their existing .sp netlists.
 
-Reruns the project's own runAstranForNetlist() for the named COMPLEX cells in
+Reruns the project's own run_astran_for_netlist() for the named COMPLEX cells in
 a benchmark output directory, without re-running the (slow) pattern-mining
 pipeline.  Useful when a netlist changed but a stale layout is still cached.
 
@@ -15,7 +15,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from astran import (ASTRAN_BUILD_PATH, ASTRAN_TECHNOLOGY, GUROBI_CL,
-                    runAstranForNetlist)
+                    run_astran_for_netlist)
 
 
 def main():
@@ -44,10 +44,10 @@ def main():
         t0 = time.time()
         print("[regen] start %s (%s)" % (name, time.strftime("%H:%M:%S")),
               flush=True)
-        runAstranForNetlist(AstranPath=ASTRAN_BUILD_PATH, gurobiPath=GUROBI_CL,
-                            technologyPath=ASTRAN_TECHNOLOGY,
-                            spiceNetlistPath=sp, complexName=name,
-                            commandDir=outdir)
+        run_astran_for_netlist(astran_path=ASTRAN_BUILD_PATH, gurobi_path=GUROBI_CL,
+                            technology_path=ASTRAN_TECHNOLOGY,
+                            spice_netlist_path=sp, complex_name=name,
+                            command_dir=outdir)
         size = "NO LOG"
         log = os.path.join(outdir, name + ".Astranlog")
         if os.path.exists(log):

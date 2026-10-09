@@ -12,22 +12,22 @@ netlist bytes + cell name, so identical netlists (the property under test)
 yield identical widths in both flows.  A stubbed "run" writes exactly the
 two files the flows consume: ``<name>.gds`` (existence is all the mtime
 cache checks) and ``<name>.Astranlog`` carrying the
-``-> Cell Size (W x H):`` line that ``loadAstranArea`` parses.
+``-> Cell Size (W x H):`` line that ``load_astran_area`` parses.
 
 Everything happens under ``tmp_path``; the tracked artifacts in
 ``pySrc/outputs/`` are never touched.  Both flows run their default
-configuration (including beam growth, ``growBeamWidth=2``).
+configuration (including beam growth, ``grow_beam_width=2``).
 
 Capture points (kept symmetric -- main.py star-imports its helpers into its
 own module namespace, flow_core calls them as module attributes):
 
-* ``exportSpiceNetlist`` (patched on ``main`` for the CLI flow, on the
+* ``export_spice_netlist`` (patched on ``main`` for the CLI flow, on the
   ``spice`` module for the GUI flow): in phase 1 every dumped pattern is
   drawn and immediately exported under its id, so an export whose id equals
   the most recent draw is a dump; the remaining calls are growth exports.
-  This reconstructs each flow's ``detectedPatterns`` (in order) and
-  ``dumpedPaterns`` (trace -> id) exactly.
-* ``drawColorfulFigureForGraphWithAttributes`` (patched on ``main`` /
+  This reconstructs each flow's ``detected_patterns`` (in order) and
+  ``dumped_patterns`` (trace -> id) exactly.
+* ``draw_graph_figure`` (patched on ``main`` /
   ``blif_graph_util``): the dumped COMPLEX id sequence.
 * ``heuristic_label_initial_clusters_based_on`` (patched on
   ``main`` / ``blif_preproc``): the phase-2 target trace sequence.
@@ -89,11 +89,11 @@ def _write_fake_layout(command_dir, cell_name, width):
                  % (width, CELL_HEIGHT_UM))
 
 
-def _fake_run_astran_for_netlist(AstranPath, gurobiPath, technologyPath,
-                                 spiceNetlistPath, complexName, commandDir):
-    """Drop-in for ``astran.runAstranForNetlist`` in main.py's namespace."""
-    _write_fake_layout(commandDir, complexName,
-                       _fake_cell_width(spiceNetlistPath, complexName))
+def _fake_run_astran_for_netlist(astran_path, gurobi_path, technology_path,
+                                 spice_netlist_path, complex_name, command_dir):
+    """Drop-in for ``astran.run_astran_for_netlist`` in main.py's namespace."""
+    _write_fake_layout(command_dir, complex_name,
+                       _fake_cell_width(spice_netlist_path, complex_name))
 
 
 # ------------------------------------------------------------------ sandbox
@@ -121,7 +121,7 @@ def _png_id(filename):
 
 
 class _DumpTracker(object):
-    """Reconstruct detectedPatterns/dumpedPaterns from draw+export spies.
+    """Reconstruct detected_patterns/dumped_patterns from draw+export spies.
 
     Phase 1 dumps a pattern by drawing it and immediately exporting its
     netlist under the same id; growth exports arrive without a preceding
@@ -140,9 +140,9 @@ class _DumpTracker(object):
     def on_export(self, cluster_seq, merge_cell_type_id):
         pattern_id = int(merge_cell_type_id)
         if self.draw_ids and pattern_id == self.draw_ids[-1] \
-                and cluster_seq.patternExtensionTrace not in self.dumped:
-            self.detected.append(cluster_seq.patternExtensionTrace)
-            self.dumped[cluster_seq.patternExtensionTrace] = pattern_id
+                and cluster_seq.pattern_extension_trace not in self.dumped:
+            self.detected.append(cluster_seq.pattern_extension_trace)
+            self.dumped[cluster_seq.pattern_extension_trace] = pattern_id
 
 
 # --------------------------------------------------------------- the runners
@@ -150,7 +150,7 @@ def _run_main_flow(sandbox, monkeypatch):
     """Run pySrc/main.py's main() in the sandbox.
 
     Returns (out_dir, tracker, phase2_targets): the tracker reconstructs
-    main's own detectedPatterns/dumpedPaterns; phase2_targets is the target
+    main's own detected_patterns/dumped_patterns; phase2_targets is the target
     trace sequence its phase 2 re-derived, in iteration order.
     """
     import core.pipeline
@@ -158,8 +158,8 @@ def _run_main_flow(sandbox, monkeypatch):
 
     tracker = _DumpTracker()
     phase2_targets = []
-    real_draw = core.pipeline.drawColorfulFigureForGraphWithAttributes
-    real_export = core.pipeline.exportSpiceNetlist
+    real_draw = core.pipeline.draw_graph_figure
+    real_export = core.pipeline.export_spice_netlist
     real_based_on =         core.pipeline.heuristic_label_initial_clusters_based_on
 
     def spy_draw(*args, **kwargs):
@@ -172,23 +172,23 @@ def _run_main_flow(sandbox, monkeypatch):
                            output_dir)
 
     def spy_based_on(graph, cells, netlist, trace,
-                 singleOutputSeeds=False):
+                 single_output_seeds=False):
         phase2_targets.append(trace)
         return real_based_on(graph, cells, netlist, trace)
 
-    monkeypatch.setattr("core.pipeline.runAstranForNetlist",
+    monkeypatch.setattr("core.pipeline.run_astran_for_netlist",
                         _fake_run_astran_for_netlist)
     monkeypatch.setattr(
-        "core.pipeline.drawColorfulFigureForGraphWithAttributes",
+        "core.pipeline.draw_graph_figure",
         spy_draw)
-    monkeypatch.setattr("core.pipeline.exportSpiceNetlist", spy_export)
+    monkeypatch.setattr("core.pipeline.export_spice_netlist", spy_export)
     monkeypatch.setattr(
         "core.pipeline.heuristic_label_initial_clusters_based_on",
         spy_based_on)
     monkeypatch.chdir(sandbox["pysrc"])
     cfg = core.config.FlowConfig.from_env()
-    cfg.astranBuildPath = "stub"          # enable the (stubbed) layout path
-    core.pipeline.runPipeline(cfg)
+    cfg.astran_build_path = "stub"          # enable the (stubbed) layout path
+    core.pipeline.run_pipeline(cfg)
     return (os.path.join(sandbox["pysrc"], "outputs", "adder"),
             tracker, phase2_targets)
 
@@ -234,8 +234,8 @@ def _run_gui_flow(sandbox, monkeypatch):
     # Symmetric capture: flow_core resolves these as module attributes.
     tracker = _DumpTracker()
     phase2_targets = []
-    real_draw = blif_graph_util.drawColorfulFigureForGraphWithAttributes
-    real_export = spice.exportSpiceNetlist
+    real_draw = blif_graph_util.draw_graph_figure
+    real_export = spice.export_spice_netlist
     real_based_on = \
         blif_preproc.heuristic_label_initial_clusters_based_on
 
@@ -249,14 +249,14 @@ def _run_gui_flow(sandbox, monkeypatch):
                            output_dir)
 
     def spy_based_on(graph, cells, netlist, trace,
-                 singleOutputSeeds=False):
+                 single_output_seeds=False):
         phase2_targets.append(trace)
         return real_based_on(graph, cells, netlist, trace)
 
     import core.pipeline
     monkeypatch.setattr(
-        core.pipeline, "drawColorfulFigureForGraphWithAttributes", spy_draw)
-    monkeypatch.setattr(core.pipeline, "exportSpiceNetlist", spy_export)
+        core.pipeline, "draw_graph_figure", spy_draw)
+    monkeypatch.setattr(core.pipeline, "export_spice_netlist", spy_export)
     monkeypatch.setattr(
         core.pipeline,
         "heuristic_label_initial_clusters_based_on", spy_based_on)
@@ -298,7 +298,7 @@ def _record_rows(path):
             cols = [c for c in cols if c != ""]
             assert len(cols) == 8, "unexpected record row: %r" % line
             m = re.match(r"^COMPLEX(\d+)$", cols[6])
-            assert m, "unexpected patternName %r" % cols[6]
+            assert m, "unexpected pattern_name %r" % cols[6]
             rows.append((int(m.group(1)), cols[7]))
     return rows
 
@@ -326,10 +326,10 @@ def test_mining_flow_parity_adder(tmp_path, monkeypatch):
     # -- pattern identity: same traces dumped in the same order under the
     #    same COMPLEX ids, and the same phase-2 re-derivation sequence
     assert main_cap.detected == gui_cap.detected, \
-        "detectedPatterns diverged:\nmain.py:   %r\nflow_core: %r" \
+        "detected_patterns diverged:\nmain.py:   %r\nflow_core: %r" \
         % (main_cap.detected, gui_cap.detected)
     assert main_cap.dumped == gui_cap.dumped, \
-        "dumpedPaterns (trace -> id) diverged:\nmain.py:   %r\nflow_core: %r" \
+        "dumped_patterns (trace -> id) diverged:\nmain.py:   %r\nflow_core: %r" \
         % (main_cap.dumped, gui_cap.dumped)
     assert main_cap.draw_ids == gui_cap.draw_ids
     assert main_targets == gui_targets, \
@@ -357,7 +357,7 @@ def test_mining_flow_parity_adder(tmp_path, monkeypatch):
         "bestRecord-adder diverged:\n--- main.py ---\n%s\n" \
         "--- flow_core ---\n%s" % (main_best_txt, gui_best_txt)
 
-    # -- per-pattern records byte-identical, and their patternCode column
+    # -- per-pattern records byte-identical, and their pattern_code column
     #    is a subset of the detected traces in both flows (a detected
     #    pattern legitimately earns no row when phase 2 never re-derives
     #    it as a walk head)

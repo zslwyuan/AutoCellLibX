@@ -141,8 +141,8 @@ def test_gds_layer_stats():
     model = gds_model.load_layout(os.path.join(ADDER_DIR, "COMPLEX9.gds"),
                                   os.path.join(ADDER_DIR, "COMPLEX9.Astranlog"))
     names = {l.name for l in model.ordered_layers()}
-    assert {"active", "poly", "metal1", "prBoundary"} <= names
-    pr = next(l for l in model.ordered_layers() if l.name == "prBoundary")
+    assert {"active", "poly", "metal1", "pr_boundary"} <= names
+    pr = next(l for l in model.ordered_layers() if l.name == "pr_boundary")
     # The boundary polygon must match the displayed cell outline.
     assert pr.area_um2 == pytest.approx(model.width_um * model.height_um,
                                         rel=0.05)
@@ -160,11 +160,11 @@ def test_custom_blif_resolution():
     """A user-added BLIF must shadow the standard benchmark of the same name."""
     from gui import flow_core
     cfg = flow_core.FlowConfig()
-    cfg.custom_blifs = {"myDesign": r"D:\data\myDesign.blif"}
+    cfg.custom_blifs = {"my_design": r"D:\data\my_design.blif"}
     runner = flow_core.FlowRunner(cfg)
-    assert runner._blif_path("myDesign") == r"D:\data\myDesign.blif"
+    assert runner._blif_path("my_design") == r"D:\data\my_design.blif"
     assert runner._blif_path("adder") == paths.benchmark_path("adder")
-    assert runner._blif_path("myDesign") != paths.benchmark_path("myDesign")
+    assert runner._blif_path("my_design") != paths.benchmark_path("my_design")
     assert "custom=1" in cfg.describe()
 
 
@@ -179,7 +179,7 @@ def test_pdk_config_resolution():
     assert cfg.lef() == paths.LEF_FILE
     assert cfg.layer_map() == paths.LAYER_MAP_FILE
     cfg.liberty_file = r"D:\pdk\my.lib"
-    cfg.geometry = {"cellsHeight": 20, "nwellPos": 1.0}
+    cfg.geometry = {"cells_height": 20, "nwell_pos": 1.0}
     assert cfg.liberty() == r"D:\pdk\my.lib"
     assert "pdk=自定义" in cfg.describe()
 
@@ -205,8 +205,8 @@ def test_baseline_staleness_with_custom_geometry():
     cfg = flow_core.FlowConfig()
     runner = flow_core.FlowRunner(cfg)
     assert not runner._baseline_is_stale_geometry()
-    cfg.geometry = {"cellsHeight": 20, "hGrid": 0.19, "vGrid": 0.19,
-                    "supplySize": 0.26, "nwellPos": 1.0, "cellTemplate": "Tapless"}
+    cfg.geometry = {"cells_height": 20, "h_grid": 0.19, "v_grid": 0.19,
+                    "supply_size": 0.26, "nwell_pos": 1.0, "cell_template": "Tapless"}
     assert runner._baseline_is_stale_geometry()
     cfg.geometry = None
     cfg.technology_file = r"D:\pdk\custom.rul"
@@ -217,13 +217,13 @@ def test_geometry_override_in_run_script():
     """The GUI's layout-constraint overrides must reach the ASTRAN .run script
     while the defaults stay byte-identical to the CLI flow."""
     import astran
-    default = astran.buildAstranCommands(
+    default = astran.build_astran_commands(
         "gu", "tech", "net.sp", "CELL", "dir")
     assert "set nwellpos %g" % astran.ASTRAN_NWELL_POS in default
     assert "set rowheight %d" % astran.ASTRAN_CELLS_HEIGHT in default
-    custom = astran.buildAstranCommands(
+    custom = astran.build_astran_commands(
         "gu", "tech", "net.sp", "CELL", "dir",
-        geometry={"nwellPos": 1.0, "cellsHeight": 20})
+        geometry={"nwell_pos": 1.0, "cells_height": 20})
     assert "set nwellpos 1" in custom
     assert "set rowheight 20" in custom
     assert "set grid %g %g" % (astran.ASTRAN_HGRID, astran.ASTRAN_VGRID) in custom

@@ -38,7 +38,7 @@ def _run(env, lp, resultfile, timelimit):
             "log_tail": out.strip().splitlines()[-3:]}
 
 
-def compare(lpPath, timelimit=120):
+def compare(lp_path, timelimit=120):
     results = {}
     with tempfile.TemporaryDirectory() as tmp:
         for name, extra in (("cbc", {}),
@@ -46,7 +46,7 @@ def compare(lpPath, timelimit=120):
             env = dict(os.environ)
             env.update(extra)
             results[name] = _run(
-                env, lpPath, os.path.join(tmp, name + ".sol"), timelimit)
+                env, lp_path, os.path.join(tmp, name + ".sol"), timelimit)
     return results
 
 

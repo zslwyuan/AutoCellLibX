@@ -1,6 +1,6 @@
 """Shim (ARCHITECTURE): the SPICE reader (SPSubcircuit,
 load_spice_subcircuits) lives in core/parse; this module keeps the
-netlist exporter (exportSpiceNetlist).
+netlist exporter (export_spice_netlist).
 """
 
 from core.parse import SPSubcircuit, load_spice_subcircuits
@@ -8,74 +8,74 @@ from core.parse import SPSubcircuit, load_spice_subcircuits
 import sys
 import os
 from matplotlib.pyplot import text
-def exportSpiceNetlist(cluserSeq, subckts, mergeCellTypeId,  outputDir):
+def export_spice_netlist(cluster_seq, subckts, merge_cell_type_id,  output_dir):
 
-    cellsInCluster = cluserSeq.patternClusters[0].cellsContained
-    spiceList = []
-    cell2orderId = dict()
+    cells_in_cluster = cluster_seq.pattern_clusters[0].cells
+    spice_list = []
+    cell_to_order_id = dict()
 
     # rename signals and transistors
-    for orderId, cell in enumerate(cellsInCluster):
-        spiceList.append(SPSubcircuit(
-            subckts[cell.stdCellType.typeName].texts))
-        spiceList[-1].renamePrefix("cl"+str(orderId)+"#")
-        cell2orderId[cell] = orderId
+    for order_id, cell in enumerate(cells_in_cluster):
+        spice_list.append(SPSubcircuit(
+            subckts[cell.std_cell_type.type_name].texts))
+        spice_list[-1].rename_prefix("cl"+str(order_id)+"#")
+        cell_to_order_id[cell] = order_id
 
     # connect each input pins of each subcircuit
-    for orderId, curCell in enumerate(cellsInCluster):
-        for inputNet, inputPinName in zip(curCell.inputNets, curCell.inputPinRefNames):
-            predCell = inputNet.predCell
-            predPinName = inputNet.predPin
-            if (predCell in cell2orderId.keys()):
-                spiceList[orderId].replaceInputPin(
-                    "cl"+str(orderId)+"#"+inputPinName, "cl"+str(cell2orderId[predCell])+"#"+predPinName)
+    for order_id, cur_cell in enumerate(cells_in_cluster):
+        for input_net, input_pin_name in zip(cur_cell.input_nets, cur_cell.input_pin_ref_names):
+            pred_cell = input_net.pred_cell
+            pred_pin_name = input_net.pred_pin
+            if (pred_cell in cell_to_order_id.keys()):
+                spice_list[order_id].replace_input_pin(
+                    "cl"+str(order_id)+"#"+input_pin_name, "cl"+str(cell_to_order_id[pred_cell])+"#"+pred_pin_name)
 
     # merge spice netlists
     # A dict is used as an insertion-ordered set.  A plain set iterates in hash
     # order, which changes between processes (PYTHONHASHSEED), so the exported
     # netlist -- and with it the layout cache key -- was different on every run.
-    interfaceSet = {}
-    internalSignals = []
-    for spiceObj in spiceList:
-        for pin in spiceObj.interfaces:
-            interfaceSet[pin] = None
-        internalSignals = internalSignals + spiceObj.internalSignals
+    interface_set = {}
+    internal_signals = []
+    for spice_obj in spice_list:
+        for pin in spice_obj.interfaces:
+            interface_set[pin] = None
+        internal_signals = internal_signals + spice_obj.internal_signals
 
     # remove internal signals from interfaces
-    for orderId, curCell in enumerate(cellsInCluster):
-        for outputNet, outputPinName in zip(curCell.outputNets, curCell.outputPinRefNames):
-            allSuccCellsInternal = True
-            for succCell in outputNet.succCells:
-                if (not succCell in cell2orderId.keys()):
-                    allSuccCellsInternal = False
-            if (allSuccCellsInternal):
-                assert("cl"+str(orderId)+"#"+outputPinName in interfaceSet)
-                del interfaceSet["cl"+str(orderId)+"#"+outputPinName]
+    for order_id, cur_cell in enumerate(cells_in_cluster):
+        for output_net, output_pin_name in zip(cur_cell.output_nets, cur_cell.output_pin_ref_names):
+            all_succ_cells_internal = True
+            for succ_cell in output_net.succ_cells:
+                if (not succ_cell in cell_to_order_id.keys()):
+                    all_succ_cells_internal = False
+            if (all_succ_cells_internal):
+                assert("cl"+str(order_id)+"#"+output_pin_name in interface_set)
+                del interface_set["cl"+str(order_id)+"#"+output_pin_name]
 
-    mergeCellName = "COMPLEX"+str(mergeCellTypeId)
-    interfaceList = list(interfaceSet)
-    firstLine = ".subckt "+mergeCellName+" " + " ".join(interfaceList)
-    internalLines = [firstLine]
-    for ele in spiceList:
-        internalLines = internalLines + ele.texts[1:-1]
-    lastLine = ".ends "+mergeCellName
+    merge_cell_name = "COMPLEX"+str(merge_cell_type_id)
+    interface_list = list(interface_set)
+    first_line = ".subckt "+merge_cell_name+" " + " ".join(interface_list)
+    internal_lines = [first_line]
+    for ele in spice_list:
+        internal_lines = internal_lines + ele.texts[1:-1]
+    last_line = ".ends "+merge_cell_name
 
-    internalLines.append(lastLine)
-    internalLines.append("* pattern code: "+cluserSeq.patternExtensionTrace)
-    internalLines.append(
-        "* "+str(len(cluserSeq.patternClusters))+" occurrences in design ")
-    internalLines.append(
-        "* each contains "+str(len(cellsInCluster))+" cells")
-    internalLines.append(
+    internal_lines.append(last_line)
+    internal_lines.append("* pattern code: "+cluster_seq.pattern_extension_trace)
+    internal_lines.append(
+        "* "+str(len(cluster_seq.pattern_clusters))+" occurrences in design ")
+    internal_lines.append(
+        "* each contains "+str(len(cells_in_cluster))+" cells")
+    internal_lines.append(
         "* Example occurence:")
-    for cell in cellsInCluster:
-        internalLines.append("*   "+cell.name)
+    for cell in cells_in_cluster:
+        internal_lines.append("*   "+cell.name)
 
     # Write only when the content actually changes, so the netlist's mtime is a
     # reliable "inputs changed" signal for the layout cache in main.py.
-    content = '\n'.join(internalLines) + '\n'
-    spPath = outputDir+"/"+mergeCellName+'.sp'
-    if ((not os.path.exists(spPath)) or (open(spPath).read() != content)):
-        outputSP = open(spPath, 'w')
-        outputSP.write(content)
-        outputSP.close()
+    content = '\n'.join(internal_lines) + '\n'
+    sp_path = output_dir+"/"+merge_cell_name+'.sp'
+    if ((not os.path.exists(sp_path)) or (open(sp_path).read() != content)):
+        out_fh = open(sp_path, 'w')
+        out_fh.write(content)
+        out_fh.close()

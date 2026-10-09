@@ -133,7 +133,7 @@ class _FileEditor(QWidget):
         self.table.blockSignals(True)
         self.table.setRowCount(0)
         for row in self.rows:
-            r = self.table.rowCount()
+            r = self.table.row_count()
             self.table.insertRow(r)
             for col, (text, _expl, editable) in enumerate(row.cells[:4]):
                 item = QTableWidgetItem(text)
@@ -212,7 +212,7 @@ class _FileEditor(QWidget):
 
     def _show_explanation(self):
         self.expl.clear()
-        rows = self.table.selectionModel().selectedRows()
+        rows = self.table.selectionModel().selected_rows()
         if not rows:
             return
         r = rows[0].row()

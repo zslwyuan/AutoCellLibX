@@ -1,6 +1,6 @@
 """Thin CLI over core.pipeline (architecture refactor).
 
-All flow logic lives in pySrc/core/pipeline.py (runPipeline); this file
+All flow logic lives in pySrc/core/pipeline.py (run_pipeline); this file
 only builds the FlowConfig and dispatches.  Tunables: env variables
 AUTOCELL_REUSE_MODE=1 (synthesis-reuse dual mode) -- see
 core/config.py.
@@ -9,12 +9,12 @@ core/config.py.
 import matplotlib
 
 from core.config import FlowConfig
-from core.pipeline import runPipeline
+from core.pipeline import run_pipeline
 
 
 def main():
     cfg = FlowConfig.from_env()
-    runPipeline(cfg)
+    run_pipeline(cfg)
 
 
 if __name__ == '__main__':

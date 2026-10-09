@@ -18,7 +18,7 @@ counts against the numbers Yosys reports, so a disagreement is visible
 instead of silent.
 
 When no yosys executable is found, everything degrades gracefully
-(``runYosysStat`` returns ok=False with a reason) -- the flow never
+(``run_yosys_stat`` returns ok=False with a reason) -- the flow never
 hard-depends on it.
 """
 
@@ -43,7 +43,7 @@ YOSYS_CANDIDATES = [
 ]
 
 
-def findYosys():
+def find_yosys():
     """First yosys executable on PATH or in the usual places; None."""
     for cand in YOSYS_CANDIDATES:
         path = shutil.which(cand)
@@ -61,7 +61,7 @@ def _asFloat(value):
         return None
 
 
-def parseStatJson(text):
+def parse_stat_json(text):
     """Defensive parse of ``stat -json`` output.
 
     Accepts either the raw JSON or a full yosys log with the JSON block
@@ -75,52 +75,52 @@ def parseStatJson(text):
         raise ValueError("no JSON object in stat output")
     data = json.loads(text[text.find("{"):text.rfind("}") + 1])
     modules = data.get("modules", {}) if isinstance(data, dict) else {}
-    totalArea = 0.0
-    haveArea = False
-    totalCells = 0
-    haveCells = False
+    total_area = 0.0
+    have_area = False
+    total_cells = 0
+    have_cells = False
     histogram = {}
     for _name, mod in modules.items():
         if (not isinstance(mod, dict)):
             continue
         area = _asFloat(mod.get("area"))
         if (area is not None):
-            totalArea += area
-            haveArea = True
+            total_area += area
+            have_area = True
         cells = _asFloat(mod.get("num_cells"))
         if (cells is not None):
-            totalCells += int(cells)
-            haveCells = True
+            total_cells += int(cells)
+            have_cells = True
         hist = mod.get("num_cells_by_type")
         if (not isinstance(hist, dict)):
             hist = mod.get("cell_histogram")
         if (isinstance(hist, dict)):
-            for cellType, cnt in hist.items():
-                cntF = _asFloat(cnt)
-                if (cntF is not None):
-                    histogram[cellType] = \
-                        histogram.get(cellType, 0) + int(cntF)
+            for cell_type, cnt in hist.items():
+                cnt_float = _asFloat(cnt)
+                if (cnt_float is not None):
+                    histogram[cell_type] = \
+                        histogram.get(cell_type, 0) + int(cnt_float)
     return {
-        "area": totalArea if haveArea else None,
-        "num_cells": totalCells if haveCells else None,
+        "area": total_area if have_area else None,
+        "num_cells": total_cells if have_cells else None,
         "histogram": histogram,
         "modules": sorted(modules.keys()),
     }
 
 
-def runYosysStat(libPath, blifPath, yosysExe=None, timeout=300):
+def run_yosys_stat(lib_path, blif_path, yosys_exe=None, timeout=300):
     """Run ``stat -json`` on one BLIF; dict with ok/area/num_cells/...
 
     Uses the stdout form of ``stat -json`` (no report file): the YoWASP
     WebAssembly build can only write inside its own sandbox, and real
     yosys accepts the same invocation -- one code path for both.
     """
-    exe = yosysExe or findYosys()
+    exe = yosys_exe or find_yosys()
     if (exe is None):
         return {"ok": False,
                 "reason": "no yosys executable found (PATH/MSYS2 probed)"}
     script = ("read_liberty -lib %s; read_blif %s; stat -json"
-              % (libPath, blifPath))
+              % (lib_path, blif_path))
     try:
         proc = subprocess.run(
             [exe, "-Q", "-T", "-p", script],
@@ -128,7 +128,7 @@ def runYosysStat(libPath, blifPath, yosysExe=None, timeout=300):
     except (OSError, subprocess.TimeoutExpired) as exc:
         return {"ok": False, "reason": "yosys launch failed: %s" % exc}
     try:
-        result = parseStatJson(proc.stdout or "")
+        result = parse_stat_json(proc.stdout or "")
     except (ValueError, json.JSONDecodeError) as exc:
         return {"ok": False,
                 "reason": "no JSON in yosys output (rc=%d): %s | %s"
@@ -138,43 +138,43 @@ def runYosysStat(libPath, blifPath, yosysExe=None, timeout=300):
     return result
 
 
-def compareWithFlowArea(yosysStat, flowAreaSum):
+def compare_with_flow_area(yosys_stat, flow_area_sum):
     """Cross-check yosys' area against the flow's lib-derived sum."""
-    report = {"flow_area": flowAreaSum}
-    if (not yosysStat.get("ok")):
+    report = {"flow_area": flow_area_sum}
+    if (not yosys_stat.get("ok")):
         report["compared"] = False
-        report["reason"] = yosysStat.get("reason", "unavailable")
+        report["reason"] = yosys_stat.get("reason", "unavailable")
         return report
     report["compared"] = True
-    report["yosys_area"] = yosysStat.get("area")
-    if (yosysStat.get("area") is not None and flowAreaSum):
-        report["rel_diff"] = abs(yosysStat["area"] - flowAreaSum) / \
-            flowAreaSum
+    report["yosys_area"] = yosys_stat.get("area")
+    if (yosys_stat.get("area") is not None and flow_area_sum):
+        report["rel_diff"] = abs(yosys_stat["area"] - flow_area_sum) / \
+            flow_area_sum
     return report
 
 
-def compareCellCounts(yosysStat, flowTypeCounts):
+def compare_cell_counts(yosys_stat, flow_type_counts):
     """Cross-check yosys' per-type histogram against the flow's graph.
 
-    ``flowTypeCounts``: {typeName: count} over the flow's DesignCells
+    ``flow_type_counts``: {type_name: count} over the flow's DesignCells
     (bypass types excluded, matching yosys' mapped-cell view).  Returns
     {"compared", "total_yosys", "total_flow", "diff"} where diff maps
     type -> (yosys, flow) for every disagreement.  This is the usable
     cross-check even when yosys emits no area: two independent parsers
     must agree on how many instances of each type the netlist has.
     """
-    if (not yosysStat.get("ok")):
+    if (not yosys_stat.get("ok")):
         return {"compared": False,
-                "reason": yosysStat.get("reason", "unavailable")}
-    histogram = yosysStat.get("histogram") or {}
+                "reason": yosys_stat.get("reason", "unavailable")}
+    histogram = yosys_stat.get("histogram") or {}
     diff = {}
-    for t in set(histogram) | set(flowTypeCounts):
-        y, f = histogram.get(t, 0), flowTypeCounts.get(t, 0)
+    for t in set(histogram) | set(flow_type_counts):
+        y, f = histogram.get(t, 0), flow_type_counts.get(t, 0)
         if (y != f):
             diff[t] = (y, f)
     return {
         "compared": True,
         "total_yosys": sum(histogram.values()),
-        "total_flow": sum(flowTypeCounts.values()),
+        "total_flow": sum(flow_type_counts.values()),
         "diff": diff,
     }

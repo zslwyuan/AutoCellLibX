@@ -1,7 +1,7 @@
 """Shim (ARCHITECTURE): readers live in core/parse, encoding in
 core/encoding, seeding in core/seeding.  This module keeps the
-orchestration and GNN-dataset helpers (loadDataAndPreprocess,
-convertBLIFGraphIntoDataset, getArea) and re-exports the rest for the
+orchestration and GNN-dataset helpers (load_data_and_preprocess,
+convert_blif_graph_into_dataset, get_area) and re-exports the rest for the
 older consumers (gui, tests, pipeline).
 """
 
@@ -42,42 +42,42 @@ def softmax(x):
     """Compute softmax values for each sets of scores in x."""
     e_x = np.exp(x - np.max(x))
     return e_x / e_x.sum()
-def convertBLIFGraphIntoDataset(BLIFGraph, stdCellTypesForFeature, maxNumType=36):
+def convert_blif_graph_into_dataset(blif_graph, std_cell_types_for_feature, max_num_type=36):
 
     print('converting BLIF Graph Into Dataset data')
     g_list = []
     feat_dict = {}
 
-    g = BLIFGraph
+    g = blif_graph
     node_tags = []
 
     node_features = None
 
-    labelsListForNode = []
+    labels_list_for_node = []
 
-    maxLabel = 0
+    max_label = 0
 
-    typeSet = set()
+    type_set = set()
     for i in g.nodes():
-        typeSet.add(g.nodes()[i]['type'])
+        type_set.add(g.nodes()[i]['type'])
 
-    typeSet = list(typeSet)
-    typeSet.sort()
-    for typeId, stdCellType in enumerate(stdCellTypesForFeature):
-        feat_dict[stdCellType] = typeId
+    type_set = list(type_set)
+    type_set.sort()
+    for type_id, std_cell_type in enumerate(std_cell_types_for_feature):
+        feat_dict[std_cell_type] = type_id
 
-    for tmpType in typeSet:
-        if (not tmpType in feat_dict.keys()):
-            feat_dict[tmpType] = len(feat_dict)
+    for tmp_type in type_set:
+        if (not tmp_type in feat_dict.keys()):
+            feat_dict[tmp_type] = len(feat_dict)
 
     print("feat_dict: ", feat_dict)
-    print("typeSet: ", typeSet)
-    # assert(len(typeSet) < maxNumType)
+    print("type_set: ", type_set)
+    # assert(len(type_set) < max_num_type)
 
     for i in g.nodes():
-        if (g.nodes()[i]['nodeLabel'] >= 0):
-            labelsListForNode.append(g.nodes()[i]['nodeLabel'])
-            maxLabel = max(maxLabel, g.nodes()[i]['nodeLabel'])
+        if (g.nodes()[i]['node_label'] >= 0):
+            labels_list_for_node.append(g.nodes()[i]['node_label'])
+            max_label = max(max_label, g.nodes()[i]['node_label'])
 
         node_tags.append(feat_dict[g.nodes()[i]['type']])
 
@@ -86,15 +86,15 @@ def convertBLIFGraphIntoDataset(BLIFGraph, stdCellTypesForFeature, maxNumType=36
     # add labels (based on pattern) and edge_mat
     for g in g_list:
 
-        g.label = labelsListForNode
+        g.label = labels_list_for_node
         edges = [list((pair[0], pair[1], 1)) for pair in g.g.edges()]
         g.edge_mat = np.array(edges).T
 
     # add node feature based on node type
-    featureDim = max(maxNumType, len(feat_dict))
+    feature_dim = max(max_num_type, len(feat_dict))
     for g in g_list:
 
-        node_features = np.zeros((len(g.node_tags), featureDim))
+        node_features = np.zeros((len(g.node_tags), feature_dim))
         node_features[range(len(g.node_tags)), [
             tag for tag in g.node_tags]] = 1
 
@@ -102,31 +102,31 @@ def convertBLIFGraphIntoDataset(BLIFGraph, stdCellTypesForFeature, maxNumType=36
 
     print("# data: %d" % len(node_features))
 
-    return g_list, maxLabel+1
-def loadDataAndPreprocess(libFileName="sky130_fd_sc_hd__tt_025C_1v80.lib", blifFileName="rocket.blif", startTime=0, bypassInitialCluster=False, singleOutputSeeds=False):
-    BLIFGraph, cells, netlist, stdCellTypesForFeature = gen_graph_from_liberty_and_blif(
-        libFileName, blifFileName)
-    endTime = time.time()
-    print("gen_graph_from_liberty_and_blif done. time esclaped: ", endTime-startTime)
+    return g_list, max_label+1
+def load_data_and_preprocess(lib_file_name="sky130_fd_sc_hd__tt_025C_1v80.lib", blif_file_name="rocket.blif", start_time=0, bypass_initial_cluster=False, single_output_seeds=False):
+    blif_graph, cells, netlist, std_cell_types_for_feature = gen_graph_from_liberty_and_blif(
+        lib_file_name, blif_file_name)
+    end_time = time.time()
+    print("gen_graph_from_liberty_and_blif done. time esclaped: ", end_time-start_time)
 
-    initialClusterSeqs = None
-    clusterNum = None
-    if (not bypassInitialCluster):
-        initialClusterSeqs, clusterNum = heuristic_label_initial_clusters(
-            BLIFGraph, cells, netlist)
-        endTime = time.time()
+    initial_cluster_seqs = None
+    cluster_num = None
+    if (not bypass_initial_cluster):
+        initial_cluster_seqs, cluster_num = heuristic_label_initial_clusters(
+            blif_graph, cells, netlist)
+        end_time = time.time()
         print("heuristic_label_initial_clusters done. time esclaped: ",
-              endTime-startTime)
+              end_time-start_time)
 
-    dataset, maxLabelIndex = convertBLIFGraphIntoDataset(
-        BLIFGraph, stdCellTypesForFeature, 36)
-    endTime = time.time()
-    print("loadDataAndPreprocess done. time esclaped: ", endTime-startTime)
+    dataset, max_label_index = convert_blif_graph_into_dataset(
+        blif_graph, std_cell_types_for_feature, 36)
+    end_time = time.time()
+    print("load_data_and_preprocess done. time esclaped: ", end_time-start_time)
 
-    return BLIFGraph, cells, netlist, stdCellTypesForFeature, dataset, maxLabelIndex, initialClusterSeqs, clusterNum
-def getArea(cells, type2Area):
-    resArea = 0
+    return blif_graph, cells, netlist, std_cell_types_for_feature, dataset, max_label_index, initial_cluster_seqs, cluster_num
+def get_area(cells, area_by_type):
+    total_area = 0
     for cell in cells:
-        if (cell.stdCellType.typeName in type2Area.keys()):
-            resArea += type2Area[cell.stdCellType.typeName]
-    return resArea
+        if (cell.std_cell_type.type_name in area_by_type.keys()):
+            total_area += area_by_type[cell.std_cell_type.type_name]
+    return total_area

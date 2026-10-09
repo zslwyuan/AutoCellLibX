@@ -22,7 +22,7 @@ class ZoomableImage(QWidget):
         self._drag_from = None
         self._fit_pending = True
         self._caption = ""
-        self._placeholder = "该模式尚无子图预览\nNo pattern figure yet"
+        self._placeholder = "该模式尚无子图预览\n_no pattern figure yet"
 
     def set_image(self, path, caption=""):
         self._caption = caption
@@ -82,7 +82,7 @@ class ZoomableImage(QWidget):
     def wheelEvent(self, event):
         if self._pm.isNull():
             return
-        factor = 1.15 if event.angleDelta().y() > 0 else 1 / 1.15
+        factor = 1.15 if event.angle_delta().y() > 0 else 1 / 1.15
         pos = event.position()
         before = QPointF((pos.x() - self._offset.x()) / self._zoom,
                          (pos.y() - self._offset.y()) / self._zoom)

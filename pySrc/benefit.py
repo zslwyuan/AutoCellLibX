@@ -33,12 +33,12 @@ class ShrinkModel(object):
         self.prior = prior
         self.samples = {}            # size -> [new_width / baseline_width]
 
-    def observe(self, size, baselineWidth, newWidth):
-        if (baselineWidth > 0 and newWidth > 0):
+    def observe(self, size, baseline_width, new_width):
+        if (baseline_width > 0 and new_width > 0):
             self.samples.setdefault(size, []).append(
-                newWidth / baselineWidth)
+                new_width / baseline_width)
 
-    def estimateShrink(self, size):
+    def estimate_shrink(self, size):
         observed = self.samples.get(size)
         if (observed):
             # Conservative: assume the worst layout we have seen at this
@@ -46,24 +46,24 @@ class ShrinkModel(object):
             return max(observed)
         return self.prior
 
-    def estimateBenefit(self, memberWidths, addedWidth, newSize,
+    def estimate_benefit(self, member_widths, added_width, new_size,
                         occurrences):
         """Estimated total width saved by growing ``occurrences`` clusters
-        of ``memberWidths`` + one ``addedWidth`` neighbour."""
-        origWidth = sum(memberWidths) + addedWidth
-        return occurrences * (origWidth
-                              - self.estimateShrink(newSize) * origWidth)
+        of ``member_widths`` + one ``added_width`` neighbour."""
+        orig_width = sum(member_widths) + added_width
+        return occurrences * (orig_width
+                              - self.estimate_shrink(new_size) * orig_width)
 
 
-def makeGrowthBenefitEstimator(stdType2AstranArea, shrinkModel):
+def make_growth_benefit_estimator(astran_area_by_type, shrink_model):
     """Closure with the call signature grow_sequence_of_clusters expects."""
-    def estimate(memberTypeNames, neighborTypeName, newSize, occurrences):
+    def estimate(member_type_names, neighbor_type_name, new_size, occurrences):
         try:
-            memberWidths = [stdType2AstranArea[t] for t in memberTypeNames]
-            addedWidth = stdType2AstranArea[neighborTypeName]
+            member_widths = [astran_area_by_type[t] for t in member_type_names]
+            added_width = astran_area_by_type[neighbor_type_name]
         except KeyError:
             # Unknown width -> no opinion; do not veto the branch.
             return float("inf")
-        return shrinkModel.estimateBenefit(
-            memberWidths, addedWidth, newSize, occurrences)
+        return shrink_model.estimate_benefit(
+            member_widths, added_width, new_size, occurrences)
     return estimate

@@ -27,7 +27,7 @@ class AppState(QObject):
 
         # Session-only views of things the flow reports: the Patterns tab
         # shows live candidates as they are evaluated, the Results tab the
-        # running saveArea, the Design tab the parsed graph.
+        # running save_area, the Design tab the parsed graph.
         self.patterns = {}               # bench -> [pattern dict] (from the run)
         self.metrics = {}                # bench -> [metric dict]
         self.designs = {}                # bench -> dict(graph, stats, hist)

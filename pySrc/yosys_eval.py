@@ -22,10 +22,10 @@ import os
 import re
 import subprocess
 
-from yosys_import import findYosys, parseStatJson
+from yosys_import import find_yosys, parse_stat_json
 
 
-def buildExtendedLiberty(baseLibText, fragmentTexts):
+def build_extended_liberty(base_lib_text, fragment_texts):
     """Merge `cell (...) {...}` fragments into a base library text.
 
     The library's closing brace is found by brace-depth scan (not
@@ -34,31 +34,31 @@ def buildExtendedLiberty(baseLibText, fragmentTexts):
     fragments outside the library.
     """
     depth = 0
-    libraryClose = -1
-    for i, ch in enumerate(baseLibText):
+    library_close = -1
+    for i, ch in enumerate(base_lib_text):
         if (ch == "{"):
             depth += 1
         elif (ch == "}"):
             if (depth == 1):
-                libraryClose = i          # last 1->0 transition wins
+                library_close = i          # last 1->0 transition wins
             depth -= 1
-    if (libraryClose < 0):
+    if (library_close < 0):
         raise ValueError("base liberty text has no top-level closing brace")
-    merged = (baseLibText[:libraryClose]
+    merged = (base_lib_text[:library_close]
               + "\n  /* --- generated complex cells --- */\n"
-              + "\n".join(fragmentTexts) + "\n"
-              + baseLibText[libraryClose:])
+              + "\n".join(fragment_texts) + "\n"
+              + base_lib_text[library_close:])
     return merged
 
 
-def runYosysMappedArea(libPath, blifPath, yosysExe=None, timeout=900):
+def run_yosys_mapped_area(lib_path, blif_path, yosys_exe=None, timeout=900):
     """abc -liberty remap + stat; returns the parsed stat dict (ok=...)."""
-    exe = yosysExe or findYosys()
+    exe = yosys_exe or find_yosys()
     if (exe is None):
         return {"ok": False,
                 "reason": "no yosys executable found"}
     script = ("read_liberty -lib %s; read_blif %s; abc -liberty %s; "
-              "stat -json" % (libPath, blifPath, libPath))
+              "stat -json" % (lib_path, blif_path, lib_path))
     try:
         proc = subprocess.run(
             [exe, "-Q", "-T", "-p", script],
@@ -66,7 +66,7 @@ def runYosysMappedArea(libPath, blifPath, yosysExe=None, timeout=900):
     except (OSError, subprocess.TimeoutExpired) as exc:
         return {"ok": False, "reason": "yosys launch failed: %s" % exc}
     try:
-        result = parseStatJson(proc.stdout or "")
+        result = parse_stat_json(proc.stdout or "")
     except Exception as exc:                       # noqa: BLE001
         return {"ok": False,
                 "reason": "no JSON in yosys output (rc=%d): %s | %s"
@@ -76,76 +76,76 @@ def runYosysMappedArea(libPath, blifPath, yosysExe=None, timeout=900):
     return result
 
 
-def compareMappedArea(baselineStat, extendedStat):
+def compare_mapped_area(baseline_stat, extended_stat):
     """Area + complex-cell usage comparison of two mapped stats."""
     report = {"compared": False}
-    if (not (baselineStat.get("ok") and extendedStat.get("ok"))):
+    if (not (baseline_stat.get("ok") and extended_stat.get("ok"))):
         report["reason"] = "baseline: %s | extended: %s" % (
-            baselineStat.get("reason", "?"),
-            extendedStat.get("reason", "?"))
+            baseline_stat.get("reason", "?"),
+            extended_stat.get("reason", "?"))
         return report
     report["compared"] = True
-    report["baseline_area"] = baselineStat.get("area")
-    report["extended_area"] = extendedStat.get("area")
-    b, e = baselineStat.get("area"), extendedStat.get("area")
+    report["baseline_area"] = baseline_stat.get("area")
+    report["extended_area"] = extended_stat.get("area")
+    b, e = baseline_stat.get("area"), extended_stat.get("area")
     if (b and e):
         report["area_saved"] = b - e
         report["area_saved_pct"] = (b - e) / b * 100.0
-    complexHist = {t: n for t, n in
-                   extendedStat.get("histogram", {}).items()
+    complex_hist = {t: n for t, n in
+                   extended_stat.get("histogram", {}).items()
                    if re.match(r"COMPLEX", t)}
-    report["complex_cells_used"] = complexHist
-    report["complex_instances"] = sum(complexHist.values())
+    report["complex_cells_used"] = complex_hist
+    report["complex_instances"] = sum(complex_hist.values())
     return report
 
 
-def evaluateDesignSavings(yosysStat, acceptedPatterns, libAreas,
-                          complexAreas):
+def evaluate_design_savings(yosys_stat, accepted_patterns, lib_areas,
+                          complex_areas):
     """Design-level area savings in the library's own area units.
 
-    ``yosysStat``: ``runYosysStat`` output (its histogram is an
+    ``yosys_stat``: ``run_yosys_stat`` output (its histogram is an
     independent parser's count of the mapped design -- our baseline).
-    ``acceptedPatterns``: [(name, occurrences, [member type names])] --
+    ``accepted_patterns``: [(name, occurrences, [member type names])] --
     e.g. from a bestRecord file.
-    ``libAreas``: {type: area} from the liberty ``area`` attribute.
-    ``complexAreas``: {name: area} = layout width x row height.
+    ``lib_areas``: {type: area} from the liberty ``area`` attribute.
+    ``complex_areas``: {name: area} = layout width x row height.
 
     Returns baseline area, total/relative savings and a per-pattern
     table.  This is the flow's own savings formula expressed in
     lib-area units rather than layout widths.
     """
     report = {"compared": False}
-    if (not yosysStat.get("ok")):
-        report["reason"] = yosysStat.get("reason", "unavailable")
+    if (not yosys_stat.get("ok")):
+        report["reason"] = yosys_stat.get("reason", "unavailable")
         return report
-    hist = yosysStat.get("histogram") or {}
-    missing = sorted(t for t in hist if t not in libAreas)
-    baseline = sum(libAreas[t] * n for t, n in hist.items()
-                   if t in libAreas)
+    hist = yosys_stat.get("histogram") or {}
+    missing = sorted(t for t in hist if t not in lib_areas)
+    baseline = sum(lib_areas[t] * n for t, n in hist.items()
+                   if t in lib_areas)
     rows = []
-    totalSaved = 0.0
-    for name, occurrences, memberTypes in acceptedPatterns:
-        if (any(t not in libAreas for t in memberTypes)
-                or name not in complexAreas):
+    total_saved = 0.0
+    for name, occurrences, member_types in accepted_patterns:
+        if (any(t not in lib_areas for t in member_types)
+                or name not in complex_areas):
             rows.append({"name": name, "skipped": "missing area data"})
             continue
-        membersArea = sum(libAreas[t] for t in memberTypes)
-        saved = occurrences * (membersArea - complexAreas[name])
+        members_area = sum(lib_areas[t] for t in member_types)
+        saved = occurrences * (members_area - complex_areas[name])
         rows.append({
             "name": name,
             "occurrences": occurrences,
-            "member_area": round(membersArea, 4),
-            "complex_area": round(complexAreas[name], 4),
+            "member_area": round(members_area, 4),
+            "complex_area": round(complex_areas[name], 4),
             "saved_area": round(saved, 4),
         })
-        totalSaved += saved
+        total_saved += saved
     report.update({
         "compared": True,
         "baseline_area": baseline,
         "baseline_cells": sum(hist.values()),
         "missing_area_types": missing,
-        "saved_area": round(totalSaved, 4),
-        "saved_pct": (totalSaved / baseline * 100.0) if baseline else None,
+        "saved_area": round(total_saved, 4),
+        "saved_pct": (total_saved / baseline * 100.0) if baseline else None,
         "patterns": rows,
     })
     return report

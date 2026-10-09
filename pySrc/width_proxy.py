@@ -15,11 +15,11 @@ netlist shape in the loop instead of only the cell count -- and it is
 validated honestly (leave-one-out MAPE/R^2 on the same corpus).
 
 Usage as a growth benefit estimator (same signature as
-benefit.makeGrowthBenefitEstimator's closure):
+benefit.make_growth_benefit_estimator's closure):
 
-    proxy = WidthProxy().fit(collectSamples(...))
-    estimator = makeProxyBenefitEstimator(proxy, stdType2AstranArea,
-                                          transistorCounts)
+    proxy = WidthProxy().fit(collect_samples(...))
+    estimator = make_proxy_benefit_estimator(proxy, astran_area_by_type,
+                                          transistor_counts)
 """
 
 import glob
@@ -31,24 +31,24 @@ _TRACE_EXT_RE = re.compile(r"\+([A-Za-z0-9]+)_c\d+[io]\d+")
 _TRANSISTOR_RE = re.compile(r"^M\S*\s", re.M)
 
 
-def countTransistorsPerType(spiceLibPath):
-    """{typeName: transistor count} from a SPICE subckt library."""
+def count_transistors_per_type(spice_lib_path):
+    """{type_name: transistor count} from a SPICE subckt library."""
     counts = {}
-    curName = None
-    for line in open(spiceLibPath):
+    cur_name = None
+    for line in open(spice_lib_path):
         if (line.startswith(".subckt")):
             m = _SUBCKT_RE.match(line.strip())
-            curName = m.group(1) if m else None
-            if (curName):
-                counts.setdefault(curName, 0)
+            cur_name = m.group(1) if m else None
+            if (cur_name):
+                counts.setdefault(cur_name, 0)
         elif (line.startswith(".ends")):
-            curName = None
-        elif (curName and _TRANSISTOR_RE.match(line)):
-            counts[curName] += 1
+            cur_name = None
+        elif (cur_name and _TRANSISTOR_RE.match(line)):
+            counts[cur_name] += 1
     return counts
 
 
-def parseTraceTypes(trace):
+def parse_trace_types(trace):
     """Member type names of a pattern trace
     '[A,B,C]+D_c0o0+E_c1i0' -> ['A', 'B', 'C', 'D', 'E']."""
     base = trace.split("+")[0].strip("[]")
@@ -57,7 +57,7 @@ def parseTraceTypes(trace):
     return types
 
 
-def collectSamples(outputDirs, transistorCounts, stdType2Width):
+def collect_samples(output_dirs, transistor_counts, width_by_type):
     """Build the dataset from generated cells.
 
     Each sample: {"name", "n_cells", "n_transistors", "base_width_um",
@@ -65,36 +65,36 @@ def collectSamples(outputDirs, transistorCounts, stdType2Width):
     line; cells without a usable layout are skipped (0 x 0 included).
     """
     samples = []
-    for outDir in outputDirs:
-        for spPath in sorted(glob.glob(os.path.join(outDir,
+    for out_dir in output_dirs:
+        for sp_path in sorted(glob.glob(os.path.join(out_dir,
                                                     "COMPLEX*.sp"))):
-            name = os.path.splitext(os.path.basename(spPath))[0]
-            logPath = os.path.join(outDir, name + ".Astranlog")
-            if (not os.path.exists(logPath)):
+            name = os.path.splitext(os.path.basename(sp_path))[0]
+            log_path = os.path.join(out_dir, name + ".Astranlog")
+            if (not os.path.exists(log_path)):
                 continue
             width = None
-            for line in open(logPath, 'r', errors="ignore"):
+            for line in open(log_path, 'r', errors="ignore"):
                 if (line.find("-> Cell Size (W x H): ") >= 0):
                     width = float(line.replace(
                         "-> Cell Size (W x H): ", "").split("x")[0])
             if (not width or width <= 0):
                 continue
-            text = open(spPath).read()
-            traceM = re.search(r"^\* pattern code: (.+)$", text, re.M)
-            if (not traceM):
+            text = open(sp_path).read()
+            trace_m = re.search(r"^\* pattern code: (.+)$", text, re.M)
+            if (not trace_m):
                 continue
-            types = parseTraceTypes(traceM.group(1).strip())
-            if (not types or any(t not in stdType2Width
+            types = parse_trace_types(trace_m.group(1).strip())
+            if (not types or any(t not in width_by_type
                                  for t in types)):
                 continue
-            nTrans = sum(transistorCounts.get(t, 0) for t in types)
-            if (nTrans == 0):
+            n_trans = sum(transistor_counts.get(t, 0) for t in types)
+            if (n_trans == 0):
                 continue
             samples.append({
                 "name": name,
                 "n_cells": len(types),
-                "n_transistors": nTrans,
-                "base_width_um": sum(stdType2Width[t] for t in types),
+                "n_transistors": n_trans,
+                "base_width_um": sum(width_by_type[t] for t in types),
                 "width_um": width,
             })
     return samples
@@ -110,7 +110,7 @@ class WidthProxy(object):
 
     def __init__(self):
         self.model = None
-        self.nTrain = 0
+        self.n_train = 0
 
     def fit(self, samples):
         from sklearn.linear_model import Ridge
@@ -118,17 +118,17 @@ class WidthProxy(object):
         y = [s["width_um"] for s in samples]
         self.model = Ridge(alpha=1.0)
         self.model.fit(X, y)
-        self.nTrain = len(samples)
+        self.n_train = len(samples)
         return self
 
-    def predict(self, nCells, nTransistors, baseWidthUm):
+    def predict(self, n_cells, n_transistors, base_width_um):
         if (self.model is None):
             raise RuntimeError("WidthProxy used before fit()")
         return float(self.model.predict(
-            [[nCells, nTransistors, baseWidthUm]])[0])
+            [[n_cells, n_transistors, base_width_um]])[0])
 
 
-def evaluateLOO(samples):
+def evaluate_loo(samples):
     """Leave-one-out cross-validation; honest quality report."""
     if (len(samples) < 4):
         return {"n": len(samples), "mape": None, "r2": None}
@@ -141,26 +141,26 @@ def evaluateLOO(samples):
         trues.append(samples[i]["width_um"])
     errs = [abs(p - t) / t for p, t in zip(preds, trues) if t > 0]
     mape = sum(errs) / len(errs) if errs else None
-    meanY = sum(trues) / len(trues)
-    ssRes = sum((p - t) ** 2 for p, t in zip(preds, trues))
-    ssTot = sum((t - meanY) ** 2 for t in trues)
-    r2 = 1.0 - ssRes / ssTot if ssTot > 0 else None
+    mean_y = sum(trues) / len(trues)
+    ss_res = sum((p - t) ** 2 for p, t in zip(preds, trues))
+    ss_tot = sum((t - mean_y) ** 2 for t in trues)
+    r2 = 1.0 - ss_res / ss_tot if ss_tot > 0 else None
     return {"n": len(samples), "mape": mape, "r2": r2,
             "predictions": list(zip(
                 [s["name"] for s in samples], preds, trues))}
 
 
-def makeProxyBenefitEstimator(proxy, stdType2Width, transistorCounts):
+def make_proxy_benefit_estimator(proxy, width_by_type, transistor_counts):
     """Growth-benefit estimator backed by the proxy (same signature as
-    benefit.makeGrowthBenefitEstimator's closure)."""
-    def estimate(memberTypeNames, neighborTypeName, newSize, occurrences):
-        types = list(memberTypeNames) + [neighborTypeName]
-        if (any(t not in stdType2Width for t in types)):
+    benefit.make_growth_benefit_estimator's closure)."""
+    def estimate(member_type_names, neighbor_type_name, new_size, occurrences):
+        types = list(member_type_names) + [neighbor_type_name]
+        if (any(t not in width_by_type for t in types)):
             return float("inf")          # unknown width -> no opinion
-        baseWidth = sum(stdType2Width[t] for t in types)
-        nTrans = sum(transistorCounts.get(t, 0) for t in types)
-        predicted = proxy.predict(len(types), nTrans, baseWidth)
-        return occurrences * (baseWidth - predicted)
+        base_width = sum(width_by_type[t] for t in types)
+        n_trans = sum(transistor_counts.get(t, 0) for t in types)
+        predicted = proxy.predict(len(types), n_trans, base_width)
+        return occurrences * (base_width - predicted)
     return estimate
 
 
@@ -168,22 +168,22 @@ def makeProxyBenefitEstimator(proxy, stdType2Width, transistorCounts):
 # training pipeline: train -> persist -> load (performance layer)
 # ---------------------------------------------------------------------------
 
-def saveWidthProxy(proxy, path):
+def save_width_proxy(proxy, path):
     """Persist a trained WidthProxy (Ridge) as JSON (coef + intercept)."""
     import json as _json
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     payload = {
         "coef": [float(c) for c in proxy.model.coef_],
         "intercept": float(proxy.model.intercept_),
-        "n_train": proxy.nTrain,
+        "n_train": proxy.n_train,
     }
     with open(path, "w") as fh:
         _json.dump(payload, fh)
     return path
 
 
-def loadWidthProxy(path):
-    """Restore a WidthProxy previously saved by saveWidthProxy."""
+def load_width_proxy(path):
+    """Restore a WidthProxy previously saved by save_width_proxy."""
     import json as _json
     from sklearn.linear_model import Ridge
     with open(path) as fh:
@@ -194,25 +194,25 @@ def loadWidthProxy(path):
     proxy.model.coef_ = _np.array([float(c) for c in payload["coef"]])
     proxy.model.intercept_ = payload["intercept"]
     proxy.model.n_features_in_ = len(payload["coef"])
-    proxy.nTrain = payload["n_train"]
+    proxy.n_train = payload["n_train"]
     return proxy
 
 
-def widthProxyModelStale(path, outputDirs):
+def width_proxy_model_stale(path, output_dirs):
     """Whether the persisted model is older than any training sample
     (new layouts invalidate the learned shrink behaviour)."""
     if (not os.path.exists(path)):
         return True
-    modelMtime = os.path.getmtime(path)
+    model_mtime = os.path.getmtime(path)
     newest = 0.0
-    for outDir in outputDirs:
+    for out_dir in output_dirs:
         for pat in ("COMPLEX*.sp", "COMPLEX*.Astranlog"):
-            for f in glob.glob(os.path.join(outDir, pat)):
+            for f in glob.glob(os.path.join(out_dir, pat)):
                 newest = max(newest, os.path.getmtime(f))
-    return newest > modelMtime
+    return newest > model_mtime
 
 
-def trainOrLoadWidthProxy(outputDirs, transistorCounts, stdType2Width,
+def train_or_load_width_proxy(output_dirs, transistor_counts, width_by_type,
                           path=None):
     """Training-pipeline entry: (proxy, report).
 
@@ -222,20 +222,20 @@ def trainOrLoadWidthProxy(outputDirs, transistorCounts, stdType2Width,
     """
     if (path is None):
         path = os.path.join("outputs", "width_proxy.json")
-    if (not widthProxyModelStale(path, outputDirs)):
+    if (not width_proxy_model_stale(path, output_dirs)):
         try:
-            proxy = loadWidthProxy(path)
-            return proxy, {"n": proxy.nTrain, "source": "loaded"}
+            proxy = load_width_proxy(path)
+            return proxy, {"n": proxy.n_train, "source": "loaded"}
         except Exception:                       # noqa: BLE001
             pass                                # corrupt model -> retrain
-    samples = collectSamples(outputDirs, transistorCounts, stdType2Width)
+    samples = collect_samples(output_dirs, transistor_counts, width_by_type)
     if (len(samples) < 4):
         return None, {"n": len(samples), "skipped": "too few samples"}
     proxy = WidthProxy().fit(samples)
-    report = evaluateLOO(samples)
+    report = evaluate_loo(samples)
     report["source"] = "trained"
     try:
-        saveWidthProxy(proxy, path)
+        save_width_proxy(proxy, path)
     except Exception as exc:                    # noqa: BLE001
         report["save_error"] = str(exc)
     return proxy, report

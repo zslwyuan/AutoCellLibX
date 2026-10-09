@@ -14,10 +14,10 @@ ASTRAN run.  This module is the integration point for that resource:
   screenshots -> JSON hints) behind the OpenAI-compatible chat API;
   *degrade, never crash*: any failure returns [] and logs, so a bad key,
   a timeout, or an unreachable endpoint leaves the flow untouched;
-- ``suggestHintsBatch`` -- parallel batching over a thread pool plus a
+- ``suggest_hints_batch`` -- parallel batching over a thread pool plus a
   content-addressed response cache, the "resource integration speed-up":
   N cells are annotated concurrently and repeat runs hit the cache;
-- ``getHintProvider`` -- env-gated factory.  The pipeline consumes hints
+- ``get_hint_provider`` -- env-gated factory.  The pipeline consumes hints
   only when ``AUTOCELL_HINT_MODE`` is set (default ``off``: zero behaviour
   change, results byte-identical to a run without this module).
 
@@ -64,14 +64,14 @@ class Hint:
     value: float
     source: str                 # "offline" | "llm" | "cache"
 
-    def asDict(self):
+    def as_dict(self):
         return {"kind": self.kind, "target": self.target,
                 "value": self.value, "source": self.source}
 
 
 def _cachePath(env=None):
     return env.get(_CACHE_ENV) if env else os.environ.get(_CACHE_ENV)
-def defaultCachePath():
+def default_cache_path():
     override = os.environ.get(_CACHE_ENV)
     if (override):
         return override
@@ -98,10 +98,10 @@ def _saveCache(path, cache):
         pass
 
 
-def hintCacheKey(netlistText, geometry, model):
+def hint_cache_key(netlist_text, geometry, model):
     """Content-addressed cache key: same inputs -> same hints."""
     canonical = json.dumps(
-        {"netlist": netlistText, "geometry": geometry, "model": model},
+        {"netlist": netlist_text, "geometry": geometry, "model": model},
         sort_keys=True)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
@@ -110,17 +110,17 @@ class OfflineHintProvider(object):
     """Deterministic rule hints; the fallback for every other provider.
 
     Rules today: a transistor wider than the fold threshold gets a
-    ``fold_max`` hint (fold count = ceil(w / maxLegUm)), which is exactly
+    ``fold_max`` hint (fold count = ceil(w / max_leg_um)), which is exactly
     the manufacturing constraint the SMT reference implementation models.
     Pure function of the netlist text -- deterministic and thread-safe.
     """
 
-    def __init__(self, maxLegUm=1.0):
-        self.maxLegUm = maxLegUm
+    def __init__(self, max_leg_um=1.0):
+        self.max_leg_um = max_leg_um
 
-    def suggestHints(self, cellName, netlistText, geometry=None):
+    def suggest_hints(self, cell_name, netlist_text, geometry=None):
         hints = []
-        for line in netlistText.splitlines():
+        for line in netlist_text.splitlines():
             # M<name> d g s b PMOS|NMOS W=<w>u
             parts = line.split()
             if (not parts or not parts[0].startswith("M")):
@@ -129,9 +129,9 @@ class OfflineHintProvider(object):
             for tok in parts:
                 if (tok.startswith("W=") and tok.endswith("u")):
                     w = float(tok[2:-1])
-            if (w is None or w <= self.maxLegUm):
+            if (w is None or w <= self.max_leg_um):
                 continue
-            folds = int(-(-w // self.maxLegUm))      # ceil
+            folds = int(-(-w // self.max_leg_um))      # ceil
             if (folds > 1):
                 hints.append(Hint(_FOLD_KIND, parts[0], folds, "offline"))
         return hints
@@ -143,32 +143,32 @@ class OfflineHintProvider(object):
 class OpenAiHintProvider(object):
     """Multimodal LLM hint provider (OpenAI-compatible chat API).
 
-    ``imagePaths`` are PNG screenshots of the cell (e.g. the GDS viewer
+    ``image_paths`` are PNG screenshots of the cell (e.g. the GDS viewer
     render) sent as image_url parts -- the multimodal half.  Every failure
     (missing module, bad key, timeout, non-JSON answer, unknown hint kind)
     degrades to [] and is logged, so llm mode can never break a run.
     Responses are cached by content hash; cache hits skip the network.
     """
 
-    def __init__(self, apiKey, baseUrl=None, model=DEFAULT_MODEL,
-                 imagePaths=(), timeoutS=DEFAULT_LLM_TIMEOUT_S,
-                 cachePath=None):
-        self.apiKey = apiKey
-        self.baseUrl = baseUrl
+    def __init__(self, api_key, base_url=None, model=DEFAULT_MODEL,
+                 image_paths=(), timeout_s=DEFAULT_LLM_TIMEOUT_S,
+                 cache_path=None):
+        self.api_key = api_key
+        self.base_url = base_url
         self.model = model
-        self.imagePaths = tuple(imagePaths)
-        self.timeoutS = timeoutS
-        self.cachePath = cachePath or defaultCachePath()
+        self.image_paths = tuple(image_paths)
+        self.timeout_s = timeout_s
+        self.cache_path = cache_path or default_cache_path()
         self._lock = threading.Lock()
-        self._cache = _loadCache(self.cachePath)
+        self._cache = _loadCache(self.cache_path)
         self._client = None
 
     def _lazyClient(self):
         if (self._client is None):
             import openai
-            kwargs = {"api_key": self.apiKey}
-            if (self.baseUrl):
-                kwargs["base_url"] = self.baseUrl
+            kwargs = {"api_key": self.api_key}
+            if (self.base_url):
+                kwargs["base_url"] = self.base_url
             self._client = openai.OpenAI(**kwargs)
         return self._client
 
@@ -185,8 +185,8 @@ class OpenAiHintProvider(object):
             'routing pitch), "keepaway" (target: pin net name, value: um '
             'clearance). If nothing useful, reply []. No prose.')
 
-    def suggestHints(self, cellName, netlistText, geometry=None):
-        key = hintCacheKey(netlistText, geometry, self.model)
+    def suggest_hints(self, cell_name, netlist_text, geometry=None):
+        key = hint_cache_key(netlist_text, geometry, self.model)
         with self._lock:
             if (key in self._cache):
                 cached = self._cache[key]
@@ -196,9 +196,9 @@ class OpenAiHintProvider(object):
             client = self._lazyClient()
             content = [{"type": "text",
                         "text": "cell=%s\ngeometry=%s\nnetlist:\n%s"
-                                % (cellName, json.dumps(geometry or {}),
-                                   netlistText)}]
-            for img in self.imagePaths:
+                                % (cell_name, json.dumps(geometry or {}),
+                                   netlist_text)}]
+            for img in self.image_paths:
                 import base64
                 with open(img, 'rb') as f:
                     b64 = base64.b64encode(f.read()).decode("ascii")
@@ -209,7 +209,7 @@ class OpenAiHintProvider(object):
                 model=self.model,
                 messages=[{"role": "system", "content": self._systemPrompt()},
                           {"role": "user", "content": content}],
-                timeout=self.timeoutS)
+                timeout=self.timeout_s)
             text = resp.choices[0].message.content or "[]"
             data = json.loads(text)
             hints = [Hint(h["kind"], str(h["target"]),
@@ -223,18 +223,18 @@ class OpenAiHintProvider(object):
                 self._cache[key] = [
                     {"kind": h.kind, "target": h.target, "value": h.value}
                     for h in hints]
-                _saveCache(self.cachePath, self._cache)
+                _saveCache(self.cache_path, self._cache)
             return hints
         except Exception as exc:               # degrade, never crash
             _flowLog.warning("llm hints for %s failed (%s); degrading",
-                             cellName, exc)
+                             cell_name, exc)
             return []
 
     def close(self):
         pass
 
 
-def getHintProvider(mode=None, env=None):
+def get_hint_provider(mode=None, env=None):
     """Env-gated factory.  Returns None (off), OfflineHintProvider, or
     OpenAiHintProvider (falling back to offline when the key is missing).
 
@@ -256,16 +256,16 @@ def getHintProvider(mode=None, env=None):
                              "degrading to the offline provider", _KEY_ENV)
             return OfflineHintProvider()
         return OpenAiHintProvider(
-            apiKey=key, baseUrl=env.get(_BASE_URL_ENV),
+            api_key=key, base_url=env.get(_BASE_URL_ENV),
             model=env.get(_MODEL_ENV, DEFAULT_MODEL))
     _flowLog.warning("unknown AUTOCELL_HINT_MODE %r; treating as off", mode)
     return None
 
 
-def suggestHintsBatch(cells, provider, maxWorkers=4):
+def suggest_hints_batch(cells, provider, max_workers=4):
     """Annotate many cells concurrently; {name: [Hint, ...]}.
 
-    ``cells`` is an iterable of (name, netlistText[, geometry]).  The
+    ``cells`` is an iterable of (name, netlist_text[, geometry]).  The
     offline provider is a pure function, the LLM provider is cache-first
     and degrades per cell, so parallelising is safe.  Results keep input
     order (deterministic).
@@ -276,9 +276,9 @@ def suggestHintsBatch(cells, provider, maxWorkers=4):
     def one(cell):
         name, text = cell[0], cell[1]
         geom = cell[2] if len(cell) > 2 else None
-        return name, provider.suggestHints(name, text, geom)
+        return name, provider.suggest_hints(name, text, geom)
 
-    with ThreadPoolExecutor(max_workers=maxWorkers) as pool:
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
         return {name: hints for name, hints in pool.map(one, list(cells))}
 
 
@@ -291,20 +291,20 @@ def main(argv=None):
     ap.add_argument("--dir", help="directory of .sp files")
     ap.add_argument("--workers", type=int, default=4)
     args = ap.parse_args(argv)
-    provider = getHintProvider(mode=args.mode)
-    spFiles = [args.sp] if args.sp else []
+    provider = get_hint_provider(mode=args.mode)
+    sp_files = [args.sp] if args.sp else []
     if (args.dir):
-        spFiles += sorted(os.path.join(args.dir, f) for f in
+        sp_files += sorted(os.path.join(args.dir, f) for f in
                           os.listdir(args.dir) if f.endswith(".sp"))
-    if (not spFiles):
+    if (not sp_files):
         ap.error("pass --sp FILE or --dir DIR")
     cells = []
-    for sp in spFiles:
+    for sp in sp_files:
         with open(sp, 'r', errors="ignore") as f:
             cells.append((os.path.basename(sp).replace(".sp", ""),
                           f.read()))
-    annotated = suggestHintsBatch(cells, provider,
-                                  maxWorkers=args.workers)
+    annotated = suggest_hints_batch(cells, provider,
+                                  max_workers=args.workers)
     for name in sorted(annotated):
         hints = annotated[name]
         print("%-14s %d hint(s): %s" % (

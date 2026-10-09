@@ -46,7 +46,7 @@ def _needsScaling(*texts):
 
 
 
-def solveLpWithCpSat(obj_text, cons, int_vars, bin_vars,
+def solve_lp_with_cp_sat(obj_text, cons, int_vars, bin_vars,
                      timelimit_s, drop_option3=None,
                      drop_predicate=None, workers=None, log=False):
     """Solve the parsed LP with CP-SAT.
@@ -82,8 +82,8 @@ def solveLpWithCpSat(obj_text, cons, int_vars, bin_vars,
 
     # objective (collect terms first so every variable exists)
     obj_terms = _parse_terms(obj_text)
-    objExpr = sum(sint(c) * var(n) for c, n in obj_terms if n is not None)
-    model.Minimize(objExpr)
+    obj_expr = sum(sint(c) * var(n) for c, n in obj_terms if n is not None)
+    model.Minimize(obj_expr)
 
     skipped = 0
     for body in cons:

@@ -2,14 +2,14 @@
 import pytest
 
 from liberty_gen import (DEFAULT_LOADS, DEFAULT_SLEWS, _substitute,
-                         generateComplexLiberty, loadLibertyFunctions)
+                         generate_complex_liberty, load_liberty_functions)
 
 LIB = "../stdCelllib/gscl45nm.lib"
 BLIF = "../benchmark/blif/adder.blif"
 
 
 def test_load_liberty_functions(in_pysrc):
-    funcs = loadLibertyFunctions(LIB)
+    funcs = load_liberty_functions(LIB)
     assert ("NAND2X1", "Y") in funcs
     assert funcs[("NAND2X1", "Y")] == "(!(A B))"
     assert funcs[("INVX1", "Y")] == "(!A)"
@@ -25,17 +25,17 @@ def test_substitute_whole_word():
 def test_generate_real_cluster_liberty(in_pysrc):
     from blif_preproc import (gen_graph_from_liberty_and_blif,
                              heuristic_label_initial_clusters)
-    from blif_graph_util import sortPatternClusterSeqs
-    from electrical import loadCellElectricalMetrics
-    from timing_power import loadTimingPower
+    from blif_graph_util import sort_pattern_cluster_seqs
+    from electrical import load_cell_electrical_metrics
+    from timing_power import load_timing_power
 
     G, cells, netlist, types = gen_graph_from_liberty_and_blif(LIB, BLIF)
     seqs, _ = heuristic_label_initial_clusters(G, cells, netlist)
-    seq = sortPatternClusterSeqs(seqs)[0]
-    em = loadCellElectricalMetrics(LIB)
-    tp = loadTimingPower(LIB)
-    funcs = loadLibertyFunctions(LIB)
-    text, report = generateComplexLiberty(
+    seq = sort_pattern_cluster_seqs(seqs)[0]
+    em = load_cell_electrical_metrics(LIB)
+    tp = load_timing_power(LIB)
+    funcs = load_liberty_functions(LIB)
+    text, report = generate_complex_liberty(
         seq, "COMPLEX0", 2.28, tp, em, funcs)
 
     assert "cell (COMPLEX0)" in text

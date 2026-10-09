@@ -16,7 +16,7 @@ GUI's viewer is (AGENTS.md: ASTRAN's GDS UNITS record is bogus, use
 * labels         -- VDD and GND labels must be present (supply rails).
 
 Violations are *structural* breakage, not style; the flow may gate on
-them (``layoutSanityGate``) or just report.
+them (``layout_sanity_gate``) or just report.
 """
 
 import os
@@ -39,7 +39,7 @@ class LayoutSanityReport(object):
     def ok(self):
         return len(self.violations) == 0
 
-    def asDict(self):
+    def as_dict(self):
         return {"name": self.name, "ok": self.ok(),
                 "violations": list(self.violations),
                 "metrics": dict(self.metrics)}
@@ -51,20 +51,20 @@ def _extent(polygons):
     return min(xs), min(ys), max(xs), max(ys)
 
 
-def checkLayout(gdsPath, logPath=None, expectedHeightUm=2.47,
-                gridUm=0.19, unitsPerUm=ASTRAN_GDS_UNITS_PER_UM,
-                layers=DEFAULT_LAYERS, groundLabels=("GND",),
-                supplyLabels=("VDD", "VCC"),
-                heightTol=0.05, gridTol=0.25):
+def check_layout(gds_path, log_path=None, expected_height_um=2.47,
+                grid_um=0.19, units_per_um=ASTRAN_GDS_UNITS_PER_UM,
+                layers=DEFAULT_LAYERS, ground_labels=("GND",),
+                supply_labels=("VDD", "VCC"),
+                height_tol=0.05, grid_tol=0.25):
     """Structurally check one generated cell GDS; return a report."""
-    name = os.path.splitext(os.path.basename(gdsPath))[0]
+    name = os.path.splitext(os.path.basename(gds_path))[0]
     report = LayoutSanityReport(name)
 
-    if (not os.path.exists(gdsPath)):
-        report.add("missing", "no such file: %s" % gdsPath)
+    if (not os.path.exists(gds_path)):
+        report.add("missing", "no such file: %s" % gds_path)
         return report
     try:
-        lib = gdstk.read_gds(gdsPath)
+        lib = gdstk.read_gds(gds_path)
     except Exception as exc:                       # noqa: BLE001
         report.add("unreadable", str(exc))
         return report
@@ -79,55 +79,55 @@ def checkLayout(gdsPath, logPath=None, expectedHeightUm=2.47,
 
     # Height/width on the metal1 layer (supply rails span the row; the
     # all-layer bbox includes the well overhang and reads ~19% tall).
-    m1Layer = layers.get("metal1", 49)
-    m1Points = [pt for poly in cell.polygons
-                if poly.layer == m1Layer for pt in poly.points]
-    if (len(m1Points) == 0):
-        report.add("layers", "no metal1 (layer %d) polygons" % m1Layer)
+    m1_layer = layers.get("metal1", 49)
+    m1_points = [pt for poly in cell.polygons
+                if poly.layer == m1_layer for pt in poly.points]
+    if (len(m1_points) == 0):
+        report.add("layers", "no metal1 (layer %d) polygons" % m1_layer)
         return report
-    x0, y0, x1, y1 = _extent(m1Points)
-    widthUm = (x1 - x0) / unitsPerUm
-    heightUm = (y1 - y0) / unitsPerUm
-    report.metrics.update({"width_um": round(widthUm, 4),
-                           "height_um": round(heightUm, 4)})
+    x0, y0, x1, y1 = _extent(m1_points)
+    width_um = (x1 - x0) / units_per_um
+    height_um = (y1 - y0) / units_per_um
+    report.metrics.update({"width_um": round(width_um, 4),
+                           "height_um": round(height_um, 4)})
 
-    if (widthUm <= 0 or heightUm <= 0):
+    if (width_um <= 0 or height_um <= 0):
         report.add("degenerate",
-                   "zero extent (%.3f x %.3f um)" % (widthUm, heightUm))
+                   "zero extent (%.3f x %.3f um)" % (width_um, height_um))
 
-    expectedH = expectedHeightUm
-    if (logPath is not None and os.path.exists(logPath)):
+    expected_h = expected_height_um
+    if (log_path is not None and os.path.exists(log_path)):
         # The log's Cell Size is the authoritative target (same source as
-        # astran.loadAstranArea).
-        for line in open(logPath, 'r', errors="ignore"):
+        # astran.load_astran_area).
+        for line in open(log_path, 'r', errors="ignore"):
             if (line.find("-> Cell Size (W x H): ") >= 0):
                 parts = line.replace(
                     "-> Cell Size (W x H): ", "").split("x")
-                expectedH = float(parts[1])
+                expected_h = float(parts[1])
                 report.metrics["log_width_um"] = float(parts[0])
                 break
-    if (abs(heightUm - expectedH) > heightTol * expectedH):
+    if (abs(height_um - expected_h) > height_tol * expected_h):
         report.add("height", "metal1 height %.3f um != row height %.3f um"
-                   % (heightUm, expectedH))
+                   % (height_um, expected_h))
 
-    gridRaw = gridUm * unitsPerUm
-    ratio = (x1 - x0) / gridRaw
-    if (abs(ratio - round(ratio)) > gridTol):
+    grid_raw = grid_um * units_per_um
+    ratio = (x1 - x0) / grid_raw
+    if (abs(ratio - round(ratio)) > grid_tol):
         report.add("grid", "width %.3f um is not a %.3f um grid multiple "
-                   "(ratio %.3f)" % (widthUm, gridUm, ratio))
+                   "(ratio %.3f)" % (width_um, grid_um, ratio))
 
     present = set(poly.layer for poly in cell.polygons)
     for lname, lnum in layers.items():
         if (lnum not in present):
             report.add("layers", "no %s (layer %d) polygons" % (lname, lnum))
 
-    labelTexts = set(label.text.upper() for label in cell.labels)
-    report.metrics["labels"] = sorted(labelTexts)
-    for req in groundLabels:
-        if (req.upper() not in labelTexts):
+    label_texts = set(label.text.upper() for label in cell.labels)
+    report.metrics["labels"] = sorted(label_texts)
+    for req in ground_labels:
+        if (req.upper() not in label_texts):
             report.add("labels", "missing ground label %s" % req)
-    if (not any(s.upper() in labelTexts for s in supplyLabels)):
+    if (not any(s.upper() in label_texts for s in supply_labels)):
         report.add("labels", "missing supply label (any of %s)"
-                   % (supplyLabels,))
+                   % (supply_labels,))
 
     return report

@@ -42,7 +42,7 @@ def _read(lp_text):
 
 def test_solves_tiny_lp_optimally():
     obj_text, cons, int_vars, bin_vars, _ = _read(TINY_LP)
-    status, values, objective = cpsat.solveLpWithCpSat(
+    status, values, objective = cpsat.solve_lp_with_cp_sat(
         obj_text, cons, int_vars, bin_vars, 30)
     assert status in (cpsat.OPTIMAL, cpsat.FEASIBLE)
     # minimal width: xa>=13, xb>=xa+26=39, width>=xb+13=52
@@ -54,7 +54,7 @@ def test_detects_infeasible():
     lp = TINY_LP.replace("c1: xb - xa >= 26",
                          "c1: xb - xa >= 26\nc1b: xa - xb >= 26")
     obj_text, cons, int_vars, bin_vars, _ = _read(lp)
-    status, values, objective = cpsat.solveLpWithCpSat(
+    status, values, objective = cpsat.solve_lp_with_cp_sat(
         obj_text, cons, int_vars, bin_vars, 30)
     assert status == cpsat.INFEASIBLE
 

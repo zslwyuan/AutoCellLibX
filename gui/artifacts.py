@@ -277,7 +277,7 @@ class BestRecord(object):
         self.save_ratio_astran = None
         self.save_area_gscl = None
         self.save_ratio_gscl = None
-        self.selected = []        # [(name, clusterNum, cellNum, trace), ...]
+        self.selected = []        # [(name, cluster_num, cell_num, trace), ...]
         self.runtime_s = None
 
 
@@ -466,7 +466,7 @@ def trace_to_types(trace):
 def load_baseline_widths(directory):
     """Nominal width of each ASTRAN baseline cell, from its .Astranlog.
 
-    Same metric the flow's gds_analysis.loadAstranGDS returns, but read from
+    Same metric the flow's gds_analysis.load_astran_gds returns, but read from
     an absolute directory so the GUI main thread does not need cwd = pySrc.
     """
     widths = {}
@@ -495,7 +495,7 @@ def pattern_original_width(trace, baseline_widths):
 def read_lef_widths(lef_path):
     """Nominal width of every LEF MACRO, from its SIZE statement.
 
-    Generalisation of gds_analysis.loadOrignalGSCL45nmGDS: that one is pinned
+    Generalisation of gds_analysis.load_original_gscl45_gds: that one is pinned
     to the 32 GSCL45 cells; this reads whatever LEF the user points at (the
     GUI's area comparison for a custom PDK).
     """

@@ -22,8 +22,8 @@ as gui/gds_model.py (ASTRAN's UNITS record is bogus; the log height
 wins).  Score per pin in [0, 1]; the cell score is the mean, so 1.0 is
 "every pin on a free, unblocked track".
 
-    from pin_accessibility import cellPinAccessibility
-    report = cellPinAccessibility("outputs/adder/COMPLEX0.gds",
+    from pin_accessibility import cell_pin_accessibility
+    report = cell_pin_accessibility("outputs/adder/COMPLEX0.gds",
                                   "outputs/adder/COMPLEX0.Astranlog")
 """
 
@@ -32,7 +32,7 @@ import os
 import gdstk
 
 # Same layers as gui/gds_model.py + tech_freePDK45.rul: metal1 drawing and
-# pin text share stream 49; poly is 9; the cell outline is prBoundary 235.
+# pin text share stream 49; poly is 9; the cell outline is pr_boundary 235.
 _METAL1 = 49
 _POLY = 9
 _OUTLINE_LAYERS = (235, 49, 51)
@@ -40,10 +40,10 @@ _ASTRAN_GDS_UNITS_PER_UM = 16.5
 _TRACK_EPS_FRAC = 0.15           # |x - round(x/g)*g| <= 0.15*g => on track
 
 
-def _readLogHeight(logPath):
-    if (not logPath or not os.path.exists(logPath)):
+def _readLogHeight(log_path):
+    if (not log_path or not os.path.exists(log_path)):
         return None
-    for line in open(logPath, 'r', errors="ignore"):
+    for line in open(log_path, 'r', errors="ignore"):
         if ("-> Cell Size (W x H): " in line):
             try:
                 return float(line.split("-> Cell Size (W x H): ")[1]
@@ -78,18 +78,18 @@ def _unitedBbox(boxes):
             max(b[1][0] for b in boxes), max(b[1][1] for b in boxes))
 
 
-def loadCellGeometry(gdsPath, logPath=None):
+def load_cell_geometry(gds_path, log_path=None):
     """Flattened geometry in microns + calibrated scale.
 
-    Returns (polys, labels, unitsPerUm) where polys/labels are already
+    Returns (polys, labels, units_per_um) where polys/labels are already
     scaled to microns.  Calibration: the log row height vs the outline
-    bbox (prBoundary/metal1), exactly like the GDS viewer; a sane GDS
+    bbox (pr_boundary/metal1), exactly like the GDS viewer; a sane GDS
     header (1 um / 1 nm) is trusted at 1.0; anything else falls back to
     the empirical ASTRAN constant.
     """
-    lib = gdstk.read_gds(gdsPath)
+    lib = gdstk.read_gds(gds_path)
     polys, labels = _flatten(lib)
-    logH = _readLogHeight(logPath)
+    log_h = _readLogHeight(log_path)
     outline = None
     for layer in _OUTLINE_LAYERS:
         box = _unitedBbox([p.bounding_box() for p in polys
@@ -97,24 +97,24 @@ def loadCellGeometry(gdsPath, logPath=None):
         if (box and box[2] > box[0] and box[3] > box[1]):
             outline = box
             break
-    rawH = (outline[3] - outline[1]) if outline else 1.0
-    if (logH and rawH > 0):
-        unitsPerUm = rawH / logH
+    raw_h = (outline[3] - outline[1]) if outline else 1.0
+    if (log_h and raw_h > 0):
+        units_per_um = raw_h / log_h
     elif (abs(lib.unit - 1e-6) < 1e-12 and abs(lib.precision - 1e-9) < 1e-15):
-        unitsPerUm = 1.0
+        units_per_um = 1.0
     else:
-        unitsPerUm = _ASTRAN_GDS_UNITS_PER_UM
-    inv = 1.0 / unitsPerUm
+        units_per_um = _ASTRAN_GDS_UNITS_PER_UM
+    inv = 1.0 / units_per_um
     scaled = []
     for p in polys:
         scaled.append((p.layer, [
             (float(x) * inv, float(y) * inv) for x, y in p.points]))
-    scaledLabels = []
+    scaled_labels = []
     for lbl in labels:
         x, y = lbl.origin
-        scaledLabels.append((lbl.layer, float(x) * inv, float(y) * inv,
+        scaled_labels.append((lbl.layer, float(x) * inv, float(y) * inv,
                              lbl.text))
-    return scaled, scaledLabels, unitsPerUm
+    return scaled, scaled_labels, units_per_um
 
 
 def _pinBBox(polys, label):
@@ -153,53 +153,53 @@ def _polyCrossing(pts, box):
 
 
 class PinAccessReport(object):
-    def __init__(self, gridUm, pins, score, unitsPerUm):
-        self.gridUm = gridUm
+    def __init__(self, grid_um, pins, score, units_per_um):
+        self.grid_um = grid_um
         self.pins = pins                    # list of per-pin dicts
         self.score = score                  # mean pin score in [0, 1]
-        self.unitsPerUm = unitsPerUm
+        self.units_per_um = units_per_um
 
-    def asDict(self):
-        return {"grid_um": self.gridUm, "score": round(self.score, 3),
-                "units_per_um": self.unitsPerUm,
+    def as_dict(self):
+        return {"grid_um": self.grid_um, "score": round(self.score, 3),
+                "units_per_um": self.units_per_um,
                 "pins": [dict(p) for p in self.pins]}
 
 
-def cellPinAccessibility(gdsPath, logPath=None, gridUm=0.19):
+def cell_pin_accessibility(gds_path, log_path=None, grid_um=0.19):
     """Score every metal1 pin of a generated cell; deterministic.
 
     Returns PinAccessReport; a cell with no pin labels gets score 0.0
     (no accessible pins is the worst case, and a missing label set is a
     layout defect the sanity checker already flags).
     """
-    polys, labels, unitsPerUm = loadCellGeometry(gdsPath, logPath)
+    polys, labels, units_per_um = load_cell_geometry(gds_path, log_path)
     pins = [lbl for lbl in labels if lbl[0] == _METAL1]
     metal1 = [pts for layer, pts in polys if layer == _METAL1]
     poly = [pts for layer, pts in polys if layer == _POLY]
     if (not pins):
-        return PinAccessReport(gridUm, [], 0.0, unitsPerUm)
+        return PinAccessReport(grid_um, [], 0.0, units_per_um)
     row = []
     for layer, x, y, text in pins:
         box = _pinBBox(metal1, (layer, x, y, text))
         cx = (box[0] + box[2]) / 2.0
-        col = round(cx / gridUm)
-        onTrack = abs(cx - col * gridUm) <= _TRACK_EPS_FRAC * gridUm
+        col = round(cx / grid_um)
+        on_track = abs(cx - col * grid_um) <= _TRACK_EPS_FRAC * grid_um
         blocked = _polyCrossing(poly, box)
         crowd = 0
         for other in pins:
             if (other is not None and other[1:] != (x, y, text)):
-                oBox = _pinBBox(metal1, other)
-                if (abs((oBox[0] + oBox[2]) / 2.0 - cx) < gridUm):
+                o_box = _pinBBox(metal1, other)
+                if (abs((o_box[0] + o_box[2]) / 2.0 - cx) < grid_um):
                     crowd += 1
-        score = (0.5 if onTrack else 0.0) + (0.5 if not blocked else 0.0) \
+        score = (0.5 if on_track else 0.0) + (0.5 if not blocked else 0.0) \
             - 0.1 * min(crowd, 3)
         score = max(0.0, min(1.0, score))
         row.append({
             "pin": text, "x_um": round(x, 3), "y_um": round(y, 3),
-            "on_track": onTrack, "blocked": blocked, "crowd": crowd,
+            "on_track": on_track, "blocked": blocked, "crowd": crowd,
             "score": round(score, 3)})
     mean = sum(r["score"] for r in row) / len(row)
-    return PinAccessReport(gridUm, row, mean, unitsPerUm)
+    return PinAccessReport(grid_um, row, mean, units_per_um)
 
 
 def main(argv=None):
@@ -210,8 +210,8 @@ def main(argv=None):
     ap.add_argument("--log", default=None)
     ap.add_argument("--grid", type=float, default=0.19)
     args = ap.parse_args(argv)
-    rep = cellPinAccessibility(args.gds, args.log, gridUm=args.grid)
-    print("cell score = %.3f (grid %.2f um)" % (rep.score, rep.gridUm))
+    rep = cell_pin_accessibility(args.gds, args.log, grid_um=args.grid)
+    print("cell score = %.3f (grid %.2f um)" % (rep.score, rep.grid_um))
     for p in rep.pins:
         print("  %-8s x=%-7s on_track=%-5s blocked=%-5s crowd=%d score=%.2f"
               % (p["pin"], p["x_um"], p["on_track"], p["blocked"],

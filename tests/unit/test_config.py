@@ -6,36 +6,36 @@ from core.config import FlowConfig
 
 def test_defaults_match_legacy_behavior():
     cfg = FlowConfig()
-    assert cfg.topThr == 5
-    assert cfg.ratioThr == 0.05
-    assert cfg.cntThr == 30
-    assert cfg.growBeamWidth == 2
-    assert cfg.layoutSanityGate is True
-    assert cfg.useWidthProxyForGrowth is False
-    assert cfg.requireReuseEligible is False
+    assert cfg.top_thr == 5
+    assert cfg.ratio_thr == 0.05
+    assert cfg.cnt_thr == 30
+    assert cfg.grow_beam_width == 2
+    assert cfg.layout_sanity_gate is True
+    assert cfg.use_width_proxy_for_growth is False
+    assert cfg.require_reuse_eligible is False
     assert cfg.benchmarks == ("adder",)
-    assert cfg.outputDir("adder") == "./outputs/adder/"
+    assert cfg.output_dir("adder") == "./outputs/adder/"
 
 
 def test_tc008_special_threshold():
     cfg = FlowConfig()
-    assert cfg.ratioThrFor("adder") == 0.05
-    assert cfg.ratioThrFor("tc_008_arthmetic_sin") == 0.025
+    assert cfg.ratio_thr_for("adder") == 0.05
+    assert cfg.ratio_thr_for("tc_008_arthmetic_sin") == 0.025
 
 
 def test_from_env_reuse_mode(monkeypatch):
     monkeypatch.delenv("AUTOCELL_REUSE_MODE", raising=False)
     cfg = FlowConfig.from_env()
-    assert cfg.reuseMode is False
-    assert cfg.outputSuffix == ""
-    assert cfg.requireReuseEligible is False
+    assert cfg.reuse_mode is False
+    assert cfg.output_suffix == ""
+    assert cfg.require_reuse_eligible is False
     monkeypatch.setenv("AUTOCELL_REUSE_MODE", "1")
     cfg2 = FlowConfig.from_env()
-    assert cfg2.reuseMode is True
-    assert cfg2.outputSuffix == "_reuse"
-    assert cfg2.requireReuseEligible is True
-    assert cfg2.outputDir("adder") == "./outputs/adder_reuse/"
+    assert cfg2.reuse_mode is True
+    assert cfg2.output_suffix == "_reuse"
+    assert cfg2.require_reuse_eligible is True
+    assert cfg2.output_dir("adder") == "./outputs/adder_reuse/"
 
 
 def test_astran_disabled_by_default():
-    assert FlowConfig().astranBuildPath == ""
+    assert FlowConfig().astran_build_path == ""

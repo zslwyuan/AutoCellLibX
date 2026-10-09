@@ -13,22 +13,22 @@ BLIF = "../benchmark/blif/adder.blif"
 
 
 def test_mining_growth_and_export(in_pysrc, tmp_path):
-    from blif_preproc import loadDataAndPreprocess
-    from blif_graph_util import sortPatternClusterSeqs
+    from blif_preproc import load_data_and_preprocess
+    from blif_graph_util import sort_pattern_cluster_seqs
     from blif_pattern_growth import grow_sequence_of_clusters
-    from spice import load_spice_subcircuits, exportSpiceNetlist
+    from spice import load_spice_subcircuits, export_spice_netlist
 
-    G, cells, netlist, types, ds, ml, seqs, cn = loadDataAndPreprocess(
-        libFileName=LIB, blifFileName=BLIF, startTime=0)
+    G, cells, netlist, types, ds, ml, seqs, cn = load_data_and_preprocess(
+        lib_file_name=LIB, blif_file_name=BLIF, start_time=0)
     assert len(seqs) > 0, "no patterns mined"
-    seqs = sortPatternClusterSeqs(seqs)
+    seqs = sort_pattern_cluster_seqs(seqs)
 
-    newSeqs, patternNum = grow_sequence_of_clusters(G, seqs[0], len(seqs), len(seqs))
-    assert patternNum >= len(seqs)
-    assert len(newSeqs) > 0
+    new_seqs, pattern_num = grow_sequence_of_clusters(G, seqs[0], len(seqs), len(seqs))
+    assert pattern_num >= len(seqs)
+    assert len(new_seqs) > 0
 
     subs = load_spice_subcircuits("../stdCelllib/cellsAstranFriendly.sp")
-    exportSpiceNetlist(newSeqs[0], subs, 0, str(tmp_path))
+    export_spice_netlist(new_seqs[0], subs, 0, str(tmp_path))
     out = os.path.join(str(tmp_path), "COMPLEX0.sp")
     assert os.path.exists(out)
     assert open(out).read().startswith(".subckt COMPLEX0")

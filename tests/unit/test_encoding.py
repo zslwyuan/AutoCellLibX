@@ -13,18 +13,18 @@ from blif_preproc import extract_and_encode_subgraph_tree
 def _cell(cid, name, nin, nout):
     t = StdCellType(name)
     for i in range(nin):
-        t.addPin("I%d" % i, "input")
+        t.add_pin("I%d" % i, "input")
     for i in range(nout):
-        t.addPin("O%d" % i, "output")
+        t.add_pin("O%d" % i, "output")
     return DesignCell(cid, "c%d" % cid, t)
 
 
-def _link(src, srcPin, dst, dstPin, netId, cells):
-    net = DesignNet(netId, "n%d" % netId)
-    net.addPin(srcPin, src, False)
-    net.addPin(dstPin, dst, True)
-    src.addOutputNet(net)
-    dst.addInputNet(net)
+def _link(src, src_pin, dst, dst_pin, net_id, cells):
+    net = DesignNet(net_id, "n%d" % net_id)
+    net.add_pin(src_pin, src, False)
+    net.add_pin(dst_pin, dst, True)
+    src.add_output_net(net)
+    dst.add_input_net(net)
 
 
 def test_multi_output_driver_is_encoded_once():
@@ -36,7 +36,7 @@ def test_multi_output_driver_is_encoded_once():
     _link(driver, "O0", sink, "I0", 0, cells)   # SUM  -> sink A
     _link(driver, "O1", sink, "I1", 1, cells)   # COUT -> sink B
 
-    tree, code = extract_and_encode_subgraph_tree(cells, sink.id, depthLimit=1)
+    tree, code = extract_and_encode_subgraph_tree(cells, sink.id, depth_limit=1)
 
     assert tree == [sink.id, driver.id]          # de-duplicated node list
     assert code == ["AND2X1", "FAX1"]            # paired 1:1 with tree
@@ -64,7 +64,7 @@ def test_tree_nodes_are_unique(in_pysrc):
     G, cells, netlist, types = gen_graph_from_liberty_and_blif(
         "../stdCelllib/gscl45nm.lib", "../benchmark/blif/adder.blif")
     for cell in cells[:200]:
-        tree, _ = extract_and_encode_subgraph_tree(cells, cell.id, depthLimit=2)
+        tree, _ = extract_and_encode_subgraph_tree(cells, cell.id, depth_limit=2)
         assert len(tree) == len(set(tree))
 
 
@@ -95,12 +95,12 @@ def test_canonical_code_is_net_order_invariant():
         _link(d1, "O0", root, "I1", 1, cells)
         return cells, root
 
-    cellsA, rootA = build(0)
-    cellsB, rootB = build(1)
-    _, codeA = extract_and_encode_subgraph_tree(cellsA, rootA.id, depthLimit=1)
-    _, codeB = extract_and_encode_subgraph_tree(cellsB, rootB.id, depthLimit=1)
-    assert codeA != codeB                      # raw order differs (the bug)
-    assert canonical_pattern_code(codeA) == canonical_pattern_code(codeB)
+    cells_a, root_a = build(0)
+    cells_b, root_b = build(1)
+    _, code_a = extract_and_encode_subgraph_tree(cells_a, root_a.id, depth_limit=1)
+    _, code_b = extract_and_encode_subgraph_tree(cells_b, root_b.id, depth_limit=1)
+    assert code_a != code_b                      # raw order differs (the bug)
+    assert canonical_pattern_code(code_a) == canonical_pattern_code(code_b)
 
 
 def test_benchmark_codes_are_canonical(in_pysrc):
@@ -111,11 +111,11 @@ def test_benchmark_codes_are_canonical(in_pysrc):
 
     G, cells, netlist, types = gen_graph_from_liberty_and_blif(
         "../stdCelllib/gscl45nm.lib", "../benchmark/blif/adder.blif")
-    clusterSeqs, _ = heuristic_label_initial_clusters(
+    cluster_seqs, _ = heuristic_label_initial_clusters(
         G, cells, netlist)
-    assert clusterSeqs, "expected at least one initial cluster"
-    for seq in clusterSeqs:
-        trace = seq.patternClusters[0].patternExtensionTrace
+    assert cluster_seqs, "expected at least one initial cluster"
+    for seq in cluster_seqs:
+        trace = seq.pattern_clusters[0].pattern_extension_trace
         base = trace.split("+")[0].strip("[]")
         parts = base.split(",")
         assert parts[1:] == sorted(parts[1:]), trace

@@ -1,7 +1,7 @@
 """Unit tests for SPICE parsing/export (pySrc/spice.py)."""
 import os
 
-from spice import SPSubcircuit, load_spice_subcircuits, exportSpiceNetlist
+from spice import SPSubcircuit, load_spice_subcircuits, export_spice_netlist
 
 
 def test_load_subcircuits(in_pysrc):
@@ -20,7 +20,7 @@ def test_rename_prefix_keeps_power_nets():
         "M0 Y A VCC VCC PMOS W=0.5u L=0.05u",
         ".ends INVX1",
     ])
-    sp.renamePrefix("cl0#")
+    sp.rename_prefix("cl0#")
     joined = " ".join(sp.texts)
     assert "cl0#Y" in joined and "cl0#A" in joined
     assert "Mcl0#0" in joined
@@ -35,24 +35,24 @@ def test_replace_input_pin():
         "M0 Y A VCC VCC PMOS W=0.5u L=0.05u",
         ".ends INVX1",
     ])
-    sp.renamePrefix("cl1#")
-    sp.replaceInputPin("cl1#A", "cl0#Y")
+    sp.rename_prefix("cl1#")
+    sp.replace_input_pin("cl1#A", "cl0#Y")
     joined = " ".join(sp.texts)
     assert "cl0#Y" in joined
     assert "cl1#A" not in joined
 
 
 def test_export_spice_netlist(in_pysrc, tmp_path):
-    from blif_preproc import loadDataAndPreprocess
-    from blif_graph_util import sortPatternClusterSeqs
+    from blif_preproc import load_data_and_preprocess
+    from blif_graph_util import sort_pattern_cluster_seqs
 
-    G, cells, netlist, types, ds, ml, seqs, cn = loadDataAndPreprocess(
-        libFileName="../stdCelllib/gscl45nm.lib",
-        blifFileName="../benchmark/blif/adder.blif", startTime=0)
-    seqs = sortPatternClusterSeqs(seqs)
+    G, cells, netlist, types, ds, ml, seqs, cn = load_data_and_preprocess(
+        lib_file_name="../stdCelllib/gscl45nm.lib",
+        blif_file_name="../benchmark/blif/adder.blif", start_time=0)
+    seqs = sort_pattern_cluster_seqs(seqs)
     subs = load_spice_subcircuits("../stdCelllib/cellsAstranFriendly.sp")
 
-    exportSpiceNetlist(seqs[0], subs, 0, str(tmp_path))
+    export_spice_netlist(seqs[0], subs, 0, str(tmp_path))
     out = os.path.join(str(tmp_path), "COMPLEX0.sp")
     assert os.path.exists(out)
 
@@ -68,26 +68,26 @@ def test_export_spice_netlist_only_writes_on_change(in_pysrc, tmp_path):
     main.py uses the netlist mtime to decide whether a cached ASTRAN layout is
     stale, so re-running the pipeline must not touch an unchanged .sp file.
     """
-    from blif_preproc import loadDataAndPreprocess
-    from blif_graph_util import sortPatternClusterSeqs
+    from blif_preproc import load_data_and_preprocess
+    from blif_graph_util import sort_pattern_cluster_seqs
 
-    G, cells, netlist, types, ds, ml, seqs, cn = loadDataAndPreprocess(
-        libFileName="../stdCelllib/gscl45nm.lib",
-        blifFileName="../benchmark/blif/adder.blif", startTime=0)
-    seqs = sortPatternClusterSeqs(seqs)
+    G, cells, netlist, types, ds, ml, seqs, cn = load_data_and_preprocess(
+        lib_file_name="../stdCelllib/gscl45nm.lib",
+        blif_file_name="../benchmark/blif/adder.blif", start_time=0)
+    seqs = sort_pattern_cluster_seqs(seqs)
     subs = load_spice_subcircuits("../stdCelllib/cellsAstranFriendly.sp")
 
     out = os.path.join(str(tmp_path), "COMPLEX0.sp")
-    exportSpiceNetlist(seqs[0], subs, 0, str(tmp_path))
-    exportSpiceNetlist(seqs[0], subs, 0, str(tmp_path))
+    export_spice_netlist(seqs[0], subs, 0, str(tmp_path))
+    export_spice_netlist(seqs[0], subs, 0, str(tmp_path))
 
     # Backdate the file, then re-export identical content: it must be left alone.
     old = os.path.getmtime(out) - 100
     os.utime(out, (old, old))
-    exportSpiceNetlist(seqs[0], subs, 0, str(tmp_path))
+    export_spice_netlist(seqs[0], subs, 0, str(tmp_path))
     assert os.path.getmtime(out) == old
 
     # Different content must be written through.
-    seqs[0].patternExtensionTrace = seqs[0].patternExtensionTrace + "+X"
-    exportSpiceNetlist(seqs[0], subs, 0, str(tmp_path))
+    seqs[0].pattern_extension_trace = seqs[0].pattern_extension_trace + "+X"
+    export_spice_netlist(seqs[0], subs, 0, str(tmp_path))
     assert os.path.getmtime(out) != old

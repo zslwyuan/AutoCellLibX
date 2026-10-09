@@ -28,29 +28,29 @@ ASTRAN_TECHNOLOGY = os.path.join(
 GUROBI_CL = os.path.join(_REPO_DIR, "tools", "gurobi_cl", "gurobi_cl.cmd")
 
 
-def loadAstranArea(GDSPath, typeName):
+def load_astran_area(gds_path, type_name):
     """Nominal cell width of a generated cell, read from its ASTRAN log.
 
     Width is used as the area proxy: cell area is proportional to width at a
     fixed row height, so this compares the ASTRAN baseline and the locally
     generated cells (both at the GSCL45 row height H=2.47um) consistently.
-    Same metric as gds_analysis.loadAstranGDS / loadOrignalGSCL45nmGDS.
+    Same metric as gds_analysis.load_astran_gds / load_original_gscl45_gds.
     """
-    logFileName = os.path.join(GDSPath, typeName + ".Astranlog")
-    if (os.path.exists(logFileName)):
-        for line in open(logFileName, 'r'):
+    log_file_name = os.path.join(gds_path, type_name + ".Astranlog")
+    if (os.path.exists(log_file_name)):
+        for line in open(log_file_name, 'r'):
             if (line.find("-> Cell Size (W x H): ") >= 0):
                 return float(line.replace("-> Cell Size (W x H): ", "").split("x")[0])
 
     # Never fabricate a width: an assert here is stripped under `python -O`,
     # silently yielding the fallback value and corrupting the savings total.
     raise RuntimeError(
-        "Cell Size line not found in ASTRAN log: " + logFileName)
+        "Cell Size line not found in ASTRAN log: " + log_file_name)
 
 
 # Cell geometry written into every ASTRAN run script, calibrated to the
 # GSCL45 library: the LEF's M1 routing pitch is 0.19 um, so the routing grid
-# is 0.19 and the row height is cellsHeight * vGrid = 13 * 0.19 = 2.47 um,
+# is 0.19 and the row height is cells_height * v_grid = 13 * 0.19 = 2.47 um,
 # which is exactly the GSCL45 CoreSite height (LEF `SIZE x BY 2.47`).  The
 # supply rails use the library's abutment style: 0.13 um tall, centred on
 # the row boundary (half inside, half overhanging), hence supplysize 0.26.
@@ -65,60 +65,60 @@ ASTRAN_NWELL_POS = 1.235
 ASTRAN_CELL_TEMPLATE = "Tapless"
 
 
-def buildAstranCommands(gurobiPath, technologyPath, spiceNetlistPath, complexName, commandDir, geometry=None):
+def build_astran_commands(gurobi_path, technology_path, spice_netlist_path, complex_name, command_dir, geometry=None):
     """Build the ASTRAN shell-mode script for one cell (runs nothing).
 
     ``geometry`` optionally overrides the compiled-in constants above (keys:
-    cellsHeight, hGrid, vGrid, supplySize, nwellPos, cellTemplate).  The GUI
+    cells_height, h_grid, v_grid, supply_size, nwell_pos, cell_template).  The GUI
     uses this so the user can experiment with row height / grid / supply rails
     without editing this file; anything not in the dict keeps the constants.
     """
-    script = """set lpsolve "@gurobiPath@"
-load technology "@technologyPath@"
-load netlist "@netlistPath@"
-set rowheight @cellsHeight@
-set grid @hGrid@ @vGrid@
-set supplysize @supplySize@
-set nwellpos @nwellPos@
-set celltemplate "@cellTemplate@"
+    script = """set lpsolve "@gurobi_path@"
+load technology "@technology_path@"
+load netlist "@netlist_path@"
+set rowheight @cells_height@
+set grid @h_grid@ @v_grid@
+set supplysize @supply_size@
+set nwellpos @nwell_pos@
+set celltemplate "@cell_template@"
 cellgen select @name@
 cellgen autoflow
-export layout @name@ @commandDir@/@name@.gds
+export layout @name@ @command_dir@/@name@.gds
 exit
 """
     geometry = geometry or {}
     substitutions = {
-        "gurobiPath": gurobiPath,
-        "technologyPath": technologyPath,
-        "netlistPath": spiceNetlistPath,
-        "cellsHeight": str(geometry.get("cellsHeight", ASTRAN_CELLS_HEIGHT)),
-        "hGrid": "%g" % geometry.get("hGrid", ASTRAN_HGRID),
-        "vGrid": "%g" % geometry.get("vGrid", ASTRAN_VGRID),
-        "supplySize": "%g" % geometry.get("supplySize", ASTRAN_SUPPLY_SIZE),
-        "nwellPos": "%g" % geometry.get("nwellPos", ASTRAN_NWELL_POS),
-        "cellTemplate": geometry.get("cellTemplate", ASTRAN_CELL_TEMPLATE),
-        "name": complexName,
-        "commandDir": commandDir,
+        "gurobi_path": gurobi_path,
+        "technology_path": technology_path,
+        "netlist_path": spice_netlist_path,
+        "cells_height": str(geometry.get("cells_height", ASTRAN_CELLS_HEIGHT)),
+        "h_grid": "%g" % geometry.get("h_grid", ASTRAN_HGRID),
+        "v_grid": "%g" % geometry.get("v_grid", ASTRAN_VGRID),
+        "supply_size": "%g" % geometry.get("supply_size", ASTRAN_SUPPLY_SIZE),
+        "nwell_pos": "%g" % geometry.get("nwell_pos", ASTRAN_NWELL_POS),
+        "cell_template": geometry.get("cell_template", ASTRAN_CELL_TEMPLATE),
+        "name": complex_name,
+        "command_dir": command_dir,
     }
     for key, value in substitutions.items():
         script = script.replace("@%s@" % key, value)
     return script
 
 
-def runAstranForNetlist(AstranPath, gurobiPath, technologyPath, spiceNetlistPath, complexName, commandDir):
-    commands = buildAstranCommands(gurobiPath, technologyPath,
-                                   spiceNetlistPath, complexName, commandDir)
+def run_astran_for_netlist(astran_path, gurobi_path, technology_path, spice_netlist_path, complex_name, command_dir):
+    commands = build_astran_commands(gurobi_path, technology_path,
+                                   spice_netlist_path, complex_name, command_dir)
 
-    outputFile = open(commandDir+"/"+complexName+".run", 'w')
-    print(commands, file=outputFile)
-    outputFile.close()
+    output_file = open(command_dir+"/"+complex_name+".run", 'w')
+    print(commands, file=output_file)
+    output_file.close()
 
-    os.system(AstranPath+"/bin/Astran --shell " +
-              commandDir+"/"+complexName+".run > " +
-              commandDir+"/"+complexName+".Astranlog")
+    os.system(astran_path+"/bin/Astran --shell " +
+              command_dir+"/"+complex_name+".run > " +
+              command_dir+"/"+complex_name+".Astranlog")
 
 
-def astranLayoutIsStale(gdsPath, netlistPath):
+def astran_layout_is_stale(gds_path, netlist_path):
     """Whether a cached ASTRAN layout must be regenerated.
 
     A layout is stale when it is missing, or when the netlist it was built from
@@ -127,9 +127,9 @@ def astranLayoutIsStale(gdsPath, netlistPath):
     netlist while an older layout is still on disk, and reusing that layout
     silently reports an area that does not belong to the current netlist.
     """
-    if (not os.path.exists(gdsPath)):
+    if (not os.path.exists(gds_path)):
         return True
-    if (os.path.exists(netlistPath) and
-            os.path.getmtime(gdsPath) < os.path.getmtime(netlistPath)):
+    if (os.path.exists(netlist_path) and
+            os.path.getmtime(gds_path) < os.path.getmtime(netlist_path)):
         return True
     return False

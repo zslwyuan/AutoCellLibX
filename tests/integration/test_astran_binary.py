@@ -24,15 +24,15 @@ def test_astran_runs_invx1_smoke(in_pysrc, tmp_path):
     import gdstk
 
     from astran import (ASTRAN_BUILD_PATH, ASTRAN_TECHNOLOGY, GUROBI_CL,
-                        runAstranForNetlist)
+                        run_astran_for_netlist)
 
     netlist = os.path.abspath("../stdCelllib/cellsAstranFriendly.sp")
     outdir = str(tmp_path)
 
-    runAstranForNetlist(AstranPath=ASTRAN_BUILD_PATH, gurobiPath=GUROBI_CL,
-                        technologyPath=ASTRAN_TECHNOLOGY,
-                        spiceNetlistPath=netlist,
-                        complexName="INVX1", commandDir=outdir)
+    run_astran_for_netlist(astran_path=ASTRAN_BUILD_PATH, gurobi_path=GUROBI_CL,
+                        technology_path=ASTRAN_TECHNOLOGY,
+                        spice_netlist_path=netlist,
+                        complex_name="INVX1", command_dir=outdir)
 
     gds = os.path.join(outdir, "INVX1.gds")
     assert os.path.exists(gds), "ASTRAN produced no GDS (see INVX1.Astranlog)"
@@ -59,15 +59,15 @@ def test_astran_runs_nor3x1_gap_ordering_smoke(in_pysrc, tmp_path):
     ordering with link == -1 GAP slots and produces single-transistor series
     legs; both used to read trans[-1] in seriesFolding/route() and crash."""
     from astran import (ASTRAN_BUILD_PATH, ASTRAN_TECHNOLOGY, GUROBI_CL,
-                        runAstranForNetlist)
+                        run_astran_for_netlist)
 
     netlist = os.path.abspath("../stdCelllib/cellsAstranFriendly.sp")
     outdir = str(tmp_path)
 
-    runAstranForNetlist(AstranPath=ASTRAN_BUILD_PATH, gurobiPath=GUROBI_CL,
-                        technologyPath=ASTRAN_TECHNOLOGY,
-                        spiceNetlistPath=netlist,
-                        complexName="NOR3X1", commandDir=outdir)
+    run_astran_for_netlist(astran_path=ASTRAN_BUILD_PATH, gurobi_path=GUROBI_CL,
+                        technology_path=ASTRAN_TECHNOLOGY,
+                        spice_netlist_path=netlist,
+                        complex_name="NOR3X1", command_dir=outdir)
 
     log = open(os.path.join(outdir, "NOR3X1.Astranlog")).read()
     assert "-> Cell Size (W x H):" in log

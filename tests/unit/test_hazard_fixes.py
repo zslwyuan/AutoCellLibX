@@ -3,20 +3,20 @@ import warnings
 
 import pytest
 
-from astran import loadAstranArea
+from astran import load_astran_area
 
 
 def test_load_astran_area_raises_instead_of_fabricating(tmp_path):
     # A missing log must raise: the old assert(False) was stripped under
     # `python -O` and silently returned a fabricated width of 123.
     with pytest.raises(RuntimeError):
-        loadAstranArea(str(tmp_path), "NOSUCHCELL")
+        load_astran_area(str(tmp_path), "NOSUCHCELL")
 
 
 def test_load_astran_area_parses_cell_size(tmp_path):
     log = tmp_path / "C1.Astranlog"
     log.write_text("noise\n-> Cell Size (W x H): 4.37 x 2.47\n")
-    assert loadAstranArea(str(tmp_path), "C1") == pytest.approx(4.37)
+    assert load_astran_area(str(tmp_path), "C1") == pytest.approx(4.37)
 
 
 def test_unknown_cell_type_raises(in_pysrc, tmp_path):
@@ -36,11 +36,11 @@ def test_multi_driver_net_warns_and_keeps_last():
     t = StdCellType("NAND2X1")
     c1, c2 = DesignCell(0, "c1", t), DesignCell(1, "c2", t)
     net = DesignNet(0, "n1")
-    before = DesignNet.multiDriverCount
-    net.addPin("Y", c1, False)
+    before = DesignNet.multi_driver_count
+    net.add_pin("Y", c1, False)
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        net.addPin("Y", c2, False)
-    assert DesignNet.multiDriverCount == before + 1
+        net.add_pin("Y", c2, False)
+    assert DesignNet.multi_driver_count == before + 1
     assert any("multiple drivers" in str(w.message) for w in caught)
-    assert net.predCell is c2
+    assert net.pred_cell is c2

@@ -1,7 +1,7 @@
 """An interactive painter for networkx subgraphs (patterns, design neighbourhoods).
 
 Colour encodes the standard-cell type, which is exactly what the encoder keys
-on, so the picture matches the ``patternExtensionTrace`` string: nodes of one
+on, so the picture matches the ``pattern_extension_trace`` string: nodes of one
 colour that share a shape are the "same" pattern.
 """
 import math
@@ -54,7 +54,7 @@ class GraphCanvas(QWidget):
         self._drag_from = None
         self._fit_pending = True
         self._radius = 13.0
-        self._placeholder = "选择一个模式或单元以查看其子图\nSelect a pattern or cell to view its subgraph"
+        self._placeholder = "选择一个模式或单元以查看其子图\n_select a pattern or cell to view its subgraph"
 
     # ------------------------------------------------------------------ api
     def clear(self):
@@ -257,7 +257,7 @@ class GraphCanvas(QWidget):
     def wheelEvent(self, event):
         if not self._pos:
             return
-        factor = 1.15 if event.angleDelta().y() > 0 else 1 / 1.15
+        factor = 1.15 if event.angle_delta().y() > 0 else 1 / 1.15
         pos = event.position()
         before_x = (pos.x() - self._offset.x()) / self._zoom
         before_y = (pos.y() - self._offset.y()) / self._zoom
@@ -317,7 +317,7 @@ class _FakeWheel(object):
     def __init__(self, delta):
         self._d = delta
 
-    def angleDelta(self):
+    def angle_delta(self):
         from PySide6.QtCore import QPoint
         return QPoint(0, self._d)
 

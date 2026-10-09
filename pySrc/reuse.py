@@ -8,50 +8,50 @@ make complex cells genuinely reusable in logic synthesis they must be
 
   * **single-output** -- one escaping member output pin (all others
     internalised), and
-  * **simple, common functions** -- support <= maxSupport inputs and
-    depth <= maxDepth levels, ideally 2-level forms the base library
+  * **simple, common functions** -- support <= max_support inputs and
+    depth <= max_depth levels, ideally 2-level forms the base library
     cannot already cover ((ab+cd), (a+b)(c+d), a^b^c, ...).
 
 This module scores a cluster for that property.  ``_clusterInterface``
 (liberty_gen) and ``_composeFunction`` provide the primitives; the
-growth side gains an ``internalizeOnly`` bias (blif_pattern_growth) so
+growth side gains an ``internalize_only`` bias (blif_pattern_growth) so
 patterns can *grow* without gaining outputs.
 """
 
-from liberty_gen import _clusterInterface, _composeFunction, libertyPinName
+from liberty_gen import _clusterInterface, _composeFunction, liberty_pin_name
 
 
-def interfaceOutputCount(members):
+def interface_output_count(members):
     """Number of escaping member output pins (== cell output pins)."""
-    inputs, outputs, edges, netDriver = _clusterInterface(
+    inputs, outputs, edges, net_driver = _clusterInterface(
         members, {})
     return len(outputs)
 
 
-def outputFunctions(members, libFunctions):
-    """{libertyPinName(cl<k>#pin): composed function} for escaping pins."""
-    inputs, outputs, edges, netDriver = _clusterInterface(
+def output_functions(members, lib_functions):
+    """{liberty_pin_name(cl<k>#pin): composed function} for escaping pins."""
+    inputs, outputs, edges, net_driver = _clusterInterface(
         members, {})
     inside = set(c.id for c in members)
-    portNameOf = lambda k, p: libertyPinName("cl%d#%s" % (k, p))
+    port_name_of = lambda k, p: liberty_pin_name("cl%d#%s" % (k, p))
     result = {}
-    for outPin in outputs:
-        func = _composeFunction(outPin, members, netDriver,
-                                libFunctions, portNameOf)
+    for out_pin in outputs:
+        func = _composeFunction(out_pin, members, net_driver,
+                                lib_functions, port_name_of)
         if (func is not None):
-            result[portNameOf(*outPin)] = func
+            result[port_name_of(*out_pin)] = func
     return result
 
 
-def functionComplexity(funcStr):
+def function_complexity(func_str):
     """(support, logical-depth) of a fully parenthesised liberty
     function.  support = distinct input names; logical-depth counts only
     parentheses that enclose an operator or >=2 operands -- the single-
     operand wraps added by composition ((cl0_A)) are ignored, so a two-
     level function like OR-of-NANDs reads depth 3, not 5."""
-    if (funcStr is None):
+    if (func_str is None):
         return None
-    toks = (funcStr.replace("(", " ( ").replace(")", " ) ")
+    toks = (func_str.replace("(", " ( ").replace(")", " ) ")
             .replace("+", " + ").replace("^", " ^ ").split())
     stack, pairs = [], {}
     for i, t in enumerate(toks):
@@ -59,56 +59,56 @@ def functionComplexity(funcStr):
             stack.append(i)
         elif (t == ")"):
             pairs[stack.pop()] = i
-    isLogical = {}
+    is_logical = {}
     for o, c in pairs.items():
         seg = toks[o + 1:c]
         inputs = [t for t in seg if t not in ("(", ")", "!", "+", "^")]
-        isLogical[o] = (len(inputs) >= 2
+        is_logical[o] = (len(inputs) >= 2
                         or "!" in seg or "+" in seg or "^" in seg)
-    depth, maxDepth, st = 0, 0, []
+    depth, max_depth, st = 0, 0, []
     for i, t in enumerate(toks):
         if (t == "("):
-            st.append(isLogical.get(i, False))
+            st.append(is_logical.get(i, False))
             if (st[-1]):
                 depth += 1
-                maxDepth = max(maxDepth, depth)
+                max_depth = max(max_depth, depth)
         elif (t == ")"):
             if (st and st.pop()):
                 depth -= 1
     support = {t for t in toks if t not in ("(", ")", "!", "+", "^")}
-    return (len(support), maxDepth)
+    return (len(support), max_depth)
 
 
-def reuseEligible(members, libFunctions, maxSupport=4, maxDepth=4):
+def reuse_eligible(members, lib_functions, max_support=4, max_depth=4):
     """Eligibility dict: single output + simple common function.
 
     Returns {"eligible": bool, "outputs": n, "functions": {pin: (func,
     support, depth)}, "reason": str} -- the functions dict always lists
     escaping pins with their composed functions, so callers can pick.
     """
-    inputs, outputs, edges, netDriver = _clusterInterface(
+    inputs, outputs, edges, net_driver = _clusterInterface(
         members, {})
-    portNameOf = lambda k, p: libertyPinName("cl%d#%s" % (k, p))
+    port_name_of = lambda k, p: liberty_pin_name("cl%d#%s" % (k, p))
     funcs = {}
-    for outPin in outputs:
-        func = _composeFunction(outPin, members, netDriver,
-                                libFunctions, portNameOf)
+    for out_pin in outputs:
+        func = _composeFunction(out_pin, members, net_driver,
+                                lib_functions, port_name_of)
         if (func is not None):
-            funcs[portNameOf(*outPin)] = func
+            funcs[port_name_of(*out_pin)] = func
     reasons = []
     if (len(outputs) != 1):
         reasons.append("outputs=%d (need 1)" % len(outputs))
     simple = True
     for pin, func in funcs.items():
-        cx = functionComplexity(func)
+        cx = function_complexity(func)
         if (cx is None):
             reasons.append("%s: function uncomposable" % pin)
             simple = False
             continue
         support, depth = cx
-        if (support > maxSupport or depth > maxDepth):
+        if (support > max_support or depth > max_depth):
             reasons.append("%s: support=%d depth=%d (need <=%d/%d)"
-                           % (pin, support, depth, maxSupport, maxDepth))
+                           % (pin, support, depth, max_support, max_depth))
             simple = False
     return {
         "eligible": len(outputs) == 1 and simple,
@@ -118,17 +118,17 @@ def reuseEligible(members, libFunctions, maxSupport=4, maxDepth=4):
     }
 
 
-def functionToVerilog(funcStr, portMap):
+def function_to_verilog(func_str, port_map):
     """Translate a fully parenthesised liberty function to a Verilog
     expression.  Parens are preserved (safe precedence) and '&' is
     inserted between adjacent operands -- either as name-name or as
     ')' followed by '(' -- because liberty's juxtaposition means AND."""
-    if (funcStr is None):
+    if (func_str is None):
         return None
-    toks = (funcStr.replace("(", " ( ").replace(")", " ) ")
+    toks = (func_str.replace("(", " ( ").replace(")", " ) ")
             .replace("+", " + ").replace("^", " ^ ").split())
     out = []
-    prevOut = ""
+    prev_out = ""
     for tok in toks:
         if (tok == "!"):
             out.append("~")
@@ -137,30 +137,30 @@ def functionToVerilog(funcStr, portMap):
         elif (tok == "^"):
             out.append("^")
         elif (tok == "("):
-            if (prevOut in (")",) or (prevOut and prevOut not in
+            if (prev_out in (")",) or (prev_out and prev_out not in
                                       ("(", "~", "|", "^"))):
                 out.append("&")
             out.append("(")
         elif (tok == ")"):
             out.append(")")
         else:
-            if (prevOut in (")",) or (prevOut and prevOut not in
+            if (prev_out in (")",) or (prev_out and prev_out not in
                                       ("(", "~", "|", "^"))):
                 out.append("&")
-            out.append(portMap.get(tok, tok))
-        prevOut = out[-1]
+            out.append(port_map.get(tok, tok))
+        prev_out = out[-1]
     return " ".join(out)
 
 
-def verilogDesignForFunction(funcStr, moduleName="top",
-                             outputName="y", portNames=None):
-    """A Verilog module whose output implements ``funcStr``.  portNames
+def verilog_design_for_function(func_str, module_name="top",
+                             output_name="y", port_names=None):
+    """A Verilog module whose output implements ``func_str``.  port_names
     maps the function's input names to a,b,c,d,... in first-appearance
     order when not provided."""
     import re as _re
-    inputs = [t for t in _re.findall(r"[A-Za-z0-9_]+", funcStr or "")
+    inputs = [t for t in _re.findall(r"[A-Za-z0-9_]+", func_str or "")
               if t not in ("!",)]
-    if (portNames is None):
+    if (port_names is None):
         letters = "abcdefghijklmnop"
         seen = {}
         ordered = []
@@ -168,12 +168,12 @@ def verilogDesignForFunction(funcStr, moduleName="top",
             if (name not in seen):
                 seen[name] = letters[len(seen)]
                 ordered.append(name)
-        portNames = seen
-        inDecl = ", ".join(seen.values())
+        port_names = seen
+        in_decl = ", ".join(seen.values())
     else:
-        inDecl = ", ".join(portNames.values())
-    body = functionToVerilog(funcStr, portNames)
+        in_decl = ", ".join(port_names.values())
+    body = function_to_verilog(func_str, port_names)
     if (body is None):
         return None
     return ("module %s(input %s, output %s); assign %s = %s; endmodule\n"
-            % (moduleName, inDecl, outputName, outputName, body))
+            % (module_name, in_decl, output_name, output_name, body))

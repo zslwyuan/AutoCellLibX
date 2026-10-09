@@ -141,7 +141,7 @@ def _flatten(lib):
 
 
 # Layers that trace the *cell outline* (row height), as opposed to the wells
-# and implants that bleed past it.  prBoundary is exact; metal1 is the fallback.
+# and implants that bleed past it.  pr_boundary is exact; metal1 is the fallback.
 _OUTLINE_LAYERS = (235, 49, 51)
 
 
@@ -162,7 +162,7 @@ def load_layout(gds_path, log_path=None, units_per_um=None, layer_map=None):
     ``ASTRAN_GDS_UNITS_PER_UM``.  ``layer_map`` ({stream: name}) labels the
     GDS layers of a custom PDK.
 
-    Calibration deliberately uses the *cell outline* (prBoundary / metal1), not
+    Calibration deliberately uses the *cell outline* (pr_boundary / metal1), not
     the file bounding box: the wells overhang the row boundary by ~0.24 um on
     each side, and calibrating on that inflated the block by 19 %.
     """

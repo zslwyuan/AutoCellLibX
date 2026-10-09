@@ -1,8 +1,8 @@
 """Unit tests for pySrc/yosys_eval.py."""
 import pytest
 
-from yosys_eval import (buildExtendedLiberty, compareMappedArea,
-                        evaluateDesignSavings)
+from yosys_eval import (build_extended_liberty, compare_mapped_area,
+                        evaluate_design_savings)
 
 BASE_LIB = """library (demo) {
   cell (NAND2X1) { area : 1.8772; }
@@ -16,7 +16,7 @@ FRAG = """  cell (COMPLEX0) {
 
 
 def test_build_extended_liberty_inserts_before_close():
-    merged = buildExtendedLiberty(BASE_LIB, [FRAG])
+    merged = build_extended_liberty(BASE_LIB, [FRAG])
     assert merged.count("cell (") == 2
     assert merged.rstrip().endswith("}")
     assert "COMPLEX0" in merged
@@ -27,15 +27,15 @@ def test_build_extended_liberty_inserts_before_close():
 
 def test_build_extended_liberty_rejects_broken_base():
     with pytest.raises(ValueError):
-        buildExtendedLiberty("no braces here", [FRAG])
+        build_extended_liberty("no braces here", [FRAG])
 
 
 def test_evaluate_design_savings_math():
     stat = {"ok": True, "histogram": {"NAND2X1": 100, "OR2X1": 10}}
-    libAreas = {"NAND2X1": 2.0, "OR2X1": 3.0}
+    lib_areas = {"NAND2X1": 2.0, "OR2X1": 3.0}
     accepted = [("COMPLEX9", 10, ["NAND2X1", "NAND2X1", "OR2X1"])]
-    complexAreas = {"COMPLEX9": 5.5}
-    r = evaluateDesignSavings(stat, accepted, libAreas, complexAreas)
+    complex_areas = {"COMPLEX9": 5.5}
+    r = evaluate_design_savings(stat, accepted, lib_areas, complex_areas)
     assert r["compared"] is True
     assert r["baseline_area"] == pytest.approx(230.0)
     # 10 x ((2+2+3) - 5.5) = 15
@@ -46,10 +46,10 @@ def test_evaluate_design_savings_math():
 
 def test_evaluate_design_savings_handles_missing():
     stat = {"ok": False, "reason": "no yosys"}
-    r = evaluateDesignSavings(stat, [], {}, {})
+    r = evaluate_design_savings(stat, [], {}, {})
     assert r["compared"] is False
     stat2 = {"ok": True, "histogram": {"UNKNOWN": 3}}
-    r2 = evaluateDesignSavings(stat2, [], {}, {})
+    r2 = evaluate_design_savings(stat2, [], {}, {})
     assert r2["compared"] is True
     assert r2["missing_area_types"] == ["UNKNOWN"]
     assert r2["baseline_area"] == 0
@@ -59,7 +59,7 @@ def test_compare_mapped_area():
     b = {"ok": True, "area": 100.0, "histogram": {}}
     e = {"ok": True, "area": 90.0,
          "histogram": {"COMPLEX9": 5, "NAND2X1": 10}}
-    r = compareMappedArea(b, e)
+    r = compare_mapped_area(b, e)
     assert r["area_saved"] == pytest.approx(10.0)
     assert r["area_saved_pct"] == pytest.approx(10.0)
     assert r["complex_instances"] == 5
@@ -72,9 +72,9 @@ def test_abc_uses_function_matched_custom_cell(in_pysrc):
     not a multi-output skip (which a second-output variant also disproves).
     Self-skips when the vendored abc-capable yosys is unavailable."""
     import subprocess
-    from yosys_eval import buildExtendedLiberty
-    from yosys_import import findYosys
-    exe = findYosys()
+    from yosys_eval import build_extended_liberty
+    from yosys_import import find_yosys
+    exe = find_yosys()
     if (exe is None):
         pytest.skip("no yosys executable")
     base = open("../stdCelllib/gscl45nm.lib").read()
@@ -141,7 +141,7 @@ def test_abc_uses_function_matched_custom_cell(in_pysrc):
   }
 """
     import os, re, tempfile
-    lib_text = buildExtendedLiberty(base, [frag])
+    lib_text = build_extended_liberty(base, [frag])
     with tempfile.NamedTemporaryFile("w", suffix=".lib",
                                      delete=False) as f:
         f.write(lib_text)

@@ -205,7 +205,7 @@ class GdsCanvas(QWidget):
         if path.isEmpty():
             return
         colour = QColor(layer.colour)
-        if layer.layer == 235:               # prBoundary: dashed outline only
+        if layer.layer == 235:               # pr_boundary: dashed outline only
             pen = QPen(colour)
             pen.setWidthF(max(0.006, 1.1 / self._zoom))
             pen.setStyle(Qt.DashLine)
@@ -321,7 +321,7 @@ class GdsCanvas(QWidget):
     def wheelEvent(self, event):
         if self._model is None:
             return
-        factor = 1.18 if event.angleDelta().y() > 0 else 1 / 1.18
+        factor = 1.18 if event.angle_delta().y() > 0 else 1 / 1.18
         self._zoom_at(factor, event.position())
 
     def mousePressEvent(self, event):
@@ -438,7 +438,7 @@ class LayerPanel(QWidget):
         self.table.setRowCount(0)
         if model is not None:
             for layer in model.ordered_layers():
-                row = self.table.rowCount()
+                row = self.table.row_count()
                 self.table.insertRow(row)
                 check = QTableWidgetItem("%s/%s" % (layer.layer, layer.datatype))
                 check.setFlags(Qt.ItemIsUserCheckable | Qt.ItemIsEnabled)
@@ -454,7 +454,7 @@ class LayerPanel(QWidget):
     def sync_from_canvas(self, canvas):
         """Reflect the canvas' current visibility (used after a preset)."""
         self._updating = True
-        for row in range(self.table.rowCount()):
+        for row in range(self.table.row_count()):
             item = self.table.item(row, 0)
             key = item.data(Qt.UserRole)
             item.setCheckState(Qt.Checked if canvas.layer_visible(key) else Qt.Unchecked)

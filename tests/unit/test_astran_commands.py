@@ -1,16 +1,16 @@
 """Unit tests for the ASTRAN run-script builder (pySrc/astran.py)."""
 import astran
 from astran import (ASTRAN_CELLS_HEIGHT, ASTRAN_CELL_TEMPLATE,
-                    ASTRAN_SUPPLY_SIZE, ASTRAN_VGRID, buildAstranCommands)
+                    ASTRAN_SUPPLY_SIZE, ASTRAN_VGRID, build_astran_commands)
 
 
 def _cmd(**over):
-    kwargs = dict(gurobiPath=r"C:\tools\gurobi_cl.cmd",
-                  technologyPath=r"C:\tech\tech_freePDK45.rul",
-                  spiceNetlistPath=r"C:\out\COMPLEX1.sp",
-                  complexName="COMPLEX1", commandDir=r"C:\out")
+    kwargs = dict(gurobi_path=r"C:\tools\gurobi_cl.cmd",
+                  technology_path=r"C:\tech\tech_freePDK45.rul",
+                  spice_netlist_path=r"C:\out\COMPLEX1.sp",
+                  complex_name="COMPLEX1", command_dir=r"C:\out")
     kwargs.update(over)
-    return buildAstranCommands(**kwargs)
+    return build_astran_commands(**kwargs)
 
 
 def test_every_placeholder_is_substituted():

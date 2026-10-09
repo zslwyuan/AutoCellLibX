@@ -45,7 +45,7 @@ LAYERS = [
     (31, 0, "metal4", "drawing", "#5b6fd0", 90, True),
     (32, 0, "via4", "drawing", "#8fa0d8", 91, True),
     (33, 0, "metal5", "drawing", "#8a5bd0", 100, True),
-    (235, 0, "prBoundary", "drawing", "#e0b341", 5, True),
+    (235, 0, "pr_boundary", "drawing", "#e0b341", 5, True),
 ]
 
 _LAYER_BY_KEY = {(l, d): (name, purpose, colour, order, vis)

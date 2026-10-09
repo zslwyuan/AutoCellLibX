@@ -130,8 +130,8 @@ def f1():
     # front-end stages (vertical loop)
     rbox(ax, 6.9, 6.3, 5.4, 0.95, "① 解析与构图  (BLIFPreProc)\nliberty+BLIF → DesignCell/DesignNet → 有向图", C_FRONT, E_FRONT, 9.5)
     rbox(ax, 6.9, 5.2, 5.4, 0.9, "② 模式种子挖掘\n深度受限树编码 → 频次聚类", C_FRONT, E_FRONT, 9.5)
-    rbox(ax, 6.9, 4.1, 5.4, 0.9, "③ 模式生长  (BLIFPatternGrowth)\n吸收同特征邻居，扩展 patternExtensionTrace", C_FRONT, E_FRONT, 9.5)
-    rbox(ax, 6.9, 3.0, 5.4, 0.9, "④ 候选评估与组合  (main.py)\n(saveArea = Σ(原宽−新宽)×出现次数)", C_FRONT, E_FRONT, 9.0)
+    rbox(ax, 6.9, 4.1, 5.4, 0.9, "③ 模式生长  (BLIFPatternGrowth)\n吸收同特征邻居，扩展 pattern_extension_trace", C_FRONT, E_FRONT, 9.5)
+    rbox(ax, 6.9, 3.0, 5.4, 0.9, "④ 候选评估与组合  (main.py)\n(save_area = Σ(原宽−新宽)×出现次数)", C_FRONT, E_FRONT, 9.0)
     rbox(ax, 6.9, 1.9, 5.4, 0.85, "⑤ SPICE 导出  (spice.py)\n合并子电路 → COMPLEX<n>.sp", C_FRONT, E_FRONT, 9.5)
 
     # back-end
@@ -173,21 +173,21 @@ def f2():
     fig, ax = newfig(10.5, 12)
     cx = 5.25
     rbox(ax, cx, 11.4, 8.6, 0.8, "加载 liberty + BLIF + 单元 SPICE；构建有向图与初始模式簇", C_IO, E_IO, 10.5)
-    rbox(ax, cx, 10.3, 8.6, 0.75, "sortPatternClusterSeqs：按 簇数×簇大小 降序排列", C_FRONT, E_FRONT, 10)
-    rbox(ax, cx, 9.35, 7.6, 0.7, "外层循环 i = 0 … topThr-1（topThr=5）", C_FRONT, E_FRONT, 10, bold=True)
+    rbox(ax, cx, 10.3, 8.6, 0.75, "sort_pattern_cluster_seqs：按 簇数×簇大小 降序排列", C_FRONT, E_FRONT, 10)
+    rbox(ax, cx, 9.35, 7.6, 0.7, "外层循环 i = 0 … top_thr-1（top_thr=5）", C_FRONT, E_FRONT, 10, bold=True)
 
     # inner block
     ax.add_patch(Rectangle((1.3, 4.4), 7.9, 4.2, fc="#F4F8FD", ec=E_FRONT, lw=1.2, ls="--", zorder=0))
-    txt(ax, 5.25, 8.35, "内层循环 j：考察排序后的前 topThr 个模式序列", 9.5, E_FRONT)
+    txt(ax, 5.25, 8.35, "内层循环 j：考察排序后的前 top_thr 个模式序列", 9.5, E_FRONT)
 
-    rbox(ax, cx, 7.7, 7.2, 0.6, "取候选模式；按 patternExtensionTrace 去重", C_FRONT, E_FRONT, 9.5)
-    diamond(ax, cx, 6.75, 4.4, 1.1, "簇大小<11 且\n覆盖率达标？\n(ratioThr/cntThr)")
+    rbox(ax, cx, 7.7, 7.2, 0.6, "取候选模式；按 pattern_extension_trace 去重", C_FRONT, E_FRONT, 9.5)
+    diamond(ax, cx, 6.75, 4.4, 1.1, "簇大小<11 且\n覆盖率达标？\n(ratio_thr/cnt_thr)")
     rbox(ax, cx, 5.55, 7.2, 0.75, "画模式子图 PNG；导出 COMPLEX.sp；调用 ASTRAN 生成版图", C_FRONT, E_FRONT, 9.5)
     diamond(ax, cx, 4.8, 4.6, 0.95, "版图有效？\n(宽度 > 0)")
 
-    rbox(ax, cx, 3.7, 8.2, 0.8, "累加 saveArea = (原单元宽度和 − COMPLEX 宽度) × 簇数", C_FRONT, E_FRONT, 10)
+    rbox(ax, cx, 3.7, 8.2, 0.8, "累加 save_area = (原单元宽度和 − COMPLEX 宽度) × 簇数", C_FRONT, E_FRONT, 10)
 
-    diamond(ax, cx, 2.55, 4.6, 1.05, "本轮 saveArea >\n历史最佳？")
+    diamond(ax, cx, 2.55, 4.6, 1.05, "本轮 save_area >\n历史最佳？")
 
     rbox(ax, 2.5, 1.2, 4.0, 0.85, "是：写 bestRecord-基准名\n（最佳组合）", C_OK, E_IO, 9.5)
     rbox(ax, 8.1, 1.2, 3.6, 0.85, "否：停止扩展\n该基准", C_BAD, "#B03030", 9.5)
@@ -354,7 +354,7 @@ def f6():
     cx = 4.0
     stages = [
         ("1. cellgen select", "选中单元并展平层次\ngetFlattenCell：把子实例展开成晶体管网表"),
-        ("2. calcArea", "计算行高 H=rowheight×vGrid=2.6µm\n确定 P/N 扩散区与金属轨道列表 trackPos[]"),
+        ("2. calcArea", "计算行高 H=rowheight×v_grid=2.6µm\n确定 P/N 扩散区与金属轨道列表 trackPos[]"),
         ("3. foldTrans", "晶体管折叠\n宽度>扩散区高度的管子拆成多条并联腿\n(seriesFolding 保持串联堆叠对齐)"),
         ("4. placeTrans", "晶体管排序\nThresholdAccept（模拟退火变体）\n代价=宽度+栅极失配+布线长度+拥塞+空隙"),
         ("5. route", "单元内布线\nGraphRouter：Pathfinder 迷宫路由\n拆线重布 + Steiner 点优化"),
@@ -437,7 +437,7 @@ def f7():
     # height annotation
     ax.annotate("", xy=(x1 + 0.3, Y(0)), xytext=(x1 + 0.3, Y(H)),
                 arrowprops=dict(arrowstyle="<->", color="#333"))
-    txt(ax, x1 + 0.45, Y(H / 2), "行高 H = 2.6 µm\n= rowheight(13) × vGrid(0.20)", 9.5, "#333", ha="left")
+    txt(ax, x1 + 0.45, Y(H / 2), "行高 H = 2.6 µm\n= rowheight(13) × v_grid(0.20)", 9.5, "#333", ha="left")
     # width annotation
     ax.annotate("", xy=(x0, y0 - 0.25), xytext=(x1, y0 - 0.25),
                 arrowprops=dict(arrowstyle="<->", color="#333"))
@@ -594,8 +594,8 @@ def f11():
     # formula box
     ax.add_patch(Rectangle((6.8, 1.2), 5.9, 3.6, fc="#F4F8FD", ec=E_FRONT, lw=1.3))
     txt(ax, 9.75, 4.35, "贪心组合选择", 10.5, E_FRONT, bold=True)
-    txt(ax, 9.75, 3.55, "saveArea = Σ ( Σ w(原单元) − w(COMPLEX) ) × 簇数", 9.5, TXT)
-    txt(ax, 9.75, 2.75, "每一轮：在 topThr 个候选里累计正的 saveArea，\n若超过历史最佳则写入 bestRecord，否则停止。", 9.2, "#333")
+    txt(ax, 9.75, 3.55, "save_area = Σ ( Σ w(原单元) − w(COMPLEX) ) × 簇数", 9.5, TXT)
+    txt(ax, 9.75, 2.75, "每一轮：在 top_thr 个候选里累计正的 save_area，\n若超过历史最佳则写入 bestRecord，否则停止。", 9.2, "#333")
     txt(ax, 9.75, 1.75, "最终选出的组合 = 使总节省最大的一组 COMPLEX 单元", 9.2, E_FRONT)
     save(fig, "area_eval.png")
 

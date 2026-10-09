@@ -52,7 +52,7 @@ class PatternsTab(QWidget):
         ])
         root.addWidget(self.guide)
         root.addWidget(subtle(
-            "每行是一个合并后的复杂单元：它的模式码（patternExtensionTrace）、出现次数、"
+            "每行是一个合并后的复杂单元：它的模式码（pattern_extension_trace）、出现次数、"
             "版图宽度与由此带来的面积收益。点击行查看子图与晶体管网表。"))
 
         splitter = QSplitter(Qt.Horizontal)
@@ -184,7 +184,7 @@ class PatternsTab(QWidget):
 
         self.table.setRowCount(0)
         for r in self._rows:
-            row = self.table.rowCount()
+            row = self.table.row_count()
             self.table.insertRow(row)
             self._set(row, 0, r["name"], bold=True)
             self._set(row, 1, r["trace"])
@@ -212,7 +212,7 @@ class PatternsTab(QWidget):
         self.table.setItem(row, col, item)
 
     def _selected_row(self):
-        rows = self.table.selectionModel().selectedRows()
+        rows = self.table.selectionModel().selected_rows()
         return rows[0].row() if rows else -1
 
     def _on_select(self):

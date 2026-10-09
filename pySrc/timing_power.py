@@ -14,7 +14,7 @@ energy in the lib's energy unit) and evaluates them with bilinear
 interpolation (edge-clamped: the lib's load grid starts at 0.1 pF while
 a fanout-4 load is ~0.01 pF -- clamping is the standard approximation).
 
-On top of the tables, ``patternTimingPower`` runs a tiny static timing
+On top of the tables, ``pattern_timing_power`` runs a tiny static timing
 analysis over the pattern's DAG: per-net load = sum of the driven pins'
 capacitances, stage delay = worst arc of cell_rise/cell_fall at that
 load, output slew from the transition tables, longest path wins.  It is
@@ -38,15 +38,15 @@ _TABLE_KINDS = ("cell_rise", "cell_fall", "rise_transition",
 _lut_cache = {}
 
 
-def _parseTable(blockText):
+def _parseTable(block_text):
     """(loads, slews, values[row][col]) from one LUT block; None if bad."""
-    indices = _INDEX_RE.findall(blockText)
-    vpos = blockText.find("values")
+    indices = _INDEX_RE.findall(block_text)
+    vpos = block_text.find("values")
     if (len(indices) != 2 or vpos < 0):
         return None
     loads = [float(v) for v in _VALUES_RE.findall(indices[0])]
     slews = [float(v) for v in _VALUES_RE.findall(indices[1])]
-    flat = [float(v) for v in _VALUES_RE.findall(blockText[vpos:])]
+    flat = [float(v) for v in _VALUES_RE.findall(block_text[vpos:])]
     if (len(flat) != len(loads) * len(slews)):
         return None
     values = [flat[r * len(slews):(r + 1) * len(slews)]
@@ -54,33 +54,33 @@ def _parseTable(blockText):
     return (loads, slews, values)
 
 
-def loadTimingPower(libFileName):
-    """{typeName: {arcs: {pin: {kind: table}}, power: {kind: table}}}
+def load_timing_power(lib_file_name):
+    """{type_name: {arcs: {pin: {kind: table}}, power: {kind: table}}}
     for one .lib file (cached per (path, mtime))."""
-    key = (os.path.abspath(libFileName), os.path.getmtime(libFileName))
+    key = (os.path.abspath(lib_file_name), os.path.getmtime(lib_file_name))
     if (key in _lut_cache):
         return _lut_cache[key]
 
-    text = open(libFileName).read()
+    text = open(lib_file_name).read()
     lib = {}
-    for cellArgs, cellBody in _sliceBlocks(text, "cell"):
-        name = cellArgs.split()[0] if cellArgs else cellArgs
+    for cell_args, cell_body in _sliceBlocks(text, "cell"):
+        name = cell_args.split()[0] if cell_args else cell_args
         arcs = {}
         power = {}
-        for _tArgs, timingBody in _sliceBlocks(cellBody, "timing"):
-            m = _RELATED_RE.search(timingBody)
+        for _tArgs, timing_body in _sliceBlocks(cell_body, "timing"):
+            m = _RELATED_RE.search(timing_body)
             related = m.group(1) if m else "?"
             for kind in _TABLE_KINDS[:4]:
-                for _args, tableBody in _sliceBlocks(timingBody, kind):
-                    table = _parseTable(tableBody)
+                for _args, table_body in _sliceBlocks(timing_body, kind):
+                    table = _parseTable(table_body)
                     if (table is not None):
                         arcs.setdefault(related, {})[kind] = table
-        for _pArgs, powerBody in _sliceBlocks(cellBody, "internal_power"):
-            m = _RELATED_RE.search(powerBody)
+        for _pArgs, power_body in _sliceBlocks(cell_body, "internal_power"):
+            m = _RELATED_RE.search(power_body)
             related = m.group(1) if m else "?"
             for kind in _TABLE_KINDS[4:]:
-                for _args, tableBody in _sliceBlocks(powerBody, kind):
-                    table = _parseTable(tableBody)
+                for _args, table_body in _sliceBlocks(power_body, kind):
+                    table = _parseTable(table_body)
                     if (table is not None):
                         power.setdefault(related, {})[kind] = table
         lib[name] = {"arcs": arcs, "power": power}
@@ -113,20 +113,20 @@ def bilinear(grid1, grid2, values, x1, x2):
     return top + (bot - top) * t1
 
 
-def stageDelaySlew(typeMetrics, loadPf, inputSlewNs):
+def stage_delay_slew(type_metrics, load_pf, input_slew_ns):
     """(delay, output slew) of a cell stage: worst over its timing arcs
     and over rise/fall, at the given output load and input slew."""
     delay = 0.0
-    slew = inputSlewNs
-    for _pin, arcTables in typeMetrics.get("arcs", {}).items():
+    slew = input_slew_ns
+    for _pin, arc_tables in type_metrics.get("arcs", {}).items():
         for kind, acc in (("cell_rise", "d"), ("cell_fall", "d"),
                           ("rise_transition", "s"),
                           ("fall_transition", "s")):
-            table = arcTables.get(kind)
+            table = arc_tables.get(kind)
             if (table is None):
                 continue
             loads, slews, values = table
-            v = bilinear(loads, slews, values, loadPf, inputSlewNs)
+            v = bilinear(loads, slews, values, load_pf, input_slew_ns)
             if (acc == "d"):
                 delay = max(delay, v)
             else:
@@ -134,10 +134,10 @@ def stageDelaySlew(typeMetrics, loadPf, inputSlewNs):
     return delay, slew
 
 
-def stageEnergy(typeMetrics, loadPf, inputSlewNs):
+def stage_energy(type_metrics, load_pf, input_slew_ns):
     """Average rise/fall energy of one full output toggle (worst pin)."""
     best = 0.0
-    for _pin, tables in typeMetrics.get("power", {}).items():
+    for _pin, tables in type_metrics.get("power", {}).items():
         total = 0.0
         count = 0
         for kind in ("rise_power", "fall_power"):
@@ -145,15 +145,15 @@ def stageEnergy(typeMetrics, loadPf, inputSlewNs):
             if (table is None):
                 continue
             loads, slews, values = table
-            total += bilinear(loads, slews, values, loadPf, inputSlewNs)
+            total += bilinear(loads, slews, values, load_pf, input_slew_ns)
             count += 1
         if (count):
             best = max(best, total / count)
     return best
 
 
-def patternTimingPower(exampleCells, lutMetrics, electricalMetrics,
-                       defaultInputSlewNs=0.06):
+def pattern_timing_power(example_cells, lut_metrics, electrical_metrics,
+                       default_input_slew_ns=0.06):
     """Mini-STA over one pattern instance.
 
     Per-net load = sum of the driven pins' capacitances (wire RC
@@ -162,19 +162,19 @@ def patternTimingPower(exampleCells, lutMetrics, electricalMetrics,
     delay, the total toggle energy (sum of per-stage energies), and the
     per-stage breakdown for inspection.
     """
-    inside = set(c.id for c in exampleCells)
+    inside = set(c.id for c in example_cells)
 
-    def netLoad(net):
+    def net_load(net):
         load = 0.0
-        for succCell, succPin in zip(net.succCells, net.succPins):
-            m = electricalMetrics.get(succCell.stdCellType.typeName)
+        for succ_cell, succ_pin in zip(net.succ_cells, net.succ_pins):
+            m = electrical_metrics.get(succ_cell.std_cell_type.type_name)
             if (m is not None):
-                load += m.get("pin_caps", {}).get(succPin, 0.0)
+                load += m.get("pin_caps", {}).get(succ_pin, 0.0)
         return load
 
     # longest-path in topological order (cells are few; iterate to fixpoint)
-    arrival = {}          # cell id -> (arrivalNs, slewNs)
-    order = list(exampleCells)
+    arrival = {}          # cell id -> (arrival_ns, slew_ns)
+    order = list(example_cells)
     progressed = True
     guard = 0
     while (progressed and guard <= len(order) * len(order)):
@@ -183,42 +183,42 @@ def patternTimingPower(exampleCells, lutMetrics, electricalMetrics,
         for cell in order:
             if (cell.id in arrival):
                 continue
-            inputArrivals = []
+            input_arrivals = []
             ready = True
-            for net in cell.inputNets:
-                pred = net.predCell
+            for net in cell.input_nets:
+                pred = net.pred_cell
                 if (pred is None or pred.id not in inside):
-                    inputArrivals.append((0.0, defaultInputSlewNs))
+                    input_arrivals.append((0.0, default_input_slew_ns))
                 elif (pred.id in arrival):
-                    inputArrivals.append(arrival[pred.id])
+                    input_arrivals.append(arrival[pred.id])
                 else:
                     ready = False
             if (not ready):
                 continue
-            tm = lutMetrics.get(cell.stdCellType.typeName, {})
-            stageIn = max((a for a, _s in inputArrivals), default=0.0)
-            slewIn = max((s for _a, s in inputArrivals),
-                         default=defaultInputSlewNs)
+            tm = lut_metrics.get(cell.std_cell_type.type_name, {})
+            stage_in = max((a for a, _s in input_arrivals), default=0.0)
+            slew_in = max((s for _a, s in input_arrivals),
+                         default=default_input_slew_ns)
             # the stage's own output nets drive its fanout load
             load = 0.0
-            for net in cell.outputNets:
-                load = max(load, netLoad(net))
-            delay, slewOut = stageDelaySlew(tm, load, slewIn)
-            arrival[cell.id] = (stageIn + delay, slewOut)
+            for net in cell.output_nets:
+                load = max(load, net_load(net))
+            delay, slew_out = stage_delay_slew(tm, load, slew_in)
+            arrival[cell.id] = (stage_in + delay, slew_out)
             progressed = True
 
-    criticalPath = max((a for a, _s in arrival.values()), default=0.0)
+    critical_path = max((a for a, _s in arrival.values()), default=0.0)
     energy = 0.0
     for cell in order:
-        tm = lutMetrics.get(cell.stdCellType.typeName, {})
+        tm = lut_metrics.get(cell.std_cell_type.type_name, {})
         load = 0.0
-        for net in cell.outputNets:
-            load = max(load, netLoad(net))
-        _a, slewIn = arrival.get(cell.id, (0.0, defaultInputSlewNs))
-        energy += stageEnergy(tm, load, slewIn)
+        for net in cell.output_nets:
+            load = max(load, net_load(net))
+        _a, slew_in = arrival.get(cell.id, (0.0, default_input_slew_ns))
+        energy += stage_energy(tm, load, slew_in)
 
     return {
-        "critical_path_ns": criticalPath,
+        "critical_path_ns": critical_path,
         "toggle_energy": energy,
         "stages_timed": len(arrival),
     }

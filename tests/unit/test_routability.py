@@ -1,5 +1,5 @@
 """Unit tests for pySrc/routability.py (P0-4)."""
-from routability import parseAstranLogRoutability, loadCellRoutability
+from routability import parse_astran_log_routability, load_cell_routability
 
 
 LOG = """-> Routing cell...
@@ -17,12 +17,12 @@ LOG = """-> Routing cell...
 def test_parse_takes_last_final_cost_and_max_attempts(tmp_path):
     log = tmp_path / "C1.Astranlog"
     log.write_text(LOG)
-    m = parseAstranLogRoutability(str(log))
-    assert m.widthTracks == 30          # last Final cost wins
-    assert m.gateMismatches == 2
-    assert m.rtDensity == 4
+    m = parse_astran_log_routability(str(log))
+    assert m.width_tracks == 30          # last Final cost wins
+    assert m.gate_mismatches == 2
+    assert m.rt_density == 4
     assert m.gaps == 3
-    assert m.routingAttempts == 49      # max over all routes
+    assert m.routing_attempts == 49      # max over all routes
 
 
 def test_score_orders_by_density_then_defects():
@@ -34,13 +34,13 @@ def test_score_orders_by_density_then_defects():
 
 
 def test_missing_log_returns_none(tmp_path):
-    assert parseAstranLogRoutability(str(tmp_path / "nope")) is None
-    assert loadCellRoutability(str(tmp_path), "NOPE") is None
+    assert parse_astran_log_routability(str(tmp_path / "nope")) is None
+    assert load_cell_routability(str(tmp_path), "NOPE") is None
 
 
 def test_real_astran_log_parses(in_pysrc):
-    m = loadCellRoutability("./outputs/adder", "COMPLEX1")
+    m = load_cell_routability("./outputs/adder", "COMPLEX1")
     assert m is not None
-    assert m.rtDensity > 0
-    assert m.routingAttempts > 0
-    assert m.widthTracks > 0
+    assert m.rt_density > 0
+    assert m.routing_attempts > 0
+    assert m.width_tracks > 0

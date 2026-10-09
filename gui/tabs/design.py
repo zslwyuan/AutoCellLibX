@@ -235,7 +235,7 @@ class DesignTab(QWidget):
 
         root_id = None
         for i, cell in enumerate(cells):
-            if cell.stdCellType.typeName == type_name:
+            if cell.std_cell_type.type_name == type_name:
                 root_id = cell.id
                 break
         if root_id is None:

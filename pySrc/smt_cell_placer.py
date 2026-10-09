@@ -23,7 +23,7 @@ Model (two diffusion rows per polarity, like ASTRAN's double-row packing):
   diffusion;
 - a transistor can be *folded* into k parallel legs, each of width
   ceil(w / k) on the grid; the legs occupy k contiguous columns.  A leg is
-  capped at ``maxLegUm`` (a manufacturing limit on one diffusion finger,
+  capped at ``max_leg_um`` (a manufacturing limit on one diffusion finger,
   like ASTRAN's foldTrans): folding only ever widens a block (ceil
   division), so without that cap the optimum is always k=1 and the joint
   choice would be meaningless.  The joint solve picks the k whose waste is
@@ -45,9 +45,9 @@ iteration here is over sorted structures, so two runs on the same machine
 give the same placement (AGENTS.md invariant 9).
 
 Usage:
-    from smt_cell_placer import placeCell
-    result = placeCell("outputs/adder/COMPLEX0.sp", gridUm=0.19)
-    print(result.widthUm)
+    from smt_cell_placer import place_cell
+    result = place_cell("outputs/adder/COMPLEX0.sp", grid_um=0.19)
+    print(result.width_um)
 """
 
 import argparse
@@ -76,34 +76,34 @@ _SUBCKT_RE = re.compile(
 class Device(object):
     """One MOS transistor of a subcircuit."""
 
-    def __init__(self, name, drain, gate, source, bulk, isP, widthUm):
+    def __init__(self, name, drain, gate, source, bulk, is_p, width_um):
         self.name = name
         self.drain = drain
         self.gate = gate
         self.source = source
         self.bulk = bulk
-        self.isP = isP
-        self.widthUm = widthUm
+        self.is_p = is_p
+        self.width_um = width_um
 
     def __repr__(self):
         return "Device(%s, %s, w=%.2f)" % (
-            self.name, "P" if self.isP else "N", self.widthUm)
+            self.name, "P" if self.is_p else "N", self.width_um)
 
 
 class TransistorNetlist(object):
     """Parsed subcircuit: port list + devices (in file order)."""
 
-    def __init__(self, subcktName, ports, devices):
-        self.subcktName = subcktName
+    def __init__(self, subckt_name, ports, devices):
+        self.subckt_name = subckt_name
         self.ports = list(ports)
         self.devices = list(devices)
 
     @property
-    def externalNodes(self):
+    def external_nodes(self):
         return set(self.ports)
 
 
-def parseSpiceSubckt(text):
+def parse_spice_subckt(text):
     """Parse the first .subckt block; return TransistorNetlist.
 
     Mirrors spice.py's reader in the small: 'M<name> d g s b PMOS W=xu L=yu'
@@ -114,7 +114,7 @@ def parseSpiceSubckt(text):
     m = _SUBCKT_RE.search(text)
     if (m is None):
         raise ValueError("no .subckt block found")
-    subcktName = m.group("name")
+    subckt_name = m.group("name")
     ports = m.group("ports").split()
     devices = []
     for line in text.splitlines():
@@ -127,11 +127,11 @@ def parseSpiceSubckt(text):
             mm.group("source"), mm.group("bulk"),
             mm.group("type").upper() == "PMOS", w))
     if (not devices):
-        raise ValueError("no MOS devices found in subckt %s" % subcktName)
-    return TransistorNetlist(subcktName, ports, devices)
+        raise ValueError("no MOS devices found in subckt %s" % subckt_name)
+    return TransistorNetlist(subckt_name, ports, devices)
 
 
-def findSeriesChains(netlist):
+def find_series_chains(netlist):
     """Group devices into series chains via degree-2 internal nodes.
 
     A node with exactly two device terminals that is not a subcircuit port
@@ -140,13 +140,13 @@ def findSeriesChains(netlist):
     unique path through internal nodes); standalone devices come back as
     length-1 chains.
     """
-    nodeTerms = collections.defaultdict(list)
+    node_terms = collections.defaultdict(list)
     for dev in netlist.devices:
-        nodeTerms[dev.source].append((dev, "s"))
-        nodeTerms[dev.drain].append((dev, "d"))
+        node_terms[dev.source].append((dev, "s"))
+        node_terms[dev.drain].append((dev, "d"))
     internal = set()
-    for node, terms in nodeTerms.items():
-        if (node in netlist.externalNodes):
+    for node, terms in node_terms.items():
+        if (node in netlist.external_nodes):
             continue
         if (len(terms) == 2 and terms[0][0] is not terms[1][0]):
             internal.add(node)
@@ -164,7 +164,7 @@ def findSeriesChains(netlist):
             nxt = None
             for node in (last.drain, last.source):
                 if (node in internal):
-                    for other, _ in nodeTerms[node]:
+                    for other, _ in node_terms[node]:
                         if (other is not last and other not in used):
                             nxt = (node, other)
                             break
@@ -181,7 +181,7 @@ def findSeriesChains(netlist):
             nxt = None
             for node in (first.drain, first.source):
                 if (node in internal):
-                    for other, _ in nodeTerms[node]:
+                    for other, _ in node_terms[node]:
                         if (other is not first and other not in used):
                             nxt = (node, other)
                             break
@@ -200,93 +200,93 @@ def findSeriesChains(netlist):
 class PlacementResult(object):
     """Solved placement of one cell."""
 
-    def __init__(self, statusName, widthCols, widthUm, devices):
-        self.statusName = statusName
-        self.widthCols = widthCols
-        self.widthUm = widthUm
+    def __init__(self, status_name, width_cols, width_um, devices):
+        self.status_name = status_name
+        self.width_cols = width_cols
+        self.width_um = width_um
         self.devices = devices          # list of PlacedDevice
 
-    def asDict(self):
+    def as_dict(self):
         return {
-            "status": self.statusName,
-            "width_cols": self.widthCols,
-            "width_um": round(self.widthUm, 4),
-            "devices": [d.asDict() for d in self.devices],
+            "status": self.status_name,
+            "width_cols": self.width_cols,
+            "width_um": round(self.width_um, 4),
+            "devices": [d.as_dict() for d in self.devices],
         }
 
 
 class PlacedDevice(object):
-    def __init__(self, name, isP, row, startCol, legs, legWidthCols):
+    def __init__(self, name, is_p, row, start_col, legs, leg_width_cols):
         self.name = name
-        self.isP = isP
+        self.is_p = is_p
         self.row = row
-        self.startCol = startCol
+        self.start_col = start_col
         self.legs = legs
-        self.legWidthCols = legWidthCols
+        self.leg_width_cols = leg_width_cols
 
     @property
-    def endCol(self):
-        return self.startCol + self.legs * self.legWidthCols
+    def end_col(self):
+        return self.start_col + self.legs * self.leg_width_cols
 
-    def asDict(self):
+    def as_dict(self):
         return {
             "name": self.name,
-            "type": "P" if self.isP else "N",
+            "type": "P" if self.is_p else "N",
             "row": self.row,
-            "start_col": self.startCol,
-            "end_col": self.endCol,
+            "start_col": self.start_col,
+            "end_col": self.end_col,
             "legs": self.legs,
-            "leg_width_cols": self.legWidthCols,
+            "leg_width_cols": self.leg_width_cols,
         }
 
 
-def buildSmtModel(netlist, gridUm=DEFAULT_GRID_UM, minLegUm=MIN_LEG_UM,
-                  maxLegUm=MAX_LEG_UM, maxWidthUm=None):
+def build_smt_model(netlist, grid_um=DEFAULT_GRID_UM, min_leg_um=MIN_LEG_UM,
+                  max_leg_um=MAX_LEG_UM, max_width_um=None):
     """Build the CP-SAT joint folding+placement model.
 
-    Returns (model, Wvar, endVars, devVars, chains) where devVars maps
-    Device -> (startVar, kVar, legwVar, blockWVar, endVar).  Exposed for
-    tests; placeCell() wraps it.
+    Returns (model, Wvar, end_vars, dev_vars, chains) where dev_vars maps
+    Device -> (start_var, k_var, legw_var, block_w_var, end_var).  Exposed for
+    tests; place_cell() wraps it.
     """
     model = cp_model.CpModel()
-    wCols = {}
+    w_cols = {}
     for dev in netlist.devices:
-        cols = int(round(dev.widthUm / gridUm))
-        wCols[dev] = max(1, cols)
-    if (maxWidthUm is None):
-        maxWidthUm = 4.0 * sum(wCols.values()) * gridUm
-    widthUb = max(1, int(math.ceil(maxWidthUm / gridUm)))
+        cols = int(round(dev.width_um / grid_um))
+        w_cols[dev] = max(1, cols)
+    if (max_width_um is None):
+        max_width_um = 4.0 * sum(w_cols.values()) * grid_um
+    width_ub = max(1, int(math.ceil(max_width_um / grid_um)))
 
-    minLegCols = max(1, int(math.ceil(minLegUm / gridUm)))
-    maxLegCols = max(1, int(math.ceil(maxLegUm / gridUm)))
-    chains = findSeriesChains(netlist)
+    min_leg_cols = max(1, int(math.ceil(min_leg_um / grid_um)))
+    max_leg_cols = max(1, int(math.ceil(max_leg_um / grid_um)))
+    chains = find_series_chains(netlist)
 
-    devVars = {}
-    endVars = []
-    perPolarity = {"P": [], "N": []}       # (x interval, y interval) pairs
+    dev_vars = {}
+    end_vars = []
+    per_polarity = {"P": [], "N": []}       # (x interval, y interval) pairs
     for dev in netlist.devices:
-        maxFold = max(1, int(math.ceil(wCols[dev] / minLegCols)))
-        start = model.NewIntVar(0, widthUb, "start_%s" % dev.name)
+        max_fold = max(1, int(math.ceil(w_cols[dev] / min_leg_cols)))
+        start = model.NewIntVar(0, width_ub, "start_%s" % dev.name)
         row = model.NewIntVar(0, 1, "row_%s" % dev.name)   # 2 rows/polarity
-        k = model.NewIntVar(1, maxFold, "k_%s" % dev.name)
-        num = model.NewIntVar(0, wCols[dev] + maxFold, "num_%s" % dev.name)
-        legw = model.NewIntVar(1, wCols[dev], "legw_%s" % dev.name)
-        block = model.NewIntVar(1, widthUb + 1, "block_%s" % dev.name)
-        end = model.NewIntVar(1, widthUb + 1, "end_%s" % dev.name)
-        # legw == ceil(wCols / k) == (wCols + k - 1) // k
-        model.Add(num == wCols[dev] + k - 1)
+        k = model.NewIntVar(1, max_fold, "k_%s" % dev.name)
+        num = model.NewIntVar(0, w_cols[dev] + max_fold, "num_%s" % dev.name)
+        legw = model.NewIntVar(1, w_cols[dev], "legw_%s" % dev.name)
+        block = model.NewIntVar(1, width_ub + 1, "block_%s" % dev.name)
+        end = model.NewIntVar(1, width_ub + 1, "end_%s" % dev.name)
+        # legw == ceil(w_cols / k) == (w_cols + k - 1) // k
+        model.Add(num == w_cols[dev] + k - 1)
         model.AddDivisionEquality(legw, num, k)
-        model.Add(legw <= maxLegCols)      # manufacturing cap on one finger
+        model.Add(legw <= max_leg_cols)      # manufacturing cap on one finger
         model.AddMultiplicationEquality(block, k, legw)
         model.Add(end == start + block)
         interval = model.NewIntervalVar(start, block, end, "iv_%s" % dev.name)
-        rowInterval = model.NewIntervalVar(row, 1, row + 1,
+        row_interval = model.NewIntervalVar(row, 1, row + 1,
                                            "rowiv_%s" % dev.name)
-        devVars[dev] = (start, row, k, legw, block, end, interval, rowInterval)
-        endVars.append(end)
-        perPolarity["P" if dev.isP else "N"].append((interval, rowInterval))
+        dev_vars[dev] = (start, row, k, legw, block, end, interval, row_interval)
+        end_vars.append(end)
+        per_polarity["P" if dev.is_p else "N"].append((interval, row_interval))
 
-    for polarity, pairs in perPolarity.items():
+    for polarity, pairs in per_polarity.items():
         if (len(pairs) > 1):
             model.AddNoOverlap2D(
                 [p[0] for p in pairs], [p[1] for p in pairs])
@@ -294,18 +294,18 @@ def buildSmtModel(netlist, gridUm=DEFAULT_GRID_UM, minLegUm=MIN_LEG_UM,
     # series chains: same row, member i+1 starts where member i ends
     for chain in chains:
         for a, b in zip(chain, chain[1:]):
-            model.Add(devVars[a][1] == devVars[b][1])
-            model.Add(devVars[a][5] == devVars[b][0])
+            model.Add(dev_vars[a][1] == dev_vars[b][1])
+            model.Add(dev_vars[a][5] == dev_vars[b][0])
 
-    width = model.NewIntVar(1, widthUb + 1, "width")
-    model.AddMaxEquality(width, endVars)
-    totalLegs = model.NewIntVar(1, sum(
-        max(1, int(math.ceil(wCols[dev] / minLegCols))) for dev in netlist.devices),
+    width = model.NewIntVar(1, width_ub + 1, "width")
+    model.AddMaxEquality(width, end_vars)
+    total_legs = model.NewIntVar(1, sum(
+        max(1, int(math.ceil(w_cols[dev] / min_leg_cols))) for dev in netlist.devices),
         "total_legs")
-    kAll = [devVars[dev][2] for dev in netlist.devices]
-    model.Add(sum(kAll) == totalLegs)
-    model.Minimize(width * _OBJECTIVE_WIDTH_WEIGHT + totalLegs)
-    return model, width, endVars, devVars, chains
+    k_all = [dev_vars[dev][2] for dev in netlist.devices]
+    model.Add(sum(k_all) == total_legs)
+    model.Minimize(width * _OBJECTIVE_WIDTH_WEIGHT + total_legs)
+    return model, width, end_vars, dev_vars, chains
 
 
 def _statusName(status):
@@ -313,60 +313,60 @@ def _statusName(status):
             cp_model.INFEASIBLE: "INFEASIBLE"}.get(status, "UNKNOWN")
 
 
-def placeCell(spPath, gridUm=DEFAULT_GRID_UM, minLegUm=MIN_LEG_UM,
-              maxLegUm=MAX_LEG_UM, timeLimitS=_SOLVE_TIME_LIMIT_S):
+def place_cell(sp_path, grid_um=DEFAULT_GRID_UM, min_leg_um=MIN_LEG_UM,
+              max_leg_um=MAX_LEG_UM, time_limit_s=_SOLVE_TIME_LIMIT_S):
     """Solve folding+placement for one .sp file; return PlacementResult.
 
     Solver failures degrade to the objective upper bound recorded by the
-    solver (never fabricated): widthCols is the best feasible width the
+    solver (never fabricated): width_cols is the best feasible width the
     solver found, or None when even the trivial bound failed (kept as
     status UNKNOWN so callers can tell a real result from a breakdown).
     """
-    with open(spPath, 'r', errors="ignore") as f:
+    with open(sp_path, 'r', errors="ignore") as f:
         text = f.read()
-    netlist = parseSpiceSubckt(text)
-    model, width, endVars, devVars, chains = buildSmtModel(
-        netlist, gridUm=gridUm, minLegUm=minLegUm, maxLegUm=maxLegUm)
+    netlist = parse_spice_subckt(text)
+    model, width, end_vars, dev_vars, chains = build_smt_model(
+        netlist, grid_um=grid_um, min_leg_um=min_leg_um, max_leg_um=max_leg_um)
     solver = cp_model.CpSolver()
-    solver.parameters.max_time_in_seconds = timeLimitS
+    solver.parameters.max_time_in_seconds = time_limit_s
     status = solver.Solve(model)
     if (status not in (cp_model.OPTIMAL, cp_model.FEASIBLE)):
         return PlacementResult(_statusName(status), None, None, [])
     placed = []
     for dev in netlist.devices:
-        start, row, k, legw, block, end, _, _ = devVars[dev]
+        start, row, k, legw, block, end, _, _ = dev_vars[dev]
         placed.append(PlacedDevice(
-            dev.name, dev.isP, solver.Value(row),
+            dev.name, dev.is_p, solver.Value(row),
             solver.Value(start), solver.Value(k), solver.Value(legw)))
-    widthCols = solver.Value(width)
+    width_cols = solver.Value(width)
     return PlacementResult(
-        _statusName(status), widthCols, widthCols * gridUm, placed)
+        _statusName(status), width_cols, width_cols * grid_um, placed)
 
 
-def astranWidthFromLog(logPath):
+def astran_width_from_log(log_path):
     """ASTRAN cell width (um) from its log; None when absent."""
-    if (not os.path.exists(logPath)):
+    if (not os.path.exists(log_path)):
         return None
-    for line in open(logPath, 'r', errors="ignore"):
+    for line in open(log_path, 'r', errors="ignore"):
         if ("-> Cell Size (W x H): " in line):
             return float(line.split("-> Cell Size (W x H): ")[1]
                          .split("x")[0])
     return None
 
 
-def compareWithAstran(spPath, logPath=None, gridUm=DEFAULT_GRID_UM,
-                      timeLimitS=_SOLVE_TIME_LIMIT_S):
+def compare_with_astran(sp_path, log_path=None, grid_um=DEFAULT_GRID_UM,
+                      time_limit_s=_SOLVE_TIME_LIMIT_S):
     """Width comparison for one cell: {smt, astran, ratio}."""
-    result = placeCell(spPath, gridUm=gridUm, timeLimitS=timeLimitS)
-    astran = astranWidthFromLog(logPath) if logPath else None
+    result = place_cell(sp_path, grid_um=grid_um, time_limit_s=time_limit_s)
+    astran = astran_width_from_log(log_path) if log_path else None
     row = {
-        "cell": os.path.basename(spPath).replace(".sp", ""),
-        "smt_status": result.statusName,
-        "smt_width_um": result.widthUm,
+        "cell": os.path.basename(sp_path).replace(".sp", ""),
+        "smt_status": result.status_name,
+        "smt_width_um": result.width_um,
     }
-    if (astran is not None and result.widthUm is not None):
+    if (astran is not None and result.width_um is not None):
         row["astran_width_um"] = astran
-        row["ratio"] = round(result.widthUm / astran, 3)
+        row["ratio"] = round(result.width_um / astran, 3)
     else:
         row["astran_width_um"] = astran
         row["ratio"] = None
@@ -382,16 +382,16 @@ def main(argv=None):
     ap.add_argument("--grid", type=float, default=DEFAULT_GRID_UM)
     ap.add_argument("--time-limit", type=float, default=_SOLVE_TIME_LIMIT_S)
     args = ap.parse_args(argv)
-    spFiles = [args.sp] if args.sp else []
+    sp_files = [args.sp] if args.sp else []
     if (args.dir):
-        spFiles += sorted(os.path.join(args.dir, f) for f in
+        sp_files += sorted(os.path.join(args.dir, f) for f in
                           os.listdir(args.dir) if f.endswith(".sp"))
-    if (not spFiles):
+    if (not sp_files):
         ap.error("pass --sp FILE or --dir DIR")
-    for sp in spFiles:
+    for sp in sp_files:
         log = sp[:-3] + ".Astranlog" if args.dir else None
-        row = compareWithAstran(sp, log, gridUm=args.grid,
-                                timeLimitS=args.time_limit)
+        row = compare_with_astran(sp, log, grid_um=args.grid,
+                                time_limit_s=args.time_limit)
         print("%(cell)-14s %(smt_status)-10s smt=%(smt_width_um)-8s "
               "astran=%(astran_width_um)-8s ratio=%(ratio)s" % row)
 

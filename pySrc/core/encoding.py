@@ -7,41 +7,41 @@ the identity order-invariant (children sorted after the root, AUDIT
 (synthesis-reuse mode, AUDIT 5.27).
 """
 
-from global_variables import bypassTypes
+from global_variables import bypass_types
 
 
-def extract_and_encode_subgraph_tree(cells, rootNode, depthLimit=2, clusterId=None):
+def extract_and_encode_subgraph_tree(cells, root_node, depth_limit=2, cluster_id=None):
     depths = [0]
-    tree = [rootNode]
-    encodes = [cells[rootNode].stdCellType.typeName]
-    Que = [rootNode]
+    tree = [root_node]
+    encodes = [cells[root_node].std_cell_type.type_name]
+    queue = [root_node]
     head = 0
     while (head < len(tree)):
-        curNode = cells[Que[head]]
-        curDepth = depths[head]
-        if (curDepth >= depthLimit):
+        cur_node = cells[queue[head]]
+        cur_depth = depths[head]
+        if (cur_depth >= depth_limit):
             break
-        for inputNet in curNode.inputNets:
-            if (not inputNet.predCell is None):
-                shouldBypass = False
-                for typeKey in bypassTypes:
-                    if (inputNet.predCell.stdCellType.typeName.find(typeKey) >= 0):
-                        shouldBypass = True
+        for input_net in cur_node.input_nets:
+            if (not input_net.pred_cell is None):
+                should_bypass = False
+                for type_key in bypass_types:
+                    if (input_net.pred_cell.std_cell_type.type_name.find(type_key) >= 0):
+                        should_bypass = True
                         break
-                if ((not shouldBypass)):
-                    depths.append(curDepth+1)
-                    Que.append(inputNet.predCell.id)
-                    if (not inputNet.predCell.id in tree):
-                        tree.append(inputNet.predCell.id)
-                        encodes.append(inputNet.predCell.stdCellType.typeName)
+                if ((not should_bypass)):
+                    depths.append(cur_depth+1)
+                    queue.append(input_net.pred_cell.id)
+                    if (not input_net.pred_cell.id in tree):
+                        tree.append(input_net.pred_cell.id)
+                        encodes.append(input_net.pred_cell.std_cell_type.type_name)
         head += 1
 
-    if (not clusterId is None):
-        for cellId in tree:
-            if (cells[cellId].clusterId >= 0):
+    if (not cluster_id is None):
+        for cell_id in tree:
+            if (cells[cell_id].cluster_id >= 0):
                 return None, None
-        for cellId in tree:
-            cells[cellId].setClusterId(clusterId)
+        for cell_id in tree:
+            cells[cell_id].set_cluster_id(cluster_id)
 
     return tree, encodes
 
@@ -71,9 +71,9 @@ def escape_output_count(cells, tree):
     synthesis-reuse mode (AUDIT 5.27)."""
     inside = set(tree)
     count = 0
-    for cellId in tree:
-        for outNet in cells[cellId].outputNets:
-            if (len(outNet.succCells) == 0
-                    or not all(s.id in inside for s in outNet.succCells)):
+    for cell_id in tree:
+        for out_net in cells[cell_id].output_nets:
+            if (len(out_net.succ_cells) == 0
+                    or not all(s.id in inside for s in out_net.succ_cells)):
                 count += 1
     return count

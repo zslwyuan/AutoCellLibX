@@ -12,16 +12,16 @@ constants in astran.py (the test suite pins the equivalence).  The
 ``sky130`` / ``gf180`` entries have their .rul rule files written
 (status ``draft``) from primary LEF sources -- geometry is real, but no
 DRC deck has been run on generated cells yet, so they still require the
-explicit ``allowScaffold=True`` opt-in and the registry marks them
+explicit ``allow_scaffold=True`` opt-in and the registry marks them
 ``draft``, not ``validated``.  Finishing a PDK means: run a few cells,
 check them against the PDK's own DRC deck (ASTRAN's internal rules are
 placeholders for unverified rows -- see the .rul headers), then flip the
 status.
 
 Usage:
-    from pdk_config import getPdk, pdkGeometryDict, loadTechnologyRul
-    pdk = getPdk("freepdk45")
-    script = buildAstranCommands(..., geometry=pdkGeometryDict(pdk))
+    from pdk_config import get_pdk, pdk_geometry_dict, load_technology_rul
+    pdk = get_pdk("freepdk45")
+    script = build_astran_commands(..., geometry=pdk_geometry_dict(pdk))
 """
 
 import os
@@ -31,41 +31,41 @@ _REPO_DIR = os.path.normpath(os.path.join(
 
 
 class PdkProfile(object):
-    def __init__(self, name, cellsHeight, hGrid, vGrid, supplySize,
-                 cellTemplate, technologyRul, gdsMap=None,
+    def __init__(self, name, cells_height, h_grid, v_grid, supply_size,
+                 cell_template, technology_rul, gds_map=None,
                  status="validated", notes=""):
         self.name = name
-        self.cellsHeight = cellsHeight
-        self.hGrid = hGrid
-        self.vGrid = vGrid
-        self.supplySize = supplySize
-        self.cellTemplate = cellTemplate
-        self.technologyRul = technologyRul
-        self.gdsMap = gdsMap
+        self.cells_height = cells_height
+        self.h_grid = h_grid
+        self.v_grid = v_grid
+        self.supply_size = supply_size
+        self.cell_template = cell_template
+        self.technology_rul = technology_rul
+        self.gds_map = gds_map
         self.status = status            # "validated" | "draft" | "scaffold"
         self.notes = notes
 
     @property
-    def rowHeightUm(self):
-        return self.cellsHeight * self.vGrid
+    def row_height_um(self):
+        return self.cells_height * self.v_grid
 
     @property
-    def nwellPos(self):
+    def nwell_pos(self):
         """N-well bottom edge: always H/2 so P/N diffusion heights match
         (the 1.0825 incident -- see AUDIT_REPORT -- is what an asymmetric
         value costs)."""
-        return self.rowHeightUm / 2.0
+        return self.row_height_um / 2.0
 
 
 _PDK_REGISTRY = {
     "freepdk45": PdkProfile(
         name="freepdk45",
-        cellsHeight=13, hGrid=0.19, vGrid=0.19,
-        supplySize=0.26, cellTemplate="Tapless",
-        technologyRul=os.path.join(
+        cells_height=13, h_grid=0.19, v_grid=0.19,
+        supply_size=0.26, cell_template="Tapless",
+        technology_rul=os.path.join(
             _REPO_DIR, "tools", "astran", "build", "Work",
             "tech_freePDK45.rul"),
-        gdsMap=os.path.join(_REPO_DIR, "stdCelllib", "gds2_encounter.map"),
+        gds_map=os.path.join(_REPO_DIR, "stdCelllib", "gds2_encounter.map"),
         status="validated",
         notes="GSCL45: row = 13 x 0.19 = 2.47um = CoreSite height; "
               "M1-pitch grid; abutment supply rails 2 x 0.13um."),
@@ -74,9 +74,9 @@ _PDK_REGISTRY = {
     # status "draft": geometry is real, cells are not yet validated.
     "sky130": PdkProfile(
         name="sky130",
-        cellsHeight=8, hGrid=0.34, vGrid=0.34,
-        supplySize=0.48, cellTemplate="Tapless",
-        technologyRul=os.path.join(
+        cells_height=8, h_grid=0.34, v_grid=0.34,
+        supply_size=0.48, cell_template="Tapless",
+        technology_rul=os.path.join(
             _REPO_DIR, "tools", "astran", "build", "Work",
             "tech_sky130.rul"),
         status="draft",
@@ -85,9 +85,9 @@ _PDK_REGISTRY = {
               "NEEDS PDK DRC validation."),
     "gf180": PdkProfile(
         name="gf180",
-        cellsHeight=7, hGrid=0.56, vGrid=0.56,
-        supplySize=0.60, cellTemplate="Tapless",
-        technologyRul=os.path.join(
+        cells_height=7, h_grid=0.56, v_grid=0.56,
+        supply_size=0.60, cell_template="Tapless",
+        technology_rul=os.path.join(
             _REPO_DIR, "tools", "astran", "build", "Work",
             "tech_gf180.rul"),
         status="draft",
@@ -97,43 +97,43 @@ _PDK_REGISTRY = {
 }
 
 
-def getPdk(name, allowScaffold=False):
+def get_pdk(name, allow_scaffold=False):
     """Look up a PDK profile by name; non-validated PDKs are opt-in."""
     if (name not in _PDK_REGISTRY):
         raise KeyError(
             "unknown PDK %r; available: %s"
             % (name, sorted(_PDK_REGISTRY.keys())))
     pdk = _PDK_REGISTRY[name]
-    if (pdk.status != "validated" and not allowScaffold):
+    if (pdk.status != "validated" and not allow_scaffold):
         raise RuntimeError(
             "PDK %r is %s (no DRC-validated cells yet); pass "
-            "allowScaffold=True to experiment. %s"
+            "allow_scaffold=True to experiment. %s"
             % (name, pdk.status, pdk.notes))
     return pdk
 
 
-def listPdks():
+def list_pdks():
     return {name: pdk.status for name, pdk in _PDK_REGISTRY.items()}
 
 
-def pdkGeometryDict(pdk):
-    """Geometry dict for astran.buildAstranCommands(..., geometry=...)."""
+def pdk_geometry_dict(pdk):
+    """Geometry dict for astran.build_astran_commands(..., geometry=...)."""
     return {
-        "cellsHeight": pdk.cellsHeight,
-        "hGrid": pdk.hGrid,
-        "vGrid": pdk.vGrid,
-        "supplySize": pdk.supplySize,
-        "nwellPos": pdk.nwellPos,
-        "cellTemplate": pdk.cellTemplate,
+        "cells_height": pdk.cells_height,
+        "h_grid": pdk.h_grid,
+        "v_grid": pdk.v_grid,
+        "supply_size": pdk.supply_size,
+        "nwell_pos": pdk.nwell_pos,
+        "cell_template": pdk.cell_template,
     }
 
 
-def loadTechnologyRul(path):
-    """Parse an ASTRAN .rul file; dict with techName/minstep/vdd/mlayers
+def load_technology_rul(path):
+    """Parse an ASTRAN .rul file; dict with tech_name/minstep/vdd/mlayers
     and a {name: (cif, gds, tech)} layer map.  Deterministic; a corrupt
     or missing file raises so a wrong PDK cannot be silently enabled.
     """
-    tech = {"techName": None, "minstep": None, "vdd": None,
+    tech = {"tech_name": None, "minstep": None, "vdd": None,
             "mlayers": None, "layers": {}}
     with open(path, 'r', errors="ignore") as f:
         for line in f:
@@ -144,7 +144,7 @@ def loadTechnologyRul(path):
             if (not parts):
                 continue
             if (parts[0] == "TECHNAME"):
-                tech["techName"] = parts[1]
+                tech["tech_name"] = parts[1]
             elif (parts[0] == "MINSTEP"):
                 tech["minstep"] = float(parts[1])
             elif (parts[0] == "VDD"):
@@ -158,23 +158,23 @@ def loadTechnologyRul(path):
     return tech
 
 
-def multiRowVariant(pdk, rowMultiplier=2):
+def multi_row_variant(pdk, row_multiplier=2):
     """Multi-row-height variant of a profile (roadmap P1-11).
 
     Complexes past ~20 transistors can trade doubled row height for a
     much smaller width (Optimal Layout Synthesis of Multi-Row Standard
     Cells, ICCAD'24; the ASP-DAC'25 follow-up adds intra-cell
-    routability to the objective).  nwellPos stays H/2 automatically, so
+    routability to the objective).  nwell_pos stays H/2 automatically, so
     the equal-well invariant holds at any multiplier.  Width comparisons
     against single-row cells are only meaningful as area (width x
     height) -- AGENTS.md invariant 10 applies.
     """
     return PdkProfile(
-        name="%s_x%drows" % (pdk.name, rowMultiplier),
-        cellsHeight=pdk.cellsHeight * rowMultiplier,
-        hGrid=pdk.hGrid, vGrid=pdk.vGrid,
-        supplySize=pdk.supplySize, cellTemplate=pdk.cellTemplate,
-        technologyRul=pdk.technologyRul, gdsMap=pdk.gdsMap,
+        name="%s_x%drows" % (pdk.name, row_multiplier),
+        cells_height=pdk.cells_height * row_multiplier,
+        h_grid=pdk.h_grid, v_grid=pdk.v_grid,
+        supply_size=pdk.supply_size, cell_template=pdk.cell_template,
+        technology_rul=pdk.technology_rul, gds_map=pdk.gds_map,
         status=pdk.status,
         notes="multi-row variant of %s (%d rows); %s"
-              % (pdk.name, rowMultiplier, pdk.notes))
+              % (pdk.name, row_multiplier, pdk.notes))

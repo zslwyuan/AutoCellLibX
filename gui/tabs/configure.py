@@ -123,18 +123,18 @@ class ConfigureTab(QWidget):
         form = QFormLayout()
         form.setLabelAlignment(Qt.AlignRight)
         self.top_thr = self._spin(1, 30, 5,
-                                  "外层轮数与每轮考察的候选数上限（main.py: topThr）")
+                                  "外层轮数与每轮考察的候选数上限（main.py: top_thr）")
         self.ratio_thr = self._dspin(0.0, 1.0, 0.05, 0.005, 3,
-                                     "模式覆盖率下限：size×cnt ≥ ratio×总单元数（main.py: ratioThr）")
+                                     "模式覆盖率下限：size×cnt ≥ ratio×总单元数（main.py: ratio_thr）")
         self.cnt_thr = self._spin(1, 1000, 30,
-                                  "模式出现次数下限（main.py: cntThr）")
+                                  "模式出现次数下限（main.py: cnt_thr）")
         self.max_cells = self._spin(2, 20, 11,
                                     "单个复杂单元最多含的原始单元数（< 此值）")
         self.max_astran_runs = self._spin(0, 200, 0,
                                           "本轮最多生成几个复杂单元版图（0=不限；用于快速试跑）")
-        form.addRow("topThr", self.top_thr)
-        form.addRow("ratioThr", self.ratio_thr)
-        form.addRow("cntThr", self.cnt_thr)
+        form.addRow("top_thr", self.top_thr)
+        form.addRow("ratio_thr", self.ratio_thr)
+        form.addRow("cnt_thr", self.cnt_thr)
         form.addRow("最大单元数", self.max_cells)
         form.addRow("ASTRAN 运行上限", self.max_astran_runs)
         param_card.add_layout(form)
@@ -186,12 +186,12 @@ class ConfigureTab(QWidget):
         # ---- layout constraints: ASTRAN geometry, editable ----
         geo_card = Card("版图参数约束 / Layout constraints")
         geo_note = faint("写入 ASTRAN .run 脚本的几何参数（默认取 pySrc/astran.py 常量）。"
-                         "行高 H = cellsHeight × vGrid；改行高需重新做 DRC 验证。")
+                         "行高 H = cells_height × v_grid；改行高需重新做 DRC 验证。")
         geo_card.add(geo_note)
         form = QFormLayout()
         form.setLabelAlignment(Qt.AlignRight)
         self.geo_cells_height = self._spin(1, 60, 13,
-                                           "行高的轨道数；H = cellsHeight × vGrid")
+                                           "行高的轨道数；H = cells_height × v_grid")
         self.geo_hgrid = self._dspin(0.001, 10.0, 0.19, 0.01, 3,
                                      "水平网格（µm），M1 布线节距")
         self.geo_vgrid = self._dspin(0.001, 10.0, 0.19, 0.01, 3,
@@ -210,12 +210,12 @@ class ConfigureTab(QWidget):
                 w.currentTextChanged.connect(lambda _t: self._geometry_changed())
             else:
                 w.valueChanged.connect(lambda _v: self._geometry_changed())
-        form.addRow("cellsHeight", self.geo_cells_height)
-        form.addRow("hGrid", self.geo_hgrid)
-        form.addRow("vGrid", self.geo_vgrid)
-        form.addRow("supplySize", self.geo_supply)
-        form.addRow("nwellPos", self.geo_nwell)
-        form.addRow("cellTemplate", self.geo_template)
+        form.addRow("cells_height", self.geo_cells_height)
+        form.addRow("h_grid", self.geo_hgrid)
+        form.addRow("v_grid", self.geo_vgrid)
+        form.addRow("supply_size", self.geo_supply)
+        form.addRow("nwell_pos", self.geo_nwell)
+        form.addRow("cell_template", self.geo_template)
         geo_card.add_layout(form)
         reset_geo = QPushButton("恢复默认 (astran.py 常量)")
         reset_geo.clicked.connect(self._reset_geometry)
@@ -309,17 +309,17 @@ class ConfigureTab(QWidget):
             paths.ensure_pysrc_on_path()
             import astran
             self._geo_defaults = {
-                "cellsHeight": astran.ASTRAN_CELLS_HEIGHT,
-                "hGrid": astran.ASTRAN_HGRID,
-                "vGrid": astran.ASTRAN_VGRID,
-                "supplySize": astran.ASTRAN_SUPPLY_SIZE,
-                "nwellPos": astran.ASTRAN_NWELL_POS,
-                "cellTemplate": astran.ASTRAN_CELL_TEMPLATE,
+                "cells_height": astran.ASTRAN_CELLS_HEIGHT,
+                "h_grid": astran.ASTRAN_HGRID,
+                "v_grid": astran.ASTRAN_VGRID,
+                "supply_size": astran.ASTRAN_SUPPLY_SIZE,
+                "nwell_pos": astran.ASTRAN_NWELL_POS,
+                "cell_template": astran.ASTRAN_CELL_TEMPLATE,
             }
         except Exception as exc:                        # noqa: BLE001
-            self._geo_defaults = {"cellsHeight": 13, "hGrid": 0.19, "vGrid": 0.19,
-                                  "supplySize": 0.26, "nwellPos": 1.235,
-                                  "cellTemplate": "Tapless"}
+            self._geo_defaults = {"cells_height": 13, "h_grid": 0.19, "v_grid": 0.19,
+                                  "supply_size": 0.26, "nwell_pos": 1.235,
+                                  "cell_template": "Tapless"}
             self.ctx.log("读取 Astran 几何常量失败，使用默认值：%s" % exc, "warn")
         self._sync_geometry()
 
@@ -327,19 +327,19 @@ class ConfigureTab(QWidget):
         cfg = self.ctx.state.config
         defaults = getattr(self, "_geo_defaults", {}) or {}
         geo = cfg.geometry or defaults
-        for key, widget in (("cellsHeight", self.geo_cells_height),
-                            ("hGrid", self.geo_hgrid),
-                            ("vGrid", self.geo_vgrid),
-                            ("supplySize", self.geo_supply),
-                            ("nwellPos", self.geo_nwell)):
+        for key, widget in (("cells_height", self.geo_cells_height),
+                            ("h_grid", self.geo_hgrid),
+                            ("v_grid", self.geo_vgrid),
+                            ("supply_size", self.geo_supply),
+                            ("nwell_pos", self.geo_nwell)):
             widget.blockSignals(True)
             widget.setValue(geo.get(key, defaults.get(key, widget.value())))
             widget.blockSignals(False)
         self.geo_template.blockSignals(True)
         self.geo_template.setCurrentText(
-            geo.get("cellTemplate", defaults.get("cellTemplate", "Tapless")))
+            geo.get("cell_template", defaults.get("cell_template", "Tapless")))
         self.geo_template.blockSignals(False)
-        H = geo.get("cellsHeight", 13) * geo.get("vGrid", 0.19)
+        H = geo.get("cells_height", 13) * geo.get("v_grid", 0.19)
         self._geo_hint.setText("当前行高 H = %.2f µm%s"
                                % (H, "（默认值）" if cfg.geometry is None else ""))
         self._geometry_changed(update_hint=False)
@@ -347,15 +347,15 @@ class ConfigureTab(QWidget):
     def _geometry_changed(self, update_hint=True):
         cfg = self.ctx.state.config
         cfg.geometry = {
-            "cellsHeight": self.geo_cells_height.value(),
-            "hGrid": self.geo_hgrid.value(),
-            "vGrid": self.geo_vgrid.value(),
-            "supplySize": self.geo_supply.value(),
-            "nwellPos": self.geo_nwell.value(),
-            "cellTemplate": self.geo_template.currentText(),
+            "cells_height": self.geo_cells_height.value(),
+            "h_grid": self.geo_hgrid.value(),
+            "v_grid": self.geo_vgrid.value(),
+            "supply_size": self.geo_supply.value(),
+            "nwell_pos": self.geo_nwell.value(),
+            "cell_template": self.geo_template.currentText(),
         }
         if update_hint:
-            H = cfg.geometry["cellsHeight"] * cfg.geometry["vGrid"]
+            H = cfg.geometry["cells_height"] * cfg.geometry["v_grid"]
             self._geo_hint.setText("当前行高 H = %.2f µm（自定义）" % H)
         self.ctx.state.configChanged.emit()
         self._update_summary()
@@ -576,10 +576,10 @@ class ConfigureTab(QWidget):
                                  cfg.geometry) else ""
         geo = ""
         if cfg.geometry:
-            H = cfg.geometry["cellsHeight"] * cfg.geometry["vGrid"]
+            H = cfg.geometry["cells_height"] * cfg.geometry["v_grid"]
             geo = " · H=%.2f" % H
         self._summary.setText(
-            "将运行 %d 个基准%s%s%s · topThr=%d · ratio=%g · cnt=%d · %s%s"
+            "将运行 %d 个基准%s%s%s · top_thr=%d · ratio=%g · cnt=%d · %s%s"
             % (n, custom, pdk, geo, cfg.top_thr, cfg.ratio_thr, cfg.cnt_thr,
                layout,
                " · 上限 %d" % cfg.max_astran_runs if cfg.max_astran_runs else ""))

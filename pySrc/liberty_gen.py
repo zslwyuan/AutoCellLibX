@@ -34,7 +34,7 @@ import os
 import re
 
 from electrical import _sliceBlocks
-from timing_power import stageDelaySlew, stageEnergy
+from timing_power import stage_delay_slew, stage_energy
 
 _FUNC_RE = re.compile(r"function\s*:\s*\"([^\"]*)\"")
 _DIR_RE = re.compile(r"direction\s*:\s*(\w+)")
@@ -45,89 +45,89 @@ DEFAULT_LOADS = [0.1, 0.5, 1.2, 3.0, 4.0, 5.0]
 DEFAULT_SLEWS = [0.06, 0.24, 0.48, 0.9, 1.2, 1.8]
 
 
-def loadLibertyFunctions(libFileName):
-    """{(cellName, outPin): function-string} from a liberty file."""
-    text = open(libFileName).read()
+def load_liberty_functions(lib_file_name):
+    """{(cell_name, out_pin): function-string} from a liberty file."""
+    text = open(lib_file_name).read()
     functions = {}
-    for cellArgs, cellBody in _sliceBlocks(text, "cell"):
-        name = cellArgs.split()[0] if cellArgs else cellArgs
-        for pinArgs, pinBody in _sliceBlocks(cellBody, "pin"):
-            dirM = _DIR_RE.search(pinBody)
-            funcM = _FUNC_RE.search(pinBody)
-            if (dirM and dirM.group(1) == "output" and funcM):
-                functions[(name, pinArgs)] = funcM.group(1)
+    for cell_args, cell_body in _sliceBlocks(text, "cell"):
+        name = cell_args.split()[0] if cell_args else cell_args
+        for pin_args, pin_body in _sliceBlocks(cell_body, "pin"):
+            dir_m = _DIR_RE.search(pin_body)
+            func_m = _FUNC_RE.search(pin_body)
+            if (dir_m and dir_m.group(1) == "output" and func_m):
+                functions[(name, pin_args)] = func_m.group(1)
     return functions
 
 
-def _substitute(funcText, pinExpr):
+def _substitute(func_text, pin_expr):
     """Whole-word pin substitution into a fully parenthesised function."""
-    out = funcText
-    for pin, expr in sorted(pinExpr.items(), key=lambda kv: -len(kv[0])):
+    out = func_text
+    for pin, expr in sorted(pin_expr.items(), key=lambda kv: -len(kv[0])):
         out = re.sub(r"(?<![A-Za-z0-9_])" + re.escape(pin) +
                      r"(?![A-Za-z0-9_])", "(" + expr + ")", out)
     return out
 
 
-def libertyPinName(portName):
+def liberty_pin_name(port_name):
     """Liberty-safe port name: `#` is not a valid liberty identifier
     character (yosys rejects it), so cl<k>#<pin> becomes cl<k>_<pin>.
     Injective for the exported port set (k and base pin names contain
     only letters/digits)."""
-    return portName.replace("#", "_")
+    return port_name.replace("#", "_")
 
 
-def _clusterInterface(members, electricalMetrics):
+def _clusterInterface(members, electrical_metrics):
     """Split member pins into interface inputs/outputs + the member DAG.
 
     Mirrors spice.py's port logic: a member input pin is an interface
     input when its driver is outside the cluster; a member output pin is
     an interface output unless every load sits inside the cluster.
-    Returns (inputs, outputs, edges, netDriver) where edges maps
+    Returns (inputs, outputs, edges, net_driver) where edges maps
     member index -> set(member indices it drives), and pin/net tuples
-    carry (memberIdx, pinName).
+    carry (member_idx, pin_name).
     """
     inside = set(c.id for c in members)
     indexOf = {c.id: k for k, c in enumerate(members)}
     inputs, outputs = [], []
     edges = {k: set() for k in range(len(members))}
-    netDriver = {}                    # net id -> (memberIdx, pinName)
+    net_driver = {}                    # net id -> (member_idx, pin_name)
 
-    def netsOf(cell, pinIdx, refNames, netNames, nets):
+    def nets_of(cell, pin_idx, ref_names, net_names, nets):
         """All DesignNet objects belonging to one pin: name-matched when
-        the flow populated netNames, positional otherwise (a pin may fan
+        the flow populated net_names, positional otherwise (a pin may fan
         out over several nets -- zip() would silently drop the rest)."""
-        name = netNames[pinIdx] if pinIdx < len(netNames) else None
+        name = net_names[pin_idx] if pin_idx < len(net_names) else None
         matched = [n for n in nets if n.name == name] if name else []
         if (matched):
             return matched
-        return [nets[pinIdx]] if pinIdx < len(nets) else []
+        return [nets[pin_idx]] if pin_idx < len(nets) else []
 
     for k, cell in enumerate(members):
-        for i, pinName in enumerate(cell.inputPinRefNames):
-            nets = netsOf(cell, i, cell.inputPinRefNames,
-                          cell.inputNetNames, cell.inputNets)
+        for i, pin_name in enumerate(cell.input_pin_ref_names):
+            nets = nets_of(cell, i, cell.input_pin_ref_names,
+                          cell.input_net_names, cell.input_nets)
             if (not nets):
                 # no net object at all -> driven from outside the cluster
-                inputs.append((k, pinName))
+                inputs.append((k, pin_name))
                 continue
             for net in nets:
-                if (net.predCell is None or net.predCell.id not in inside):
-                    inputs.append((k, pinName))
+                if (net.pred_cell is None or net.pred_cell.id not in inside):
+                    inputs.append((k, pin_name))
                     break
-        for i, pinName in enumerate(cell.outputPinRefNames):
+        for i, pin_name in enumerate(cell.output_pin_ref_names):
             escaped = False
-            for net in netsOf(cell, i, cell.outputPinRefNames,
-                              cell.outputNetNames, cell.outputNets):
-                netDriver[net.id] = (k, pinName)
-                if (len(net.succCells) == 0
-                        or not all(s.id in inside for s in net.succCells)):
+            for net in nets_of(cell, i, cell.output_pin_ref_names,
+                              cell.output_net_names, cell.output_nets):
+                net_driver[net.id] = (k, pin_name)
+                if (len(net.succ_cells) == 0
+                        or not all(s.id in inside for s in net.succ_cells)):
                     escaped = True
-                for succCell in net.succCells:
-                    if (succCell.id in inside):
-                        edges[k].add(indexOf[succCell.id])
+                for succ_cell in net.succ_cells:
+                    if (succ_cell.id in inside):
+                        edges[k].add(indexOf[succ_cell.id])
             if (escaped):
-                outputs.append((k, pinName))
-    return inputs, outputs, edges, netDriver
+                outputs.append((k, pin_name))
+    return inputs, outputs, edges, net_driver
 
 
 def _stageArrivalOrder(members, edges):
@@ -153,29 +153,29 @@ def _stageArrivalOrder(members, edges):
     return order
 
 
-def _sweepSta(members, edges, outputs, outLoadPf, inSlewNs,
-              lutMetrics, electricalMetrics):
+def _sweepSta(members, edges, outputs, out_load_pf, in_slew_ns,
+              lut_metrics, electrical_metrics):
     """Arrival at each output pin for one (load, slew) grid point."""
     inside = set(c.id for c in members)
-    arrival = {}                      # memberIdx -> (arrivalNs, slewNs)
+    arrival = {}                      # member_idx -> (arrival_ns, slew_ns)
     order = _stageArrivalOrder(members, edges)
-    outSet = set(outputs)
+    out_set = set(outputs)
     for k in order:
         cell = members[k]
         # input slew / arrival from the latest driving member
-        stageIn, slewIn = 0.0, inSlewNs
+        stage_in, slew_in = 0.0, in_slew_ns
         load = 0.0
-        for net in cell.outputNets:
-            for succCell, succPin in zip(net.succCells, net.succPins):
-                if (succCell.id in inside):
-                    m = electricalMetrics.get(
-                        succCell.stdCellType.typeName)
+        for net in cell.output_nets:
+            for succ_cell, succ_pin in zip(net.succ_cells, net.succ_pins):
+                if (succ_cell.id in inside):
+                    m = electrical_metrics.get(
+                        succ_cell.std_cell_type.type_name)
                     if (m is not None):
-                        load += m.get("pin_caps", {}).get(succPin, 0.0)
-            if (net.predCell is None):
+                        load += m.get("pin_caps", {}).get(succ_pin, 0.0)
+            if (net.pred_cell is None):
                 continue
-        for net in cell.inputNets:
-            pred = net.predCell
+        for net in cell.input_nets:
+            pred = net.pred_cell
             if (pred is not None and pred.id in inside):
                 pk = None
                 for kk, cc in enumerate(members):
@@ -183,37 +183,37 @@ def _sweepSta(members, edges, outputs, outLoadPf, inSlewNs,
                         pk = kk
                         break
                 if (pk is not None and pk in arrival):
-                    stageIn = max(stageIn, arrival[pk][0])
-                    slewIn = max(slewIn, arrival[pk][1])
+                    stage_in = max(stage_in, arrival[pk][0])
+                    slew_in = max(slew_in, arrival[pk][1])
         # external load on interface outputs
-        for pinName, net in zip(cell.outputPinRefNames, cell.outputNets):
-            if ((k, pinName) in outSet):
-                load += outLoadPf
-        tm = lutMetrics.get(cell.stdCellType.typeName, {})
-        delay, slewOut = stageDelaySlew(tm, load, slewIn)
-        arrival[k] = (stageIn + delay, slewOut)
+        for pin_name, net in zip(cell.output_pin_ref_names, cell.output_nets):
+            if ((k, pin_name) in out_set):
+                load += out_load_pf
+        tm = lut_metrics.get(cell.std_cell_type.type_name, {})
+        delay, slew_out = stage_delay_slew(tm, load, slew_in)
+        arrival[k] = (stage_in + delay, slew_out)
     result = {}
-    for (k, pinName) in outputs:
-        result[(k, pinName)] = arrival.get(k, (0.0, inSlewNs))
+    for (k, pin_name) in outputs:
+        result[(k, pin_name)] = arrival.get(k, (0.0, in_slew_ns))
     # toggle energy of the whole pattern at this corner
     energy = 0.0
     for k in order:
         cell = members[k]
-        tm = lutMetrics.get(cell.stdCellType.typeName, {})
+        tm = lut_metrics.get(cell.std_cell_type.type_name, {})
         load = 0.0
-        for net in cell.outputNets:
-            for succCell, succPin in zip(net.succCells, net.succPins):
-                if (succCell.id in inside):
-                    m = electricalMetrics.get(
-                        succCell.stdCellType.typeName)
+        for net in cell.output_nets:
+            for succ_cell, succ_pin in zip(net.succ_cells, net.succ_pins):
+                if (succ_cell.id in inside):
+                    m = electrical_metrics.get(
+                        succ_cell.std_cell_type.type_name)
                     if (m is not None):
-                        load += m.get("pin_caps", {}).get(succPin, 0.0)
-        _a, sIn = arrival.get(k, (0.0, inSlewNs))
-        energy += stageEnergy(tm, load, sIn)
+                        load += m.get("pin_caps", {}).get(succ_pin, 0.0)
+        _a, s_in = arrival.get(k, (0.0, in_slew_ns))
+        energy += stage_energy(tm, load, s_in)
     return result, energy
 
 
-def _composeFunction(outPin, members, netDriver, libFunctions, portNameOf):
+def _composeFunction(out_pin, members, net_driver, lib_functions, port_name_of):
     """Boolean function of one interface output pin, composed through
     the members' own liberty functions (None when uncomposable).
 
@@ -223,87 +223,87 @@ def _composeFunction(outPin, members, netDriver, libFunctions, portNameOf):
     tokenised with a unique ``@@<k>@@<pin>@@`` placeholder first, then
     the map is applied in one pass -- tokens cannot collide with
     anything inside a sub-expression."""
-    def exprOf(memberIdx, pinName, depth):
+    def expr_of(member_idx, pin_name, depth):
         if (depth > len(members) + 1):
             return None
-        func = libFunctions.get(
-            (members[memberIdx].stdCellType.typeName, pinName))
+        func = lib_functions.get(
+            (members[member_idx].std_cell_type.type_name, pin_name))
         if (func is None):
             return None
-        cell = members[memberIdx]
+        cell = members[member_idx]
         # unique-ify this member's own pins
-        tokenMap = {}
-        for pName in cell.inputPinRefNames:
-            token = "@@%d@@%s@@" % (memberIdx, pName)
-            func = re.sub(r"(?<![A-Za-z0-9_])" + re.escape(pName) +
+        token_map = {}
+        for p_name in cell.input_pin_ref_names:
+            token = "@@%d@@%s@@" % (member_idx, p_name)
+            func = re.sub(r"(?<![A-Za-z0-9_])" + re.escape(p_name) +
                           r"(?![A-Za-z0-9_])", token, func)
-            tokenMap[pName] = token
-        pinExpr = {}
-        for i, pName in enumerate(cell.inputPinRefNames):
-            token = tokenMap[pName]
-            net = cell.inputNets[i] if i < len(cell.inputNets) else None
-            if (net is None or net.predCell is None):
-                pinExpr[token] = portNameOf(memberIdx, pName)
+            token_map[p_name] = token
+        pin_expr = {}
+        for i, p_name in enumerate(cell.input_pin_ref_names):
+            token = token_map[p_name]
+            net = cell.input_nets[i] if i < len(cell.input_nets) else None
+            if (net is None or net.pred_cell is None):
+                pin_expr[token] = port_name_of(member_idx, p_name)
                 continue
             found = None
             for kk, cc in enumerate(members):
-                if (cc.id == net.predCell.id):
+                if (cc.id == net.pred_cell.id):
                     found = kk
                     break
             if (found is None):
-                pinExpr[token] = portNameOf(memberIdx, pName)
+                pin_expr[token] = port_name_of(member_idx, p_name)
             else:
-                _drvK, drvPin = netDriver[net.id]
-                sub = exprOf(found, drvPin, depth + 1)
+                _drvK, drv_pin = net_driver[net.id]
+                sub = expr_of(found, drv_pin, depth + 1)
                 if (sub is None):
                     return None
-                pinExpr[token] = sub
-        return _substitute(func, pinExpr)
-    return exprOf(outPin[0], outPin[1], 0)
+                pin_expr[token] = sub
+        return _substitute(func, pin_expr)
+    return expr_of(out_pin[0], out_pin[1], 0)
 
 
-def generateComplexLiberty(cluserSeq, complexName, widthUm,
-                           lutMetrics, electricalMetrics, libFunctions,
-                           rowHeightUm=2.47, loads=None, slews=None):
-    """Emit (libText, report) for one generated complex cell."""
+def generate_complex_liberty(cluster_seq, complex_name, width_um,
+                           lut_metrics, electrical_metrics, lib_functions,
+                           row_height_um=2.47, loads=None, slews=None):
+    """Emit (lib_text, report) for one generated complex cell."""
     loads = loads or DEFAULT_LOADS
     slews = slews or DEFAULT_SLEWS
-    members = list(cluserSeq.patternClusters[0].cellsContained)
+    members = list(cluster_seq.pattern_clusters[0].cells)
     inside = set(c.id for c in members)
-    inputs, outputs, edges, netDriver = _clusterInterface(
-        members, electricalMetrics)
+    inputs, outputs, edges, net_driver = _clusterInterface(
+        members, electrical_metrics)
 
-    def portNameOf(memberIdx, pinName):
-        return libertyPinName("cl%d#%s" % (memberIdx, pinName))
+    def port_name_of(member_idx, pin_name):
+        return liberty_pin_name("cl%d#%s" % (member_idx, pin_name))
 
     leakage = 0.0
     for cell in members:
-        m = electricalMetrics.get(cell.stdCellType.typeName)
+        m = electrical_metrics.get(cell.std_cell_type.type_name)
         if (m is not None):
             leakage += m["leakage"]
-    area = widthUm * rowHeightUm
+    area = width_um * row_height_um
 
     lines = []
-    lines.append("  cell (%s) {" % complexName)
+    lines.append("  cell (%s) {" % complex_name)
     lines.append("    area : %.6f;" % area)
     lines.append("    cell_leakage_power : %.6f;" % leakage)
     lines.append("    /* pattern: %s */"
-                 % cluserSeq.patternClusters[0].patternExtensionTrace)
+                 % cluster_seq.pattern_clusters[0].pattern_extension_trace)
     lines.append("    /* estimated pre-layout (LUT mini-STA, no wire RC);"
                  " re-characterise with SPICE for sign-off */")
 
-    for k, pinName in inputs:
-        m = electricalMetrics.get(members[k].stdCellType.typeName)
-        cap = m.get("pin_caps", {}).get(pinName, 0.0) if m else 0.0
-        lines.append("    pin (%s)  {" % portNameOf(k, pinName))
+    for k, pin_name in inputs:
+        m = electrical_metrics.get(members[k].std_cell_type.type_name)
+        cap = m.get("pin_caps", {}).get(pin_name, 0.0) if m else 0.0
+        lines.append("    pin (%s)  {" % port_name_of(k, pin_name))
         lines.append("      direction : input;")
         lines.append("      capacitance : %.8f;" % cap)
         lines.append("    }")
-    for outPin in outputs:
-        k, pinName = outPin
-        func = _composeFunction(outPin, members, netDriver,
-                                libFunctions, portNameOf)
-        lines.append("    pin (%s)  {" % portNameOf(k, pinName))
+    for out_pin in outputs:
+        k, pin_name = out_pin
+        func = _composeFunction(out_pin, members, net_driver,
+                                lib_functions, port_name_of)
+        lines.append("    pin (%s)  {" % port_name_of(k, pin_name))
         lines.append("      direction : output;")
         lines.append("      capacitance : 0;")
         lines.append("      max_capacitance : 0;")
@@ -313,27 +313,27 @@ def generateComplexLiberty(cluserSeq, complexName, widthUm,
             lines.append('      /* function unavailable (base cell '
                          'function missing) */')
         # sweep the grid once per output: delay + transition tables
-        delayTable, slewTable = [], []
-        energyTable = []
+        delay_table, slew_table = [], []
+        energy_table = []
         for load in loads:
-            delayRow, slewRow, energyRow = [], [], []
+            delay_row, slew_row, energy_row = [], [], []
             for slew in slews:
                 arrivals, energy = _sweepSta(
                     members, edges, outputs, load, slew,
-                    lutMetrics, electricalMetrics)
-                delayRow.append(arrivals[outPin][0])
-                slewRow.append(arrivals[outPin][1])
-                energyRow.append(energy)
-            delayTable.append(delayRow)
-            slewTable.append(slewRow)
-            energyTable.append(energyRow)
+                    lut_metrics, electrical_metrics)
+                delay_row.append(arrivals[out_pin][0])
+                slew_row.append(arrivals[out_pin][1])
+                energy_row.append(energy)
+            delay_table.append(delay_row)
+            slew_table.append(slew_row)
+            energy_table.append(energy_row)
 
-        inputPortNames = [portNameOf(kk, pp) for kk, pp in inputs]
-        related = inputPortNames[0] if inputPortNames else "?"
+        input_port_names = [port_name_of(kk, pp) for kk, pp in inputs]
+        related = input_port_names[0] if input_port_names else "?"
         lines.append("      timing() {")
         lines.append('        related_pin : "%s";' % related)
 
-        def tableLines(kind, table, unit_comment):
+        def table_lines(kind, table, unit_comment):
             idx1 = ", ".join("%g" % v for v in loads)
             idx2 = ", ".join("%g" % v for v in slews)
             lines.append('        %s(delay_template_6x6) {  /* %s */'
@@ -347,15 +347,15 @@ def generateComplexLiberty(cluserSeq, complexName, widthUm,
                              % (", ".join("%.6f" % v for v in row), suffix))
             lines.append("        }")
 
-        tableLines("cell_rise", delayTable, "ns; worst-arc estimate")
-        tableLines("cell_fall", delayTable, "ns; same as rise (estimate)")
-        tableLines("rise_transition", slewTable, "ns")
-        tableLines("fall_transition", slewTable, "ns")
+        table_lines("cell_rise", delay_table, "ns; worst-arc estimate")
+        table_lines("cell_fall", delay_table, "ns; same as rise (estimate)")
+        table_lines("rise_transition", slew_table, "ns")
+        table_lines("fall_transition", slew_table, "ns")
         lines.append("      }")
         lines.append("      internal_power() {")
         lines.append('        related_pin : "%s";' % related)
-        tableLines("rise_power", energyTable, "per toggle")
-        tableLines("fall_power", energyTable, "per toggle")
+        table_lines("rise_power", energy_table, "per toggle")
+        table_lines("fall_power", energy_table, "per toggle")
         lines.append("      }")
         lines.append("    }")
     lines.append("  }")
@@ -376,31 +376,31 @@ _TRACE_COMMENT_RE = re.compile(r"^\* pattern code: (.+)$", re.M)
 _EXAMPLE_RE = re.compile(r"^\*\s+(\.subckt\s+.+)$", re.M)
 
 
-def parseSpiceExampleCells(spText):
+def parse_spice_example_cells(sp_text):
     """(trace, [example member .subckt lines in cluster order]) from a
     generated COMPLEX*.sp's trailing comments."""
-    traceM = _TRACE_COMMENT_RE.search(spText)
-    trace = traceM.group(1).strip() if traceM else None
-    members = _EXAMPLE_RE.findall(spText)
+    trace_m = _TRACE_COMMENT_RE.search(sp_text)
+    trace = trace_m.group(1).strip() if trace_m else None
+    members = _EXAMPLE_RE.findall(sp_text)
     return trace, members
 
 
-def rebuildClusterFromSpice(spPath, cells):
+def rebuild_cluster_from_spice(sp_path, cells):
     """Reconstruct the exact cluster a generated .sp was exported from,
     by matching the '* Example occurence' member lines to design cells
     (DesignCell.name is the .subckt line verbatim)."""
     from blif_graph_util import DesignPatternCluster, DesignPatternClusterSeq
 
-    text = open(spPath).read()
-    trace, memberNames = parseSpiceExampleCells(text)
-    if (trace is None or not memberNames):
-        raise ValueError("no pattern trace / example cells in %s" % spPath)
-    byName = {}
+    text = open(sp_path).read()
+    trace, member_names = parse_spice_example_cells(text)
+    if (trace is None or not member_names):
+        raise ValueError("no pattern trace / example cells in %s" % sp_path)
+    by_name = {}
     for c in cells:
-        byName.setdefault(c.name, c)
+        by_name.setdefault(c.name, c)
     members = []
-    for name in memberNames:
-        cell = byName.get(name)
+    for name in member_names:
+        cell = by_name.get(name)
         if (cell is None):
             raise ValueError("example cell not found in the design graph: %s"
                              % name)
@@ -408,26 +408,26 @@ def rebuildClusterFromSpice(spPath, cells):
     cluster = DesignPatternCluster(
         0, trace, cells, [c.id for c in members], 0)
     seq = DesignPatternClusterSeq(trace)
-    seq.addCluster(cluster)
+    seq.add_cluster(cluster)
     return seq
 
 
-def generateLibertyForSpiceFile(spPath, cells, lutMetrics,
-                                electricalMetrics, libFunctions,
-                                rowHeightUm=2.47):
+def generate_liberty_for_spice_file(sp_path, cells, lut_metrics,
+                                electrical_metrics, lib_functions,
+                                row_height_um=2.47):
     """(.lib fragment, report) for an already-generated COMPLEX*.sp,
     taking the width from the sibling .Astranlog."""
-    logPath = os.path.splitext(spPath)[0] + ".Astranlog"
+    log_path = os.path.splitext(sp_path)[0] + ".Astranlog"
     width = None
-    if (os.path.exists(logPath)):
-        for line in open(logPath, 'r', errors="ignore"):
+    if (os.path.exists(log_path)):
+        for line in open(log_path, 'r', errors="ignore"):
             if (line.find("-> Cell Size (W x H): ") >= 0):
                 width = float(line.replace(
                     "-> Cell Size (W x H): ", "").split("x")[0])
     if (width is None or width <= 0):
-        raise RuntimeError("no usable width in %s" % logPath)
-    seq = rebuildClusterFromSpice(spPath, cells)
-    name = os.path.splitext(os.path.basename(spPath))[0]
-    return generateComplexLiberty(seq, name, width, lutMetrics,
-                                  electricalMetrics, libFunctions,
-                                  rowHeightUm=rowHeightUm)
+        raise RuntimeError("no usable width in %s" % log_path)
+    seq = rebuild_cluster_from_spice(sp_path, cells)
+    name = os.path.splitext(os.path.basename(sp_path))[0]
+    return generate_complex_liberty(seq, name, width, lut_metrics,
+                                  electrical_metrics, lib_functions,
+                                  row_height_um=row_height_um)

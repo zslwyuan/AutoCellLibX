@@ -23,7 +23,7 @@ import random
 SUPPLY_NAMES = {"VCC", "GND", "VDD", "VSS"}
 
 
-def parseSubcktHeader(lines):
+def parse_subckt_header(lines):
     """(name, ports) from the single-line .subckt header at lines[0]."""
     parts = lines[0].split()
     if (len(parts) < 2 or parts[0] != ".subckt"):
@@ -32,25 +32,25 @@ def parseSubcktHeader(lines):
     return parts[1], parts[2:]
 
 
-def generatePortOrders(ports, maxVariants=4, pinSupply=False):
+def generate_port_orders(ports, max_variants=4, pin_supply=False):
     """Deterministic list of port-order variants (first is identity)."""
     variants = [list(ports)]
 
-    def isSupply(p):
+    def is_supply(p):
         return p.upper() in SUPPLY_NAMES
 
-    if (pinSupply):
+    if (pin_supply):
         canonical = sorted(ports)
     else:
-        supply = [p for p in ports if isSupply(p)]
-        signals = [p for p in ports if not isSupply(p)]
+        supply = [p for p in ports if is_supply(p)]
+        signals = [p for p in ports if not is_supply(p)]
         canonical = sorted(supply) + sorted(signals)
     variants.append(canonical)
     variants.append(list(reversed(ports)))
 
     seed = int(hashlib.md5("|".join(ports).encode()).hexdigest(), 16)
     rng = random.Random(seed)
-    while (len(variants) < maxVariants):
+    while (len(variants) < max_variants):
         cand = list(ports)
         rng.shuffle(cand)
         if (cand not in variants):
@@ -64,55 +64,55 @@ def generatePortOrders(ports, maxVariants=4, pinSupply=False):
         if (key not in seen):
             seen.add(key)
             unique.append(v)
-    return unique[:maxVariants]
+    return unique[:max_variants]
 
 
-def writePortOrderVariants(spPath, outDir, maxVariants=4):
-    """Write <stem>.v<k>.sp variants of spPath into outDir; return paths."""
-    lines = open(spPath).read().split("\n")
-    name, ports = parseSubcktHeader(lines)
-    os.makedirs(outDir, exist_ok=True)
-    stem = os.path.splitext(os.path.basename(spPath))[0]
+def write_port_order_variants(sp_path, out_dir, max_variants=4):
+    """Write <stem>.v<k>.sp variants of sp_path into out_dir; return paths."""
+    lines = open(sp_path).read().split("\n")
+    name, ports = parse_subckt_header(lines)
+    os.makedirs(out_dir, exist_ok=True)
+    stem = os.path.splitext(os.path.basename(sp_path))[0]
     paths = []
-    for k, order in enumerate(generatePortOrders(ports, maxVariants)):
+    for k, order in enumerate(generate_port_orders(ports, max_variants)):
         variant = list(lines)
         variant[0] = ".subckt %s %s" % (name, " ".join(order))
-        out = os.path.join(outDir, "%s.v%d.sp" % (stem, k))
+        out = os.path.join(out_dir, "%s.v%d.sp" % (stem, k))
         with open(out, "w") as f:
             f.write("\n".join(variant))
         paths.append(out)
     return paths
 
 
-def evaluatePortOrderVariants(spPath, outDir, runLayout, maxVariants=4):
-    """Run a layout for each variant; return [(variantPath, widthOrNone)].
+def evaluate_port_order_variants(sp_path, out_dir, run_layout, max_variants=4):
+    """Run a layout for each variant; return [(variant_path, width_or_none)].
 
-    ``runLayout`` is injected so the CLI can pass astran.runAstranForNetlist
+    ``run_layout`` is injected so the CLI can pass astran.run_astran_for_netlist
     (slow) while tests pass a stub.  The callable receives
-    (variantSpPath, cellName, outDir) and returns the cell width in um.
+    (variant_sp_path, cell_name, out_dir) and returns the cell width in um.
     """
     results = []
-    variants = writePortOrderVariants(spPath, outDir, maxVariants)
-    for variantPath in variants:
-        stem = os.path.splitext(os.path.basename(variantPath))[0]
-        width = runLayout(variantPath, stem, outDir)
-        results.append((variantPath, width))
+    variants = write_port_order_variants(sp_path, out_dir, max_variants)
+    for variant_path in variants:
+        stem = os.path.splitext(os.path.basename(variant_path))[0]
+        width = run_layout(variant_path, stem, out_dir)
+        results.append((variant_path, width))
     return results
 
 
 if __name__ == "__main__":
     import sys
     if (len(sys.argv) < 2):
-        print("usage: python portorder.py <COMPLEX.sp> [maxVariants] "
-              "[outDir]\n"
+        print("usage: python portorder.py <COMPLEX.sp> [max_variants] "
+              "[out_dir]\n"
               "  writes header-only variants; evaluate them with "
               "regenerate_cells.py + ASTRAN (slow)")
         sys.exit(1)
     target = sys.argv[1]
-    maxV = int(sys.argv[2]) if len(sys.argv) > 2 else 4
-    outD = sys.argv[3] if len(sys.argv) > 3 else \
+    max_v = int(sys.argv[2]) if len(sys.argv) > 2 else 4
+    out_d = sys.argv[3] if len(sys.argv) > 3 else \
         os.path.join(os.path.dirname(target), "portorder")
-    for path in writePortOrderVariants(target, outD, maxV):
+    for path in write_port_order_variants(target, out_d, max_v):
         print("wrote", path)
     print("Next: run ASTRAN on each variant (e.g. via regenerate_cells.py "
           "with the variant .sp), compare widths in the .Astranlog files.")

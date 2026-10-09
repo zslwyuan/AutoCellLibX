@@ -38,7 +38,7 @@ LAYER, XY, ENDEL, STRING = 0x0D, 0x10, 0x11, 0x19
 # emits 2x internal coordinates, so one database unit is 1.25nm.
 DBU_UM = 0.00125
 # stream numbers follow the GSCL45 map (stdCelllib/gds2_encounter.map):
-# metal1 drawing and metal1 pin are both 49; poly 9, contact 10, prBoundary 235
+# metal1 drawing and metal1 pin are both 49; poly 9, contact 10, pr_boundary 235
 MET1, POLY, CONT, PRB, MET1_PIN = 49, 9, 10, 235, 49
 W1M1_UM, W2P1_UM, W2CT_UM = 0.065, 0.05, 0.065
 # same-layer spacing from tech_freePDK45.rul (um)

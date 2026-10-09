@@ -3,143 +3,143 @@
 Extracted from blif_pattern_growth.py (AST-verbatim): the greedy/beam
 growth of a cluster sequence by absorbing the most frequent absorbable
 neighbour class, with the optional benefit-estimator pruning (P0-3),
-the internalizeOnly synthesis-reuse bias (AUDIT 5.26) and the _BasedOn
+the internalize_only synthesis-reuse bias (AUDIT 5.26) and the _BasedOn
 replay variant.
 """
 
 from blif_graph_util import DesignPatternClusterSeq
 
 
-def _collect_neighbor_features(clusters, internalizeOnly):
+def _collect_neighbor_features(clusters, internalize_only):
     """Shared neighbour classification for both growth variants.
 
     Walks every cluster's member cells, buckets their boundary neighbours
     by feature code (``TYPE_c<k>i<o>`` / ``...o<k>``), and maps each
-    neighbour back to the cluster it would extend.  ``internalizeOnly``
+    neighbour back to the cluster it would extend.  ``internalize_only``
     (synthesis-reuse mode) skips neighbours whose outputs would escape.
-    Returns (feature2Neighbors, feature2cnt, neighbor2cluster).
+    Returns (neighbors_by_feature, feature2cnt, neighbor2cluster).
     """
-    visitedNeighbors = set()
-    feature2Neighbors = dict()
+    visited_neighbors = set()
+    neighbors_by_feature = dict()
     feature2cnt = dict()
     neighbor2cluster = dict()
     # iterate all the neighbors of the clusters in the current pattern and classify them
     for cluster in clusters:
-        cellOrderId = 0
-        thisClusterNeighbors = dict()
-        for cell in cluster.cellsContained:
+        cell_order_id = 0
+        this_cluster_neighbors = dict()
+        for cell in cluster.cells:
 
             # iterate input predecessors
-            inOrderId = 0
-            for inputNet in cell.inputNets:
-                curNeighbor = inputNet.predCell
-                if (curNeighbor is None):
+            in_order_id = 0
+            for input_net in cell.input_nets:
+                cur_neighbor = input_net.pred_cell
+                if (cur_neighbor is None):
                     continue
                 # bypass cells in current cluster or visited
-                if (curNeighbor.clusterId == cluster.clusterId or curNeighbor in visitedNeighbors or curNeighbor.stopType):
+                if (cur_neighbor.cluster_id == cluster.cluster_id or cur_neighbor in visited_neighbors or cur_neighbor.stop_type):
                     continue
-                if (curNeighbor.clusterId != -1):
-                    if (curNeighbor.cluster.clusterTypeId == cluster.clusterTypeId):
+                if (cur_neighbor.cluster_id != -1):
+                    if (cur_neighbor.cluster.cluster_type_id == cluster.cluster_type_id):
                         continue
-                if (internalizeOnly and not _absorbable(
-                        curNeighbor, cluster.cellIdsContained)):
+                if (internalize_only and not _absorbable(
+                        cur_neighbor, cluster.cell_ids)):
                     continue
-                neighbor2cluster[curNeighbor] = cluster
+                neighbor2cluster[cur_neighbor] = cluster
 
-                if (not curNeighbor in thisClusterNeighbors):
-                    thisClusterNeighbors[curNeighbor] = curNeighbor.stdCellType.typeName + "_" + \
-                        "c"+str(cellOrderId)+"i" + str(inOrderId)
+                if (not cur_neighbor in this_cluster_neighbors):
+                    this_cluster_neighbors[cur_neighbor] = cur_neighbor.std_cell_type.type_name + "_" + \
+                        "c"+str(cell_order_id)+"i" + str(in_order_id)
                 else:
-                    thisClusterNeighbors[curNeighbor] += "c" + \
-                        str(cellOrderId)+"i" + str(inOrderId)
+                    this_cluster_neighbors[cur_neighbor] += "c" + \
+                        str(cell_order_id)+"i" + str(in_order_id)
 
-                inOrderId += 1
+                in_order_id += 1
 
             # iterate output successors
-            outOrderId = 0
-            for outputNet in cell.outputNets:
-                for curNeighbor in outputNet.succCells:
+            out_order_id = 0
+            for output_net in cell.output_nets:
+                for cur_neighbor in output_net.succ_cells:
                     # bypass cells in current cluster or visited
-                    if (curNeighbor.clusterId == cluster.clusterId or curNeighbor in visitedNeighbors or curNeighbor.stopType):
+                    if (cur_neighbor.cluster_id == cluster.cluster_id or cur_neighbor in visited_neighbors or cur_neighbor.stop_type):
                         continue
-                    if (curNeighbor.clusterId != -1):
-                        if (curNeighbor.cluster.clusterTypeId == cluster.clusterTypeId):
+                    if (cur_neighbor.cluster_id != -1):
+                        if (cur_neighbor.cluster.cluster_type_id == cluster.cluster_type_id):
                             continue
-                    if (internalizeOnly and not _absorbable(
-                            curNeighbor, cluster.cellIdsContained)):
+                    if (internalize_only and not _absorbable(
+                            cur_neighbor, cluster.cell_ids)):
                         continue
-                    neighbor2cluster[curNeighbor] = cluster
+                    neighbor2cluster[cur_neighbor] = cluster
 
-                    if (not curNeighbor in thisClusterNeighbors):
-                        thisClusterNeighbors[curNeighbor] = curNeighbor.stdCellType.typeName + "_" + \
+                    if (not cur_neighbor in this_cluster_neighbors):
+                        this_cluster_neighbors[cur_neighbor] = cur_neighbor.std_cell_type.type_name + "_" + \
                             "c" + \
-                            str(cellOrderId)+"o"+str(outOrderId)
+                            str(cell_order_id)+"o"+str(out_order_id)
                     else:
-                        thisClusterNeighbors[curNeighbor] += "c" + \
-                            str(cellOrderId)+"o"+str(outOrderId)
+                        this_cluster_neighbors[cur_neighbor] += "c" + \
+                            str(cell_order_id)+"o"+str(out_order_id)
 
-                outOrderId += 1
-            cellOrderId += 1
+                out_order_id += 1
+            cell_order_id += 1
 
-        for neighbor in thisClusterNeighbors.keys():
-            neighborF = thisClusterNeighbors[neighbor]
-            visitedNeighbors.add(neighbor)
-            if (not neighborF in feature2Neighbors.keys()):
-                feature2Neighbors[neighborF] = []
-                feature2cnt[neighborF] = 0
-            feature2Neighbors[neighborF].append(neighbor)
-            feature2cnt[neighborF] += 1
-    return (feature2Neighbors, feature2cnt, neighbor2cluster)
+        for neighbor in this_cluster_neighbors.keys():
+            neighbor_feature = this_cluster_neighbors[neighbor]
+            visited_neighbors.add(neighbor)
+            if (not neighbor_feature in neighbors_by_feature.keys()):
+                neighbors_by_feature[neighbor_feature] = []
+                feature2cnt[neighbor_feature] = 0
+            neighbors_by_feature[neighbor_feature].append(neighbor)
+            feature2cnt[neighbor_feature] += 1
+    return (neighbors_by_feature, feature2cnt, neighbor2cluster)
 
 
-def _absorbable(neighbor, clusterIds):
+def _absorbable(neighbor, cluster_ids):
     """Whether absorbing ``neighbor`` adds no new escaping output: every
     load of its output nets must already sit inside the cluster (or be
     the neighbor itself), so all its outputs stay internalised."""
-    for outNet in neighbor.outputNets:
-        for succ in outNet.succCells:
-            if (succ.id not in clusterIds and succ.id != neighbor.id):
+    for out_net in neighbor.output_nets:
+        for succ in out_net.succ_cells:
+            if (succ.id not in cluster_ids and succ.id != neighbor.id):
                 return False
     return True
 
 
-def grow_sequence_of_clusters(BLIFGraph, clusterSeq, clusterNum, patternNum, paintPattern=False, featureLen=20, benefitEstimator=None, internalizeOnly=False):
+def grow_sequence_of_clusters(blif_graph, cluster_seq, cluster_num, pattern_num, paint_pattern=False, feature_len=20, benefit_estimator=None, internalize_only=False):
 
     clusters = []
-    cellsInClusters = set()
-    # Filter out disabled clusters.  With beam growth (growBeamWidth>1) a
+    cells_in_clusters = set()
+    # Filter out disabled clusters.  With beam growth (grow_beam_width>1) a
     # head grown later in the same round can contain clusters that an
     # earlier head just disabled by stealing their cells -- the pool is
-    # only cleaned (removeEmptySeqsAndDisableClusters) after the whole
+    # only cleaned (remove_empty_seqs_and_disable_clusters) after the whole
     # beam, so a hard assert here is a stale single-head invariant.
-    for cluster in clusterSeq.patternClusters:
+    for cluster in cluster_seq.pattern_clusters:
         if (not cluster.disabled):
             clusters.append(cluster)
-            for cellId in cluster.cellIdsContained:
+            for cell_id in cluster.cell_ids:
                 # used to detect merging of clusters in this seq (i.e., merge the same patterns)
-                cellsInClusters.add(cellId)
+                cells_in_clusters.add(cell_id)
 
     # count the neighbors of the clusters:
-    visitedNeighbors = set()  # cellsInClusters
-    cluster2Neighbors = []
-    feature2Neighbors = dict()
+    visited_neighbors = set()  # cells_in_clusters
+    neighbors_by_cluster = []
+    neighbors_by_feature = dict()
     feature2cnt = dict()
     neighbor2cluster = dict()
 
-    feature2Neighbors, feature2cnt, neighbor2cluster =         _collect_neighbor_features(clusters, internalizeOnly)
+    neighbors_by_feature, feature2cnt, neighbor2cluster =         _collect_neighbor_features(clusters, internalize_only)
 
 
-    sortedNeighborFeatures = []
+    sorted_neighbor_features = []
     for key in feature2cnt.keys():
-        sortedNeighborFeatures.append((key, feature2cnt[key]))
-    sortedNeighborCode = sorted(
-        sortedNeighborFeatures, key=lambda tup: -tup[1])
-    if (len(sortedNeighborCode) > 10):
-        sortedNeighborCode = sortedNeighborCode[:10]
-    print("sortedNeighborFeatures: ")
-    for neighborCode, codeCnt in sortedNeighborCode:
-        print(feature2Neighbors[neighborCode][0].stdCellType.typeName,
-              " code: (", neighborCode, ") cnt:", codeCnt)
+        sorted_neighbor_features.append((key, feature2cnt[key]))
+    sorted_neighbor_code = sorted(
+        sorted_neighbor_features, key=lambda tup: -tup[1])
+    if (len(sorted_neighbor_code) > 10):
+        sorted_neighbor_code = sorted_neighbor_code[:10]
+    print("sorted_neighbor_features: ")
+    for neighbor_code, code_cnt in sorted_neighbor_code:
+        print(neighbors_by_feature[neighbor_code][0].std_cell_type.type_name,
+              " code: (", neighbor_code, ") cnt:", code_cnt)
 
     # Merge the best branch whose *estimated* benefit is positive.  Pure
     # frequency ranking (the old `[:1]`) walked into negative-outcome
@@ -148,115 +148,115 @@ def grow_sequence_of_clusters(BLIFGraph, clusterSeq, clusterNum, patternNum, pai
     # layouts already produced in this run) vetoes those branches up
     # front when provided.  Branches are tried in frequency order and at
     # most one is merged, preserving the single-mutation semantics.
-    resSeqs = []
-    mergedCluster = set()
-    for neighborCode, codeCnt in sortedNeighborCode:
-        neighbors = feature2Neighbors[neighborCode]
+    res_seqs = []
+    merged_cluster = set()
+    for neighbor_code, code_cnt in sorted_neighbor_code:
+        neighbors = neighbors_by_feature[neighbor_code]
 
-        if (benefitEstimator is not None and len(clusters) > 0):
-            memberTypeNames = [c.stdCellType.typeName
-                               for c in clusters[0].cellsContained]
-            estBenefit = benefitEstimator(
-                memberTypeNames,
-                neighbors[0].stdCellType.typeName,
-                len(clusters[0].cellsContained) + 1,
+        if (benefit_estimator is not None and len(clusters) > 0):
+            member_type_names = [c.std_cell_type.type_name
+                               for c in clusters[0].cells]
+            est_benefit = benefit_estimator(
+                member_type_names,
+                neighbors[0].std_cell_type.type_name,
+                len(clusters[0].cells) + 1,
                 len(neighbors))
-            if (estBenefit <= 0):
-                print("pruned growth branch (", neighborCode,
-                      "): estimated benefit ", round(estBenefit, 4), " <= 0")
+            if (est_benefit <= 0):
+                print("pruned growth branch (", neighbor_code,
+                      "): estimated benefit ", round(est_benefit, 4), " <= 0")
                 continue
 
-        neighborsInThisSeqCnt = 0
+        neighbors_in_this_seq_cnt = 0
         for neighbor in neighbors:
-            if (neighbor in cellsInClusters):
-                neighborsInThisSeqCnt += 1
+            if (neighbor in cells_in_clusters):
+                neighbors_in_this_seq_cnt += 1
 
-        newClusters = []
+        new_clusters = []
         for neighbor in neighbors:
-            targetCluster = neighbor2cluster[neighbor]
+            target_cluster = neighbor2cluster[neighbor]
 
-            if (targetCluster.disabled):
+            if (target_cluster.disabled):
                 continue
 
-            if (targetCluster in mergedCluster):
+            if (target_cluster in merged_cluster):
                 continue
 
             if (not neighbor.cluster is None):
                 # disable the cluster which contains this neighbor
                 neighbor.cluster.disabled = True
-            neighbor.clusterId = targetCluster.clusterId
-            neighbor.cluster = targetCluster
-            mergedCluster.add(targetCluster)
-            targetCluster.patternExtensionTrace += "+" + neighborCode
-            targetCluster.clusterTypeId = patternNum
-            targetCluster.addCell(neighbor)
-            newClusters.append(targetCluster)
+            neighbor.cluster_id = target_cluster.cluster_id
+            neighbor.cluster = target_cluster
+            merged_cluster.add(target_cluster)
+            target_cluster.pattern_extension_trace += "+" + neighbor_code
+            target_cluster.cluster_type_id = pattern_num
+            target_cluster.add_cell(neighbor)
+            new_clusters.append(target_cluster)
 
-        if (len(newClusters) == 0):
+        if (len(new_clusters) == 0):
             continue
 
-        print("extended ", len(newClusters), " clusters and new pattern is : ",
-              newClusters[0].patternExtensionTrace, " and the size of each clustet is ", len(newClusters[0].cellsContained))
+        print("extended ", len(new_clusters), " clusters and new pattern is : ",
+              new_clusters[0].pattern_extension_trace, " and the size of each clustet is ", len(new_clusters[0].cells))
 
-        newSeq = DesignPatternClusterSeq(newClusters[0].patternExtensionTrace)
-        for cluster in newClusters:
-            newSeq.addCluster(cluster)
+        new_seq = DesignPatternClusterSeq(new_clusters[0].pattern_extension_trace)
+        for cluster in new_clusters:
+            new_seq.add_cluster(cluster)
 
-        patternNum += 1
+        pattern_num += 1
 
-        resSeqs.append(newSeq)
+        res_seqs.append(new_seq)
         break
 
     # record those clusters which did not extend
-    clusterSeq.patternClusters = []
+    cluster_seq.pattern_clusters = []
     for cluster in clusters:
-        if (cluster in mergedCluster):
+        if (cluster in merged_cluster):
             continue
-        clusterSeq.patternClusters.append(cluster)
+        cluster_seq.pattern_clusters.append(cluster)
 
-    resSeqs.append(clusterSeq)
+    res_seqs.append(cluster_seq)
 
-    return resSeqs, patternNum
+    return res_seqs, pattern_num
 
 
-def grow_sequence_of_clusters_based_on(BLIFGraph, clusterSeq, clusterNum, patternNum, paintPattern=False, featureLen=20, targetPatternTrace="", benefitEstimator=None, internalizeOnly=False):
+def grow_sequence_of_clusters_based_on(blif_graph, cluster_seq, cluster_num, pattern_num, paint_pattern=False, feature_len=20, target_pattern_trace="", benefit_estimator=None, internalize_only=False):
 
-    assert(targetPatternTrace != "")
+    assert(target_pattern_trace != "")
     clusters = []
-    cellsInClusters = set()
-    # Filter out disabled clusters.  With beam growth (growBeamWidth>1) a
+    cells_in_clusters = set()
+    # Filter out disabled clusters.  With beam growth (grow_beam_width>1) a
     # head grown later in the same round can contain clusters that an
     # earlier head just disabled by stealing their cells -- the pool is
-    # only cleaned (removeEmptySeqsAndDisableClusters) after the whole
+    # only cleaned (remove_empty_seqs_and_disable_clusters) after the whole
     # beam, so a hard assert here is a stale single-head invariant.
-    for cluster in clusterSeq.patternClusters:
+    for cluster in cluster_seq.pattern_clusters:
         if (not cluster.disabled):
             clusters.append(cluster)
-            for cellId in cluster.cellIdsContained:
+            for cell_id in cluster.cell_ids:
                 # used to detect merging of clusters in this seq (i.e., merge the same patterns)
-                cellsInClusters.add(cellId)
+                cells_in_clusters.add(cell_id)
 
     # count the neighbors of the clusters:
-    visitedNeighbors = set()  # cellsInClusters
-    cluster2Neighbors = []
-    feature2Neighbors = dict()
+    visited_neighbors = set()  # cells_in_clusters
+    neighbors_by_cluster = []
+    neighbors_by_feature = dict()
     feature2cnt = dict()
     neighbor2cluster = dict()
 
-    feature2Neighbors, feature2cnt, neighbor2cluster =         _collect_neighbor_features(clusters, internalizeOnly)
+    neighbors_by_feature, feature2cnt, neighbor2cluster =         _collect_neighbor_features(clusters, internalize_only)
 
 
-    sortedNeighborFeatures = []
+    sorted_neighbor_features = []
     for key in feature2cnt.keys():
-        sortedNeighborFeatures.append((key, feature2cnt[key]))
-    sortedNeighborCode = sorted(
-        sortedNeighborFeatures, key=lambda tup: -tup[1])
-    if (len(sortedNeighborCode) > 10):
-        sortedNeighborCode = sortedNeighborCode[:10]
-    print("sortedNeighborFeatures: ")
-    for neighborCode, codeCnt in sortedNeighborCode:
-        print(feature2Neighbors[neighborCode][0].stdCellType.typeName,
-              " code: (", neighborCode, ") cnt:", codeCnt)
+        sorted_neighbor_features.append((key, feature2cnt[key]))
+    sorted_neighbor_code = sorted(
+        sorted_neighbor_features, key=lambda tup: -tup[1])
+    if (len(sorted_neighbor_code) > 10):
+        sorted_neighbor_code = sorted_neighbor_code[:10]
+    print("sorted_neighbor_features: ")
+    for neighbor_code, code_cnt in sorted_neighbor_code:
+        print(neighbors_by_feature[neighbor_code][0].std_cell_type.type_name,
+              " code: (", neighbor_code, ") cnt:", code_cnt)
 
     # Merge the best branch whose *estimated* benefit is positive.  Pure
     # frequency ranking (the old `[:1]`) walked into negative-outcome
@@ -265,72 +265,72 @@ def grow_sequence_of_clusters_based_on(BLIFGraph, clusterSeq, clusterNum, patter
     # layouts already produced in this run) vetoes those branches up
     # front when provided.  Branches are tried in frequency order and at
     # most one is merged, preserving the single-mutation semantics.
-    resSeqs = []
-    mergedCluster = set()
-    for neighborCode, codeCnt in sortedNeighborCode:
-        neighbors = feature2Neighbors[neighborCode]
+    res_seqs = []
+    merged_cluster = set()
+    for neighbor_code, code_cnt in sorted_neighbor_code:
+        neighbors = neighbors_by_feature[neighbor_code]
 
-        if (benefitEstimator is not None and len(clusters) > 0):
-            memberTypeNames = [c.stdCellType.typeName
-                               for c in clusters[0].cellsContained]
-            estBenefit = benefitEstimator(
-                memberTypeNames,
-                neighbors[0].stdCellType.typeName,
-                len(clusters[0].cellsContained) + 1,
+        if (benefit_estimator is not None and len(clusters) > 0):
+            member_type_names = [c.std_cell_type.type_name
+                               for c in clusters[0].cells]
+            est_benefit = benefit_estimator(
+                member_type_names,
+                neighbors[0].std_cell_type.type_name,
+                len(clusters[0].cells) + 1,
                 len(neighbors))
-            if (estBenefit <= 0):
-                print("pruned growth branch (", neighborCode,
-                      "): estimated benefit ", round(estBenefit, 4), " <= 0")
+            if (est_benefit <= 0):
+                print("pruned growth branch (", neighbor_code,
+                      "): estimated benefit ", round(est_benefit, 4), " <= 0")
                 continue
 
-        neighborsInThisSeqCnt = 0
+        neighbors_in_this_seq_cnt = 0
         for neighbor in neighbors:
-            if (neighbor in cellsInClusters):
-                neighborsInThisSeqCnt += 1
+            if (neighbor in cells_in_clusters):
+                neighbors_in_this_seq_cnt += 1
 
-        newClusters = []
+        new_clusters = []
         for neighbor in neighbors:
-            targetCluster = neighbor2cluster[neighbor]
+            target_cluster = neighbor2cluster[neighbor]
 
-            if (targetCluster.disabled):
+            if (target_cluster.disabled):
                 continue
 
-            if (targetCluster in mergedCluster):
+            if (target_cluster in merged_cluster):
                 continue
 
             if (not neighbor.cluster is None):
                 # disable the cluster which contains this neighbor
                 neighbor.cluster.disabled = True
-            neighbor.clusterId = targetCluster.clusterId
-            neighbor.cluster = targetCluster
-            mergedCluster.add(targetCluster)
-            targetCluster.patternExtensionTrace += "+" + neighborCode
-            targetCluster.clusterTypeId = patternNum
-            targetCluster.addCell(neighbor)
-            newClusters.append(targetCluster)
+            neighbor.cluster_id = target_cluster.cluster_id
+            neighbor.cluster = target_cluster
+            merged_cluster.add(target_cluster)
+            target_cluster.pattern_extension_trace += "+" + neighbor_code
+            target_cluster.cluster_type_id = pattern_num
+            target_cluster.add_cell(neighbor)
+            new_clusters.append(target_cluster)
 
-        if (len(newClusters) == 0):
+        if (len(new_clusters) == 0):
             continue
 
-        print("extended ", len(newClusters), " clusters and new pattern is : ",
-              newClusters[0].patternExtensionTrace, " and the size of each clustet is ", len(newClusters[0].cellsContained))
+        print("extended ", len(new_clusters), " clusters and new pattern is : ",
+              new_clusters[0].pattern_extension_trace, " and the size of each clustet is ", len(new_clusters[0].cells))
 
-        newSeq = DesignPatternClusterSeq(newClusters[0].patternExtensionTrace)
-        for cluster in newClusters:
-            newSeq.addCluster(cluster)
+        new_seq = DesignPatternClusterSeq(new_clusters[0].pattern_extension_trace)
+        for cluster in new_clusters:
+            new_seq.add_cluster(cluster)
 
-        patternNum += 1
+        pattern_num += 1
 
-        resSeqs.append(newSeq)
+        res_seqs.append(new_seq)
         break
 
     # record those clusters which did not extend
-    clusterSeq.patternClusters = []
+    cluster_seq.pattern_clusters = []
     for cluster in clusters:
-        if (cluster in mergedCluster):
+        if (cluster in merged_cluster):
             continue
-        clusterSeq.patternClusters.append(cluster)
+        cluster_seq.pattern_clusters.append(cluster)
 
-    resSeqs.append(clusterSeq)
+    res_seqs.append(cluster_seq)
 
-    return resSeqs, patternNum
+    return res_seqs, pattern_num

@@ -13,17 +13,17 @@ import sys
 HELPER = r'''
 import hashlib, os, sys, tempfile
 sys.path.insert(0, os.getcwd())
-from blif_preproc import loadDataAndPreprocess
-from blif_graph_util import sortPatternClusterSeqs
-from spice import load_spice_subcircuits, exportSpiceNetlist
+from blif_preproc import load_data_and_preprocess
+from blif_graph_util import sort_pattern_cluster_seqs
+from spice import load_spice_subcircuits, export_spice_netlist
 
 out = tempfile.mkdtemp()
-G, cells, netlist, types, ds, ml, seqs, cn = loadDataAndPreprocess(
-    libFileName="../stdCelllib/gscl45nm.lib",
-    blifFileName="../benchmark/blif/adder.blif", startTime=0)
-seqs = sortPatternClusterSeqs(seqs)
+G, cells, netlist, types, ds, ml, seqs, cn = load_data_and_preprocess(
+    lib_file_name="../stdCelllib/gscl45nm.lib",
+    blif_file_name="../benchmark/blif/adder.blif", start_time=0)
+seqs = sort_pattern_cluster_seqs(seqs)
 subs = load_spice_subcircuits("../stdCelllib/cellsAstranFriendly.sp")
-exportSpiceNetlist(seqs[0], subs, 0, out)
+export_spice_netlist(seqs[0], subs, 0, out)
 print(hashlib.md5(
     open(os.path.join(out, "COMPLEX0.sp"), "rb").read()).hexdigest())
 '''

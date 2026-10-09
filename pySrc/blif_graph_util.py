@@ -7,145 +7,145 @@ import warnings
 
 
 class StdCellType(object):
-    def __init__(self, typeName):
+    def __init__(self, type_name):
         self.id = id
-        self.typeName = typeName
+        self.type_name = type_name
         self.pins = []
-        self.inputPins = []
-        self.outputPins = []
-        self.inputPinMap = dict()
-        self.outputPinMap = dict()
+        self.input_pins = []
+        self.output_pins = []
+        self.input_pin_map = dict()
+        self.output_pin_map = dict()
 
-    def addPin(self, pinName, direction):
+    def add_pin(self, pin_name, direction):
         if (direction == "input"):
-            self.inputPins.append(pinName)
+            self.input_pins.append(pin_name)
         if (direction == "output"):
-            self.outputPins.append(pinName)
-        self.pins.append(pinName)
+            self.output_pins.append(pin_name)
+        self.pins.append(pin_name)
 
 
 class DesignCell(object):
-    def __init__(self, id, name, stdCellType):
+    def __init__(self, id, name, std_cell_type):
         self.id = id
         self.name = name
-        self.stdCellType = stdCellType
-        self.inputPinRefNames = []
-        self.inputNetNames = []
-        self.inputNets = []
-        self.outputPinRefNames = []
-        self.outputNetNames = []
-        self.outputNets = []
-        self.clusterId = -1
+        self.std_cell_type = std_cell_type
+        self.input_pin_ref_names = []
+        self.input_net_names = []
+        self.input_nets = []
+        self.output_pin_ref_names = []
+        self.output_net_names = []
+        self.output_nets = []
+        self.cluster_id = -1
         self.cluster = None
-        self.featureV = None
-        self.featureOrder = None
-        self.stopType = False
+        self.feature_v = None
+        self.feature_order = None
+        self.stop_type = False
 
-    def addCellPin(self, refPinName, netName):
-        if (refPinName in self.stdCellType.inputPins):
-            self.inputPinRefNames.append(refPinName)
-            self.inputNetNames.append(netName)
+    def add_cell_pin(self, ref_pin_name, net_name):
+        if (ref_pin_name in self.std_cell_type.input_pins):
+            self.input_pin_ref_names.append(ref_pin_name)
+            self.input_net_names.append(net_name)
         else:
-            self.outputPinRefNames.append(refPinName)
-            self.outputNetNames.append(netName)
+            self.output_pin_ref_names.append(ref_pin_name)
+            self.output_net_names.append(net_name)
 
-    def addInputNet(self, curNet):
-        self.inputNets.append(curNet)
+    def add_input_net(self, cur_net):
+        self.input_nets.append(cur_net)
 
-    def addOutputNet(self, curNet):
-        self.outputNets.append(curNet)
+    def add_output_net(self, cur_net):
+        self.output_nets.append(cur_net)
 
-    def setClusterId(self, clusterId):
-        self.clusterId = clusterId
+    def set_cluster_id(self, cluster_id):
+        self.cluster_id = cluster_id
 
-    def setCluster(self, cluster):
+    def set_cluster(self, cluster):
         self.cluster = cluster
 
-    def setFeature(self, featureV):
-        self.featureV = featureV
-        self.featureOrder = (-featureV).argsort()
+    def set_feature(self, feature_v):
+        self.feature_v = feature_v
+        self.feature_order = (-feature_v).argsort()
 
 
 class DesignNet(object):
     # Class-level tally of multi-driver overwrite events (per process), so a
     # silent data problem is visible and testable instead of buried.
-    multiDriverCount = 0
+    multi_driver_count = 0
 
     def __init__(self, id, name):
         self.id = id
         self.name = name
-        self.succPins = []
-        self.predPin = None
-        self.succCells = []
-        self.predCell = None
+        self.succ_pins = []
+        self.pred_pin = None
+        self.succ_cells = []
+        self.pred_cell = None
         self.pins = []
 
-    def addPin(self, pinName, cell, isSucc):
-        if (isSucc):
-            self.succPins.append(pinName)
-            self.succCells.append(cell)
+    def add_pin(self, pin_name, cell, is_succ):
+        if (is_succ):
+            self.succ_pins.append(pin_name)
+            self.succ_cells.append(cell)
         else:
-            if (self.predCell is not None):
+            if (self.pred_cell is not None):
                 # Multi-driver net: historically the later driver silently
-                # overwrote predCell, corrupting edge directions without a
+                # overwrote pred_cell, corrupting edge directions without a
                 # trace.  Keep the resolution (last wins) but never quietly.
-                DesignNet.multiDriverCount += 1
+                DesignNet.multi_driver_count += 1
                 warnings.warn(
                     "net %r has multiple drivers (%r and %r); keeping the "
-                    "last one" % (self.name, self.predCell.name, cell.name),
+                    "last one" % (self.name, self.pred_cell.name, cell.name),
                     RuntimeWarning)
-            self.predPin = pinName
-            self.predCell = cell
-        self.pins.append(pinName)
+            self.pred_pin = pin_name
+            self.pred_cell = cell
+        self.pins.append(pin_name)
 
 
 class DesignPatternCluster(object):
-    def __init__(self, clusterId, patternStr, cells, cellIdsContained, clusterTypeId):
-        self.patternExtensionTrace = patternStr.replace(
+    def __init__(self, cluster_id, pattern_str, cells, cell_ids, cluster_type_id):
+        self.pattern_extension_trace = pattern_str.replace(
             "\'", "").replace("\\", "").replace("\"", "")
-        self.clusterId = clusterId
-        self.cellIdsContained = cellIdsContained
-        self.cellsContained = []
-        for cellId in cellIdsContained:
-            self.cellsContained.append(cells[cellId])
+        self.cluster_id = cluster_id
+        self.cell_ids = cell_ids
+        self.cells = []
+        for cell_id in cell_ids:
+            self.cells.append(cells[cell_id])
         self.disabled = False
-        self.clusterTypeId = clusterTypeId
+        self.cluster_type_id = cluster_type_id
 
-    def addCell(self, cell):
-        self.cellIdsContained.append(cell.id)
-        self.cellsContained.append(cell)
+    def add_cell(self, cell):
+        self.cell_ids.append(cell.id)
+        self.cells.append(cell)
 
 
 class DesignPatternClusterSeq(object):
-    def __init__(self, patternStr):
-        self.patternExtensionTrace = patternStr.replace(
+    def __init__(self, pattern_str):
+        self.pattern_extension_trace = pattern_str.replace(
             "\'", "").replace("\\", "").replace("\"", "")
-        self.patternClusters = []
+        self.pattern_clusters = []
 
-    def addCluster(self, patternCluster):
-        self.patternClusters.append(patternCluster)
+    def add_cluster(self, pattern_cluster):
+        self.pattern_clusters.append(pattern_cluster)
 
 
-def removeEmptySeqsAndDisableClusters(seqs):
-    newClusterSeqs = []
-    for curSeq in seqs:
-        if (len(curSeq.patternClusters) > 0):
-            newClusters = []
-            for tmpCluster in curSeq.patternClusters:
-                if (not tmpCluster.disabled):
-                    newClusters.append(tmpCluster)
-            if (len(newClusters) > 0):
-                curSeq.patternClusters = newClusters
-                newClusterSeqs.append(curSeq)
+def remove_empty_seqs_and_disable_clusters(seqs):
+    new_cluster_seqs = []
+    for cur_seq in seqs:
+        if (len(cur_seq.pattern_clusters) > 0):
+            new_clusters = []
+            for tmp_cluster in cur_seq.pattern_clusters:
+                if (not tmp_cluster.disabled):
+                    new_clusters.append(tmp_cluster)
+            if (len(new_clusters) > 0):
+                cur_seq.pattern_clusters = new_clusters
+                new_cluster_seqs.append(cur_seq)
             else:
-                del curSeq
+                del cur_seq
         else:
-            del curSeq
-    return newClusterSeqs
+            del cur_seq
+    return new_cluster_seqs
 
 
-def countUncoveredClusters(patternClusters, coveredCellIds):
-    """Count clusters disjoint from ``coveredCellIds``, marking them covered.
+def count_uncovered_clusters(pattern_clusters, covered_cell_ids):
+    """Count clusters disjoint from ``covered_cell_ids``, marking them covered.
 
     Candidates evaluated in the same round can claim overlapping design
     cells, but a cell cannot be instantiated inside two different complex
@@ -154,36 +154,36 @@ def countUncoveredClusters(patternClusters, coveredCellIds):
     candidate, double-counting the overlap and over-reporting the savings.
     """
     unique = 0
-    for cluster in patternClusters:
-        if any(cid in coveredCellIds for cid in cluster.cellIdsContained):
+    for cluster in pattern_clusters:
+        if any(cid in covered_cell_ids for cid in cluster.cell_ids):
             continue
         unique += 1
-        coveredCellIds.update(cluster.cellIdsContained)
+        covered_cell_ids.update(cluster.cell_ids)
     return unique
 
 
-def sortPatternClusterSeqs(seqs):
-    newClusterSeqsCnts = []
-    newClusterSeqsSize = []
+def sort_pattern_cluster_seqs(seqs):
+    counts = []
+    sizes = []
 
-    for curSeq in seqs:
-        newClusterSeqsCnts.append(
-            len(curSeq.patternClusters) * len(curSeq.patternClusters[0].cellIdsContained))
-        newClusterSeqsSize.append(
-            len(curSeq.patternClusters[0].cellIdsContained))
+    for cur_seq in seqs:
+        counts.append(
+            len(cur_seq.pattern_clusters) * len(cur_seq.pattern_clusters[0].cell_ids))
+        sizes.append(
+            len(cur_seq.pattern_clusters[0].cell_ids))
 
     newClusterSeqsCnts_Order = np.lexsort(
-        (np.array(newClusterSeqsSize), -np.array(newClusterSeqsCnts)))
+        (np.array(sizes), -np.array(counts)))
 
-    resSeqs = []
+    res_seqs = []
 
-    for SeqsId in newClusterSeqsCnts_Order:
-        resSeqs.append(seqs[SeqsId])
+    for idx in newClusterSeqsCnts_Order:
+        res_seqs.append(seqs[idx])
 
-    return resSeqs
+    return res_seqs
 
 
-def drawColorfulFigureForGraphWithAttributes(tmp_graph, colorArrtibute='type', save_to_file="", withLabel=True, fig=None, figsize=None, prog='dot'):
+def draw_graph_figure(tmp_graph, color_attribute='type', save_to_file="", with_label=True, fig=None, figsize=None, prog='dot'):
 
     if (save_to_file == ""):
         if (fig is None):
@@ -198,10 +198,10 @@ def drawColorfulFigureForGraphWithAttributes(tmp_graph, colorArrtibute='type', s
     except Exception:
         pos = nx.spring_layout(tmp_graph, seed=1)
 
-    groups1 = set(nx.get_node_attributes(tmp_graph, colorArrtibute).values())
+    groups1 = set(nx.get_node_attributes(tmp_graph, color_attribute).values())
     mapping1 = dict(zip(sorted(groups1), count()))
     nodes1 = tmp_graph.nodes()
-    colors1 = [mapping1[tmp_graph.nodes()[n][colorArrtibute]] for n in nodes1]
+    colors1 = [mapping1[tmp_graph.nodes()[n][color_attribute]] for n in nodes1]
 
     ec = nx.draw_networkx_edges(tmp_graph, pos, alpha=1, width=5)
 
@@ -209,10 +209,10 @@ def drawColorfulFigureForGraphWithAttributes(tmp_graph, colorArrtibute='type', s
     for key in pos.keys():
         label_pos[key] = (pos[key][0], pos[key][1])
 
-    labels = dict((n, (str(d[colorArrtibute])+"\n("+str(d["name"])+")").replace("\\", "").replace("$", ""))
+    labels = dict((n, (str(d[color_attribute])+"\n("+str(d["name"])+")").replace("\\", "").replace("$", ""))
                   for n, d in tmp_graph.nodes(data=True))
 
-    if (withLabel):
+    if (with_label):
         nx.draw_networkx_labels(tmp_graph, label_pos,
                                 labels=labels, font_size=12)
 

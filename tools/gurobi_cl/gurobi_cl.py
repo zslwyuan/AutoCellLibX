@@ -195,34 +195,34 @@ def main():
     # to CBC.  The CP-SAT path keeps the same failure semantics (all-zero
     # .sol on failure) and the same option-3 recovery discipline (only on
     # a *proved* infeasible, never on a timeout).
-    solverName = os.environ.get("GUROBI_CL_SOLVER", "cpsat").lower()
-    if (solverName == "cpsat"):
+    solver_name = os.environ.get("GUROBI_CL_SOLVER", "cpsat").lower()
+    if (solver_name == "cpsat"):
         try:
             import cpsat_backend
         except ImportError:
             print("WARNING: GUROBI_CL_SOLVER=cpsat but ortools is not "
                   "installed; falling back to CBC")
-            solverName = "cbc"
-    if (solverName == "cpsat"):
+            solver_name = "cbc"
+    if (solver_name == "cpsat"):
         phase1 = int(os.environ.get("GUROBI_CL_TIME_LIMIT", "300"))
         phase1 = max(60, min(phase1, timelimit))
         retry = int(os.environ.get("GUROBI_CL_RETRY_LIMIT", "900"))
         retry = max(0, min(retry, timelimit - phase1))
 
-        def solveCpSat(drop_option3, budget):
-            return cpsat_backend.solveLpWithCpSat(
+        def solve_cp_sat(drop_option3, budget):
+            return cpsat_backend.solve_lp_with_cp_sat(
                 obj_text, cons, int_vars, bin_vars, budget,
                 drop_option3=drop_option3,
                 drop_predicate=_is_option3_disjunct)
 
-        status, values, objective = solveCpSat(False, phase1)
+        status, values, objective = solve_cp_sat(False, phase1)
         if (status == cpsat_backend.NO_SOLUTION and retry > 0):
-            status, values, objective = solveCpSat(False, retry)
+            status, values, objective = solve_cp_sat(False, retry)
         if (status == cpsat_backend.INFEASIBLE):
             print("WARNING: compaction model INFEASIBLE; retrying without "
                   "the option-3 spacing disjuncts (CP-SAT; ASTRAN's repair "
                   "pass enforces real spacing)")
-            status, values, objective = solveCpSat(True, phase1)
+            status, values, objective = solve_cp_sat(True, phase1)
 
         ok = status in (cpsat_backend.OPTIMAL, cpsat_backend.FEASIBLE)
         with open(resultfile, "w") as f:

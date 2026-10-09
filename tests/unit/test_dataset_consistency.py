@@ -49,12 +49,12 @@ def test_logged_transistor_count_matches_the_netlist(repo_dir):
         log = os.path.join(_outdir(repo_dir), name + ".Astranlog")
         if not os.path.exists(log):
             continue
-        inNetlist = sum(1 for line in open(sp) if line.startswith("M"))
+        in_netlist = sum(1 for line in open(sp) if line.startswith("M"))
         logged = None
         for line in open(log, encoding="utf-8", errors="replace"):
             if "transistors before folding" in line:
                 logged = int(line.split(":")[1].split("->")[0].strip())
                 break
-        assert logged == inNetlist, (
+        assert logged == in_netlist, (
             "%s: netlist has %d transistors, log says %s"
-            % (name, inNetlist, logged))
+            % (name, in_netlist, logged))

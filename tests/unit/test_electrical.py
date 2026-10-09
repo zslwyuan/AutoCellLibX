@@ -1,10 +1,10 @@
 """Unit tests for pySrc/electrical.py (P1-7)."""
-from electrical import loadCellElectricalMetrics, patternElectricalMetrics
+from electrical import load_cell_electrical_metrics, pattern_electrical_metrics
 from blif_graph_util import StdCellType, DesignCell, DesignNet
 
 
 def test_real_liberty_metrics(in_pysrc):
-    m = loadCellElectricalMetrics("../stdCelllib/gscl45nm.lib")
+    m = load_cell_electrical_metrics("../stdCelllib/gscl45nm.lib")
     assert len(m) > 25
     nand = m["NAND2X1"]
     assert nand["leakage"] > 0
@@ -16,25 +16,25 @@ def test_real_liberty_metrics(in_pysrc):
 
 
 def test_parse_cache_returns_copy(in_pysrc):
-    a = loadCellElectricalMetrics("../stdCelllib/gscl45nm.lib")
+    a = load_cell_electrical_metrics("../stdCelllib/gscl45nm.lib")
     a["NAND2X1"]["leakage"] = -1
-    b = loadCellElectricalMetrics("../stdCelllib/gscl45nm.lib")
+    b = load_cell_electrical_metrics("../stdCelllib/gscl45nm.lib")
     assert b["NAND2X1"]["leakage"] > 0
 
 
 def _cell(cid, name):
     t = StdCellType(name)
-    t.addPin("I0", "input")
-    t.addPin("O0", "output")
+    t.add_pin("I0", "input")
+    t.add_pin("O0", "output")
     return DesignCell(cid, "c%d" % cid, t)
 
 
 def _link(src, dst, nid):
     net = DesignNet(nid, "n%d" % nid)
-    net.addPin("O0", src, False)
-    net.addPin("I0", dst, True)
-    src.addOutputNet(net)
-    dst.addInputNet(net)
+    net.add_pin("O0", src, False)
+    net.add_pin("I0", dst, True)
+    src.add_output_net(net)
+    dst.add_input_net(net)
 
 
 def test_pattern_metrics_count_internal_nets():
@@ -43,7 +43,7 @@ def test_pattern_metrics_count_internal_nets():
     _link(b, c, 1)          # b -> c : crosses the pattern boundary
     metrics = {"NAND2X1": {"leakage": 2.0, "input_cap": 0.5,
                            "delay_proxy": 1.0}}
-    m = patternElectricalMetrics([a, b], metrics)
+    m = pattern_electrical_metrics([a, b], metrics)
     assert m["leakage_sum"] == 4.0
     assert m["input_cap_sum"] == 1.0
     assert m["delay_proxy_avg"] == 1.0
@@ -53,7 +53,7 @@ def test_pattern_metrics_count_internal_nets():
 def test_pattern_metrics_tolerates_unknown_types():
     a, _b = _cell(0, "FOO"), _cell(1, "BAR")
     _link(a, _b, 0)
-    m = patternElectricalMetrics([a, _b], {})
+    m = pattern_electrical_metrics([a, _b], {})
     assert m["leakage_sum"] == 0.0
     assert m["delay_proxy_avg"] is None
     assert m["internal_nets"] == 1

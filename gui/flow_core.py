@@ -9,7 +9,7 @@ identical so a GUI run and a ``python main.py`` run produce the same cells.
 
 Two deliberate differences from ``main()``, both to expose progress:
 
-* ``loadDataAndPreprocess`` is inlined as graph -> baseline -> cluster ->
+* ``load_data_and_preprocess`` is inlined as graph -> baseline -> cluster ->
   dataset, because the ASTRAN baseline must be generated *between* building
   the graph (which yields the cell types) and loading the baseline areas.
   ``main()`` gets the same effect by calling the whole thing first.
@@ -96,11 +96,11 @@ class FlowConfig(object):
         self.lef_file = None            # .lef (nominal cell widths for area)
         self.layer_map_file = None      # Cadence layer map (stream -> name)
         # ASTRAN geometry overrides; None keeps pySrc/astran.py constants.
-        # Keys: cellsHeight, hGrid, vGrid, supplySize, nwellPos, cellTemplate.
+        # Keys: cells_height, h_grid, v_grid, supply_size, nwell_pos, cell_template.
         self.geometry = None
-        self.top_thr = 5            # main.py: topThr
-        self.ratio_thr = 0.05       # main.py: ratioThr
-        self.cnt_thr = 30           # main.py: cntThr
+        self.top_thr = 5            # main.py: top_thr
+        self.ratio_thr = 0.05       # main.py: ratio_thr
+        self.cnt_thr = 30           # main.py: cnt_thr
         self.max_cells = 11         # patterns with >= this many cells are skipped
         self.grow_beam = 2          # heads grown per round (P0-3; 1 = legacy)
         self.max_rt_density = None  # routability gate (P0-4); None = report only
@@ -137,7 +137,7 @@ class FlowConfig(object):
         if self.liberty_file or self.spice_lib_file or self.technology_file \
                 or self.lef_file or self.geometry:
             extra += " pdk=自定义"
-        return ("benchmarks=%s topThr=%d ratioThr=%g cntThr=%d layouts=%s "
+        return ("benchmarks=%s top_thr=%d ratio_thr=%g cnt_thr=%d layouts=%s "
                 "phase2=%s cap=%s%s" % (",".join(self.benchmarks), self.top_thr,
                                         self.ratio_thr, self.cnt_thr,
                                         self.do_layouts, self.do_phase2,
@@ -163,7 +163,7 @@ class Hooks(object):
         """An ASTRAN cell started, progressed or finished."""
 
     def metric(self, info):
-        """The running saveArea for an iteration."""
+        """The running save_area for an iteration."""
 
     def record(self, info):
         """A bestRecord-* file was (re)written."""
@@ -207,7 +207,7 @@ class _GuiPipelineHooks(object):
             name = "COMPLEX%d" % pattern_trace_id
             try:
                 import astran
-                return astran.loadAstranArea(self.ctx["out_dir"], name)
+                return astran.load_astran_area(self.ctx["out_dir"], name)
             except Exception:                    # noqa: BLE001
                 return None
         return self.runner._generate_complex_layout(
@@ -292,7 +292,7 @@ class FlowRunner(object):
                     netlist_lib=None, technology_path=None, geometry=None):
         """Run ASTRAN for one cell, streaming its log.  Returns an AstranLog.
 
-        Reuses ``astran.buildAstranCommands`` so the geometry constants stay
+        Reuses ``astran.build_astran_commands`` so the geometry constants stay
         centralised (AGENTS.md invariant 2) and the emitted ``.run`` matches
         what the CLI flow writes.  ``geometry`` lets the GUI override the
         constants (row height, grid, supply rails, ...) per the Configure tab.
@@ -304,7 +304,7 @@ class FlowRunner(object):
 
         netlist_rel = self._rel(netlist_abs)
         command_dir_rel = self._rel(command_dir_abs)
-        script = astran.buildAstranCommands(
+        script = astran.build_astran_commands(
             astran.GUROBI_CL, technology_path or astran.ASTRAN_TECHNOLOGY,
             netlist_rel, name, command_dir_rel, geometry=geometry)
 
@@ -478,119 +478,119 @@ class FlowRunner(object):
         # ---- parse: library + design graph ---------------------------------
         self._stage("parse", "running", "解析 liberty + BLIF / parsing design")
         self._check_cancel()
-        (BLIFGraph, cells, netlist, stdCellTypesForFeature) = \
+        (blif_graph, cells, netlist, std_cell_types_for_feature) = \
             blif_preproc.gen_graph_from_liberty_and_blif(
                 self._rel(self.cfg.liberty()), self._rel(blif_abs))
 
         type_count = {}
         for cell in cells:
-            name = cell.stdCellType.typeName
+            name = cell.std_cell_type.type_name
             type_count[name] = type_count.get(name, 0) + 1
         hist = sorted(type_count.items(), key=lambda kv: (-kv[1], kv[0]))
-        stop_types = sum(1 for c in cells if c.stopType)
+        stop_types = sum(1 for c in cells if c.stop_type)
         self.hooks.design({
-            "benchmark": bench, "nodes": BLIFGraph.number_of_nodes(),
-            "edges": BLIFGraph.number_of_edges(), "std_types": len(type_count),
+            "benchmark": bench, "nodes": blif_graph.number_of_nodes(),
+            "edges": blif_graph.number_of_edges(), "std_types": len(type_count),
             "type_hist": hist, "stop_cells": stop_types,
-            "feature_types": stdCellTypesForFeature,
+            "feature_types": std_cell_types_for_feature,
         })
         self._log("设计图 / design graph: %d 单元 %d 连接，%d 种单元类型"
-                  % (BLIFGraph.number_of_nodes(), BLIFGraph.number_of_edges(),
+                  % (blif_graph.number_of_nodes(), blif_graph.number_of_edges(),
                      len(type_count)))
         self._stage("parse", "done", "%d nodes / %d edges"
-                    % (BLIFGraph.number_of_nodes(), BLIFGraph.number_of_edges()))
+                    % (blif_graph.number_of_nodes(), blif_graph.number_of_edges()))
 
         # ---- baseline: ASTRAN reference cells ------------------------------
-        self._run_baseline(stdCellTypesForFeature, t0)
+        self._run_baseline(std_cell_types_for_feature, t0)
 
         # ---- cluster --------------------------------------------------------
         self._stage("cluster", "running", "按编码聚类模式 / grouping by pattern code")
         self._check_cancel()
-        clusterSeqs, clusterNum = \
+        cluster_seqs, cluster_num = \
             blif_preproc.heuristic_label_initial_clusters(
-                BLIFGraph, cells, netlist)
-        dataset, maxLabelIndex = blif_preproc.convertBLIFGraphIntoDataset(
-            BLIFGraph, stdCellTypesForFeature, 36)
-        self._log("初始模式序列 / initial pattern sequences: %d" % len(clusterSeqs))
-        self._stage("cluster", "done", "%d pattern sequences" % len(clusterSeqs))
+                blif_graph, cells, netlist)
+        dataset, max_label_index = blif_preproc.convert_blif_graph_into_dataset(
+            blif_graph, std_cell_types_for_feature, 36)
+        self._log("初始模式序列 / initial pattern sequences: %d" % len(cluster_seqs))
+        self._stage("cluster", "done", "%d pattern sequences" % len(cluster_seqs))
 
         # ---- areas ----------------------------------------------------------
         # GSCL reference widths come from the LEF the user configured (default:
-        # gscl45nm.lef); same METRIC as loadOrignalGSCL45nmGDS, any PDK.
-        stdType2GSCLArea = artifacts.read_lef_widths(self.cfg.lef())
-        oriArea = blif_preproc.getArea(cells, stdType2GSCLArea)
-        stdType2AstranArea = gds_analysis.loadAstranGDS()
-        astranArea = blif_preproc.getArea(cells, stdType2AstranArea)
+        # gscl45nm.lef); same METRIC as load_original_gscl45_gds, any PDK.
+        gscl_area_by_type = artifacts.read_lef_widths(self.cfg.lef())
+        orig_area = blif_preproc.get_area(cells, gscl_area_by_type)
+        astran_area_by_type = gds_analysis.load_astran_gds()
+        astran_area = blif_preproc.get_area(cells, astran_area_by_type)
         self._log("面积基准 / area baseline: GSCL=%.2f, ASTRAN=%.2f (总宽 µm)"
-                  % (oriArea, astranArea))
-        self._stage("baseline", "done", "ASTRAN baseline %.1f µm" % astranArea)
+                  % (orig_area, astran_area))
+        self._stage("baseline", "done", "ASTRAN baseline %.1f µm" % astran_area)
 
-        clusterSeqs = blif_graph_util.sortPatternClusterSeqs(clusterSeqs)
+        cluster_seqs = blif_graph_util.sort_pattern_cluster_seqs(cluster_seqs)
 
         context = dict(
             flow=flow, bench=bench, out_dir=out_dir, cells=cells,
-            BLIFGraph=BLIFGraph, clusterNum=clusterNum, patternNum=len(clusterSeqs),
-            stdType2GSCLArea=stdType2GSCLArea, stdType2AstranArea=stdType2AstranArea,
-            oriArea=oriArea, astranArea=astranArea, subckts=None,
-            dumpedPaterns={}, detectedPatterns=[], startTime=t0)
+            blif_graph=blif_graph, cluster_num=cluster_num, pattern_num=len(cluster_seqs),
+            gscl_area_by_type=gscl_area_by_type, astran_area_by_type=astran_area_by_type,
+            orig_area=orig_area, astran_area=astran_area, subckts=None,
+            dumped_patterns={}, detected_patterns=[], start_time=t0)
 
         # Online-calibrated shrink model for growth benefit estimation
         # (P0-3), mirroring main.py: vetoes predicted-loss growth branches
         # before they cost an ASTRAN run.
-        context["shrinkModel"] = flow["benefit"].ShrinkModel()
-        context["growthBenefitEstimator"] = \
-            flow["benefit"].makeGrowthBenefitEstimator(
-                stdType2AstranArea, context["shrinkModel"])
+        context["shrink_model"] = flow["benefit"].ShrinkModel()
+        context["growth_benefit_estimator"] = \
+            flow["benefit"].make_growth_benefit_estimator(
+                astran_area_by_type, context["shrink_model"])
 
         # Electrical context per candidate (P1-7, report-only).
-        context["cellElectricalMetrics"] = \
-            flow["electrical"].loadCellElectricalMetrics(
+        context["cell_electrical_metrics"] = \
+            flow["electrical"].load_cell_electrical_metrics(
                 str(self.cfg.liberty()))
-        context["cellTimingPower"] = flow["timing_power"].loadTimingPower(
+        context["cell_timing_power"] = flow["timing_power"].load_timing_power(
             str(self.cfg.liberty()))
-        context["libFunctions"] = flow["liberty_gen"].loadLibertyFunctions(
+        context["lib_functions"] = flow["liberty_gen"].load_liberty_functions(
             str(self.cfg.liberty()))
 
         # Yosys re-import: design-level area/histogram cross-check
         # (graceful when no yosys executable is installed).
         design_lib_area = 0.0
         for c in cells:
-            m = context["cellElectricalMetrics"].get(c.stdCellType.typeName)
+            m = context["cell_electrical_metrics"].get(c.std_cell_type.type_name)
             if m is not None and m["area"] is not None:
                 design_lib_area += m["area"]
-        yosys_stat = flow["yosys_import"].runYosysStat(
+        yosys_stat = flow["yosys_import"].run_yosys_stat(
             str(self.cfg.liberty()), str(self._blif_path(bench)))
         self._log("yosys stat 交叉校验 / cross-check: %s"
-                  % flow["yosys_import"].compareWithFlowArea(
+                  % flow["yosys_import"].compare_with_flow_area(
                       yosys_stat, design_lib_area))
         our_type_counts = {}
         for c in cells:
-            if c.stopType:
+            if c.stop_type:
                 continue
-            t = c.stdCellType.typeName
+            t = c.std_cell_type.type_name
             our_type_counts[t] = our_type_counts.get(t, 0) + 1
         self._log("yosys 单元计数交叉校验 / cell-count cross-check: %s"
-                  % flow["yosys_import"].compareCellCounts(
+                  % flow["yosys_import"].compare_cell_counts(
                       yosys_stat, our_type_counts))
 
         # Width proxy (P2 phase 1, mirrors main.py): report-only default.
-        transistor_counts = flow["width_proxy"].countTransistorsPerType(
+        transistor_counts = flow["width_proxy"].count_transistors_per_type(
             self._rel(self.cfg.spice_lib()))
-        wp_samples = flow["width_proxy"].collectSamples(
+        wp_samples = flow["width_proxy"].collect_samples(
             sorted(glob.glob(os.path.join(paths.PYSRC_DIR, "outputs", "*"))),
-            transistor_counts, stdType2AstranArea)
-        context["transistorCounts"] = transistor_counts
-        context["widthProxy"] = None
+            transistor_counts, astran_area_by_type)
+        context["transistor_counts"] = transistor_counts
+        context["width_proxy"] = None
         if len(wp_samples) >= 4:
-            context["widthProxy"] = flow["width_proxy"].WidthProxy().fit(
+            context["width_proxy"] = flow["width_proxy"].WidthProxy().fit(
                 wp_samples)
             self._log("宽度代理 / width proxy LOO: %s"
-                      % flow["width_proxy"].evaluateLOO(wp_samples))
+                      % flow["width_proxy"].evaluate_loo(wp_samples))
         if (self.cfg.use_width_proxy_for_growth
-                and context["widthProxy"] is not None):
-            context["growthBenefitEstimator"] = \
-                flow["width_proxy"].makeProxyBenefitEstimator(
-                    context["widthProxy"], stdType2AstranArea,
+                and context["width_proxy"] is not None):
+            context["growth_benefit_estimator"] = \
+                flow["width_proxy"].make_proxy_benefit_estimator(
+                    context["width_proxy"], astran_area_by_type,
                     transistor_counts)
 
         context["subckts"] = spice.load_spice_subcircuits(
@@ -598,10 +598,10 @@ class FlowRunner(object):
 
         # ---- main mining loop ----------------------------------------------
         self._stage("mine", "running", "贪心挖掘 / greedy mining")
-        self._mine(context, clusterSeqs)
+        self._mine(context, cluster_seqs)
 
         # ---- phase 2 --------------------------------------------------------
-        if self.cfg.do_phase2 and context["detectedPatterns"]:
+        if self.cfg.do_phase2 and context["detected_patterns"]:
             self._stage("phase2", "running", "逐模式明细 / per-pattern records")
             self._phase2(context)
         elif self.cfg.do_phase2:
@@ -627,18 +627,18 @@ class FlowRunner(object):
             return True
         astran = self._import_flow()["astran"]
         g = cfg.geometry
-        return not (g["cellsHeight"] == astran.ASTRAN_CELLS_HEIGHT and
-                    g["hGrid"] == astran.ASTRAN_HGRID and
-                    g["vGrid"] == astran.ASTRAN_VGRID and
-                    g["supplySize"] == astran.ASTRAN_SUPPLY_SIZE and
-                    g["nwellPos"] == astran.ASTRAN_NWELL_POS and
-                    g["cellTemplate"] == astran.ASTRAN_CELL_TEMPLATE)
+        return not (g["cells_height"] == astran.ASTRAN_CELLS_HEIGHT and
+                    g["h_grid"] == astran.ASTRAN_HGRID and
+                    g["v_grid"] == astran.ASTRAN_VGRID and
+                    g["supply_size"] == astran.ASTRAN_SUPPLY_SIZE and
+                    g["nwell_pos"] == astran.ASTRAN_NWELL_POS and
+                    g["cell_template"] == astran.ASTRAN_CELL_TEMPLATE)
 
-    def _run_baseline(self, stdCellTypesForFeature, t0):
+    def _run_baseline(self, std_cell_types_for_feature, t0):
         """Generate the ASTRAN reference layouts the area comparison needs.
 
         Width is only an area proxy at a matched row height, so the baseline
-        goes through ``runAstranForNetlist`` with the same geometry constants
+        goes through ``run_astran_for_netlist`` with the same geometry constants
         as the generated cells.  A custom geometry/technology configured in
         the GUI invalidates the cache and regenerates every baseline cell.
         """
@@ -653,10 +653,10 @@ class FlowRunner(object):
         os.makedirs(base_dir, exist_ok=True)
         force_all = self._baseline_is_stale_geometry()
         todo = []
-        for t in stdCellTypesForFeature:
+        for t in std_cell_types_for_feature:
             if "bool" in t:
                 continue
-            if t.startswith("minorType"):
+            if t.startswith("minor_type"):
                 continue
             if not force_all and \
                     os.path.exists(os.path.join(base_dir, t + ".Astranlog")) and \
@@ -695,7 +695,7 @@ class FlowRunner(object):
         self._stage("baseline", "done", "%d baseline cells" % len(todo))
 
     # ------------------------------------------------------------ mining loop
-    def _mine(self, ctx, clusterSeqs):
+    def _mine(self, ctx, cluster_seqs):
         """Delegate the mining to core.pipeline (ARCHITECTURE: one
         control-flow implementation for CLI and GUI; the GUI's own hook
         surface receives the events and its layout runner is used)."""
@@ -704,31 +704,31 @@ class FlowRunner(object):
 
         bench = ctx["bench"]
         cfg = core.config.FlowConfig(
-            topThr=self.cfg.top_thr,
-            ratioThr=self.cfg.ratio_thr,
-            cntThr=self.cfg.cnt_thr,
+            top_thr=self.cfg.top_thr,
+            ratio_thr=self.cfg.ratio_thr,
+            cnt_thr=self.cfg.cnt_thr,
             benchmarks=(bench,),
-            growBeamWidth=self.cfg.grow_beam,
-            routabilityDensityGate=self.cfg.max_rt_density,
-            layoutSanityGate=self.cfg.layout_sanity_gate,
-            useWidthProxyForGrowth=self.cfg.use_width_proxy_for_growth,
-            requireReuseEligible=self.cfg.require_reuse_eligible,
+            grow_beam_width=self.cfg.grow_beam,
+            routability_density_gate=self.cfg.max_rt_density,
+            layout_sanity_gate=self.cfg.layout_sanity_gate,
+            use_width_proxy_for_growth=self.cfg.use_width_proxy_for_growth,
+            require_reuse_eligible=self.cfg.require_reuse_eligible,
             liberty=self._rel(self.cfg.liberty()),
-            spiceLib=self._rel(self.cfg.spice_lib()),
-            blifDir=self._rel(os.path.dirname(self._blif_path(bench))),
-            astranBuildPath=("x" if (self.cfg.do_layouts
+            spice_lib=self._rel(self.cfg.spice_lib()),
+            blif_dir=self._rel(os.path.dirname(self._blif_path(bench))),
+            astran_build_path=("x" if (self.cfg.do_layouts
                                     and self.astran_available()) else ""),
         )
         hooks = _GuiPipelineHooks(self, ctx)
-        core.pipeline.runPipeline(cfg, hooks=hooks)
+        core.pipeline.run_pipeline(cfg, hooks=hooks)
         for k, v in hooks.captured.items():
             ctx[k] = v
-        ctx.setdefault("detectedPatterns", [])
-        ctx.setdefault("dumpedPaterns", {})
+        ctx.setdefault("detected_patterns", [])
+        ctx.setdefault("dumped_patterns", {})
 
 
 
-    def _generate_complex_layout(self, ctx, patternTraceId):
+    def _generate_complex_layout(self, ctx, pattern_trace_id):
         """Run ASTRAN for one COMPLEX cell; None means 'exclude this pattern'.
 
         Mirrors main.py: the stale-layout cache is honoured, a 0-width layout
@@ -736,15 +736,15 @@ class FlowRunner(object):
         all is dropped instead of failing the benchmark.
         """
         flow, out_dir, cfg = ctx["flow"], ctx["out_dir"], self.cfg
-        name = "COMPLEX%d" % patternTraceId
+        name = "COMPLEX%d" % pattern_trace_id
         gds_path = os.path.join(out_dir, name + ".gds")
         sp_path = os.path.join(out_dir, name + ".sp")
 
         if not cfg.force_regenerate and \
-                not flow["astran"].astranLayoutIsStale(gds_path, sp_path):
+                not flow["astran"].astran_layout_is_stale(gds_path, sp_path):
             self._log("%s: 复用已缓存版图 / reusing cached layout" % name)
             try:
-                width = flow["astran"].loadAstranArea(out_dir, name)
+                width = flow["astran"].load_astran_area(out_dir, name)
             except Exception:                            # noqa: BLE001
                 return None
             return width if width > 0 else None
@@ -772,29 +772,29 @@ class FlowRunner(object):
 
     def _write_best_record(self, ctx, save_astran, save_gscl, selection):
         out_dir, bench = ctx["out_dir"], ctx["bench"]
-        astranArea, oriArea = ctx["astranArea"], ctx["oriArea"]
+        astran_area, orig_area = ctx["astran_area"], ctx["orig_area"]
         path = os.path.join(out_dir, "bestRecord-" + bench)
         with open(path, "w") as fh:
             print(save_astran, " <- compared to Astran GDS area", file=fh)
-            print(save_astran / astranArea * 100, "% <- compared to Astran GDS area",
+            print(save_astran / astran_area * 100, "% <- compared to Astran GDS area",
                   file=fh)
             print(save_gscl, " <- compared to GSCL GDS area", file=fh)
-            print(save_gscl / oriArea * 100, "% <- compared to GSCL GDS area", file=fh)
-            print("The generated complex cells are (name, clusterNum, "
-                  "cellNumInOneCluster, patternCode):", file=fh)
+            print(save_gscl / orig_area * 100, "% <- compared to GSCL GDS area", file=fh)
+            print("The generated complex cells are (name, cluster_num, "
+                  "cell_num_in_one_cluster, pattern_code):", file=fh)
             for item in selection:
                 print(item, file=fh)
-            print("\n runtime:", time.time() - ctx["startTime"], " (s)", file=fh)
+            print("\n runtime:", time.time() - ctx["start_time"], " (s)", file=fh)
         self.hooks.record({"benchmark": bench, "path": path, "kind": "best",
                            "save_area": save_astran,
-                           "ratio": save_astran / astranArea * 100 if astranArea else 0,
+                           "ratio": save_astran / astran_area * 100 if astran_area else 0,
                            "selection": list(selection)})
 
     # ------------------------------------------------------------- phase 2
     def _phase2(self, ctx):
         """Phase-2 per-pattern records ran inside core.pipeline (see
         _mine); this wrapper surfaces the captured records."""
-        records = ctx.get("recordPatternDetails") or []
+        records = ctx.get("record_pattern_details") or []
         self._stage("phase2", "done", "%d per-pattern records" % len(records))
         for rec in records:
             self.hooks.record("seperate", {"trace": rec[-1], "row": rec})
@@ -846,7 +846,7 @@ def regenerate_cell(benchmark, cell, shared_netlist=False, hooks=None,
     if os.path.exists(gds):
         shutil.move(gds, gds + ".bak")
 
-    script = astran.buildAstranCommands(
+    script = astran.build_astran_commands(
         astran.GUROBI_CL, technology_path or astran.ASTRAN_TECHNOLOGY,
         _rel_to_pysrc(netlist), name, _rel_to_pysrc(out_dir),
         geometry=geometry)
@@ -910,7 +910,7 @@ def parse_design(benchmark, hooks=None, cancel_event=None, blif_path=None,
     prev = os.getcwd()
     os.chdir(paths.PYSRC_DIR)
     try:
-        BLIFGraph, cells, netlist, stdCellTypesForFeature = \
+        blif_graph, cells, netlist, std_cell_types_for_feature = \
             blif_preproc.gen_graph_from_liberty_and_blif(
                 _rel_to_pysrc(lib_abs), _rel_to_pysrc(blif_abs))
     finally:
@@ -918,7 +918,7 @@ def parse_design(benchmark, hooks=None, cancel_event=None, blif_path=None,
 
     type_count = {}
     for cell in cells:
-        name = cell.stdCellType.typeName
+        name = cell.std_cell_type.type_name
         type_count[name] = type_count.get(name, 0) + 1
     hist = sorted(type_count.items(), key=lambda kv: (-kv[1], kv[0]))
 
@@ -930,15 +930,15 @@ def parse_design(benchmark, hooks=None, cancel_event=None, blif_path=None,
 
     info = {
         "benchmark": benchmark,
-        "graph": BLIFGraph,
+        "graph": blif_graph,
         "cells": cells,
         "netlist": netlist,
-        "nodes": BLIFGraph.number_of_nodes(),
-        "edges": BLIFGraph.number_of_edges(),
+        "nodes": blif_graph.number_of_nodes(),
+        "edges": blif_graph.number_of_edges(),
         "std_types": len(type_count),
         "type_hist": hist,
-        "stop_cells": sum(1 for c in cells if c.stopType),
-        "feature_types": stdCellTypesForFeature,
+        "stop_cells": sum(1 for c in cells if c.stop_type),
+        "feature_types": std_cell_types_for_feature,
         # Input signature so the Design tab can reuse the cached graph
         # instead of re-parsing when nothing changed.
         "_parse_sig": (_sig(blif_abs), _sig(lib_abs)),

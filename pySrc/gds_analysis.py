@@ -23,11 +23,11 @@ GSCL_CELL_NAMES = ["AND2X1", "AOI22X1", "CLKBUF1",  "DFFNEGX1",
 # ---------------------------------------------------------------------------
 
 
-def _readLefCellWidths(lefPath):
+def _readLefCellWidths(lef_path):
     """Nominal width of each LEF MACRO, from its SIZE statement."""
     widths = dict()
     macro = None
-    for line in open(lefPath, 'r'):
+    for line in open(lef_path, 'r'):
         t = line.strip()
         if (t.startswith("MACRO ")):
             macro = t.split()[1]
@@ -40,36 +40,36 @@ def _readLefCellWidths(lefPath):
     return widths
 
 
-def loadOrignalGSCL45nmGDS():
+def load_original_gscl45_gds():
     widths = _readLefCellWidths(GSCL_LEF)
-    gsclName2Width = dict()
+    width_by_name = dict()
     for name in GSCL_CELL_NAMES:
         assert name in widths, "cell %s not found in %s" % (name, GSCL_LEF)
-        gsclName2Width[name] = widths[name]
-    return gsclName2Width
+        width_by_name[name] = widths[name]
+    return width_by_name
 
 
-def _readAstranCellWidth(logFileName):
-    for line in open(logFileName, 'r'):
+def _readAstranCellWidth(log_file_name):
+    for line in open(log_file_name, 'r'):
         if (line.find("-> Cell Size (W x H): ") >= 0):
             return float(line.replace("-> Cell Size (W x H): ", "").split("x")[0])
     return None
 
 
-def loadAstranGDS():
+def load_astran_gds():
     """Nominal width of each ASTRAN-generated original cell, from its log.
 
-    Same metric as loadOrignalGSCL45nmGDS and astran.loadAstranArea (nominal
+    Same metric as load_original_gscl45_gds and astran.load_astran_area (nominal
     width) so the ASTRAN baseline, the generated complex cells and the GSCL
     library are all compared consistently.
     """
-    typeName2Width = dict()
-    GDSPath = "./originalAstranStdCells/"
-    for f in listdir(GDSPath):
+    width_by_type = dict()
+    gds_path = "./originalAstranStdCells/"
+    for f in listdir(gds_path):
         if (not f.endswith(".Astranlog")):
             continue
         name = f.replace(".Astranlog", "")
-        w = _readAstranCellWidth(join(GDSPath, f))
+        w = _readAstranCellWidth(join(gds_path, f))
         if (w is not None):
-            typeName2Width[name] = w
-    return typeName2Width
+            width_by_type[name] = w
+    return width_by_type
