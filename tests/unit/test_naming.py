@@ -16,6 +16,8 @@ def test_no_legacy_names_in_code():
     for path in list((root / "pySrc").rglob("*.py")) \
             + list((root / "gui").rglob("*.py")) \
             + list((root / "tests").rglob("*.py")):
+        if path.name == "test_naming.py":    # the LEGACY list lives here
+            continue
         text = path.read_text(encoding="utf-8", errors="ignore")
         for name in LEGACY:
             if re.search(r"(?<![A-Za-z0-9_])" + name + r"(?![A-Za-z0-9_])",
