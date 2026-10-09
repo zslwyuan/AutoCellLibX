@@ -27,6 +27,12 @@ pySrc/
   BLIFPatternGrowth.py ← 生长（下一步迁 core/growth）
   ...其余单职责模块（benefit/routability/electrical/timing_power/liberty_gen/
      reuse/width_proxy/layout_sanity/yosys_import/yosys_eval/pdk_config/...）
+  smt_cell_placer.py    ← 2026-10-09 新增：SMT 联合 folding+placement 参考实现
+                          （CP-SAT，两行/极性，串联链共享扩散；给 ASTRAN 打质量分）
+  llm_hint_provider.py  ← 2026-10-09 新增：LLM/离线布局提示（Hint 协议、降级、
+                          缓存、并行批处理；AUTOCELL_HINT_MODE 门控，默认 off）
+  pin_accessibility.py  ← 2026-10-09 新增：生成单元引脚可达性度量（on-track /
+                          blocked / crowd，读 GDS 标签+log 校准）
 gui/flow_core.py     ← 待迁移：第三份控制流副本，下一步改为消费 core.pipeline
                       （等价测试 test_flow_parity 在迁移前后持续钉住一致性）
 ```

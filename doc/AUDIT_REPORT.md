@@ -901,3 +901,14 @@ libgcc_s_seh-1.dll、libstdc++-6.dll、libwinpthread-1.dll、liblzma-5.dll、lib
 - **大函数/重复**:core/growth 两函数的邻居分类块(各 ~50 行、4 层嵌套)抽为共享 `_collect_neighbor_features`(snake_case),行为不变(测试全绿)。
 - **命名/文档**:ARCHITECTURE.md 新增"代码质量约定"——新代码 snake_case、公开 API 兼容保留、>80 行函数必拆、日志统一入口、≥6 入参改配置对象。
 - **验证**:299 单测全绿(新增 test_log 3 例)。
+
+### 5.33 多 agent 并行落地四件套:第二 PDK .rul / SMT 参考实现 / LLM 提示 / pin accessibility(2026-10-09)
+
+用户汇报"多 agent 完成四项工作",验收发现本仓库无对应产物(工作区干净、无新分支/ stash,RESEARCH 文档里仍是"下一步计划"条目)——结论:那批工作不在本仓库。随后按用户指示在本仓库逐项实现并测试:
+
+- **4.1 第二 PDK .rul**(tools/astran/build/Work/tech_sky130.rul、tech_gf180.rul):几何全部经主源 LEF 核对(skywater-pdk-libs-sky130_fd_sc_hd、gf180mcu_fd_sc_mcu7t5v0 的 tech/cell LEF)。**修正脚手架两处数字**:gf180 路由栅格 0.28→0.56(SITE GF018hv5v_mcu_sc7 0.56×3.92=7 轨)、供电 0.44→0.60(rails ±0.30);sky130 的 0.34/0.48 确认无误。未核实规则行继承 freePDK45 并标注 PLACEHOLDER(ASTRAN 内部规则非权威,权威是 PDK DRC deck)。pdk_config 新增 `loadTechnologyRul` 解析器(确定性),sky130/gf180 状态 scaffold→draft(opt-in 语义保留),test_pdk_config 8 例全绿(含"文件存在且可解析"钉住)。
+- **4.2 SMT 联合 folding+placement 参考实现**(pySrc/smt_cell_placer.py,P2-13 落点,8 单测):CP-SAT 建模,串联链=内节点度 2 识别,链成员同行+首尾相接(共享扩散);折叠受腿宽制造上限约束(无上限时折叠永远无收益,ceil 只会加宽);NoOverlap2D;目标 min(1000·宽度+腿数)。关键修正:单行/极性模型给 COMPLEX0 4.75µm,与 ASTRAN 2.09 差一倍——ASTRAN 每极性用两排扩散堆叠,参考模型必须同样支持两行/极性(2.47µm)。简化项如实记录(平行组共享、扩散断、行粘性未建模),宽度是理想化下限。
+- **4.3 多模态 LLM Agent 资源整合**(pySrc/llm_hint_provider.py,P2-15 落点,9 单测):Hint 协议+离线确定性提供方+OpenAI 兼容多模态提供方(文本网表+GDS 截图→JSON,任何失败降级 [] 并记日志)+内容寻址缓存(sha256)+`suggestHintsBatch` 线程池并行。env 门控 `AUTOCELL_HINT_MODE`(默认 off),core/config 加 hintMode,core/pipeline 在 SPICE 导出点挂提示日志(仅报告)。测试:离线确定性、门控、缓存命中免网络、LLM 故障降级、批量并行保序、from_env 读 hintMode。
+- **4.4 pin accessibility 度量**(pySrc/pin_accessibility.py,5 单测):按 §三 论文(ISPD'23/DAC'24/FastPass/DATE'23/ISCAS'24)的可检查结论实现 on-track(引脚中心落轨道网格)/blocked(多晶跨引脚金属)/crowd(同轨列引脚数),单元分=均值;与 GDS 查看器同一 log 校准纪律。合成 GDS 精确定住 1.0/0.5/0.9 与离轨 −0.5;COMPLEX0 实测 0.500(VCC/GND 轨 x=1.045 离格,VCC 多晶阻塞 0.00)。调试记录:loadCellGeometry 曾丢失图层信息导致"金属1自身+轮廓被判为 poly 阻塞"(A 引脚 1.0→0.5 误报),修复为保留 (layer, pts)。
+- **RESEARCH 文档膨胀事故**:5623712 的"刷新"把 doc/RESEARCH_AND_OPTIMIZATION.md 写成 28MB/32.4 万行——同一 14 行状态块重复 2.2 万次(唯一行仅 710),原 17KB 文献综述被覆盖。恢复 1ba428a 版本为基底,重写状态表(新增 SMT/LLM/pin-accessibility 行)、新增 §三(12 篇 pin accessibility 论文+整合说明)、§四(四项工作证据)、§五(更新版下一步 9 项),旧三/四/五 重编号为 六/七/八。教训:文档生成脚本必须校验输出大小/唯一行占比,写回前 diff。
+- **验证**:新增 30 单测(SMT 8 + LLM 9 + pin-accessibility 5 + pdk 4 新增/改写 + 既有 4),全量回归见提交记录。
