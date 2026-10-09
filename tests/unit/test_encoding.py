@@ -66,3 +66,56 @@ def test_tree_nodes_are_unique(in_pysrc):
     for cell in cells[:200]:
         tree, _ = extractAndEncodeSubgraph_Tree(cells, cell.id, depthLimit=2)
         assert len(tree) == len(set(tree))
+
+
+def test_canonical_code_sorts_children_after_root():
+    from BLIFPreProc import canonicalPatternCode
+
+    assert canonicalPatternCode(
+        ["OR2X1", "XNOR2X1", "NAND2X1", "NAND2X1"]) == \
+        "[OR2X1,NAND2X1,NAND2X1,XNOR2X1]"
+    # already-canonical input is stable
+    assert canonicalPatternCode(["A", "B", "C"]) == "[A,B,C]"
+
+
+def test_canonical_code_is_net_order_invariant():
+    """Two isomorphic instances whose input nets enumerate in different
+    orders must produce the same pattern code (they used to be split into
+    separate groups, under-counting the pattern's frequency)."""
+    from BLIFPreProc import extractAndEncodeSubgraph_Tree, canonicalPatternCode
+
+    def build(order):
+        # root AND2X1 driven by NAND2X1 and OR2X1 in the given order
+        n0, n1 = ("NAND2X1", "OR2X1") if order == 0 else ("OR2X1", "NAND2X1")
+        d0 = _cell(0, n0, 2, 1)
+        d1 = _cell(1, n1, 2, 1)
+        root = _cell(2, "AND2X1", 2, 1)
+        cells = [d0, d1, root]
+        _link(d0, "O0", root, "I0", 0, cells)
+        _link(d1, "O0", root, "I1", 1, cells)
+        return cells, root
+
+    cellsA, rootA = build(0)
+    cellsB, rootB = build(1)
+    _, codeA = extractAndEncodeSubgraph_Tree(cellsA, rootA.id, depthLimit=1)
+    _, codeB = extractAndEncodeSubgraph_Tree(cellsB, rootB.id, depthLimit=1)
+    assert codeA != codeB                      # raw order differs (the bug)
+    assert canonicalPatternCode(codeA) == canonicalPatternCode(codeB)
+
+
+def test_benchmark_codes_are_canonical(in_pysrc):
+    """Every initial-cluster trace on the benchmark must be in canonical
+    form (children after the root are sorted)."""
+    from BLIFPreProc import (genGraphFromLibertyAndBLIF,
+                             heuristicLabelSomeNodesAndGetInitialClusters)
+
+    G, cells, netlist, types = genGraphFromLibertyAndBLIF(
+        "../stdCelllib/gscl45nm.lib", "../benchmark/blif/adder.blif")
+    clusterSeqs, _ = heuristicLabelSomeNodesAndGetInitialClusters(
+        G, cells, netlist)
+    assert clusterSeqs, "expected at least one initial cluster"
+    for seq in clusterSeqs:
+        trace = seq.patternClusters[0].patternExtensionTrace
+        base = trace.split("+")[0].strip("[]")
+        parts = base.split(",")
+        assert parts[1:] == sorted(parts[1:]), trace

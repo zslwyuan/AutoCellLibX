@@ -253,6 +253,24 @@ def extractAndEncodeSubgraph_Tree(cells, rootNode, depthLimit=2, clusterId=None)
     return tree, encodes
 
 
+def canonicalPatternCode(code):
+    """Canonical pattern-code string for a raw encode list.
+
+    ``extractAndEncodeSubgraph_Tree`` appends children in input-net
+    enumeration order, so two structurally identical instances whose nets
+    enumerate in different orders used to get different strings and were
+    split into separate groups (frequency under-counted).  Keep the root
+    first and sort the children.  This string is the pattern's identity, so
+    every consumer -- initial grouping, cluster traces, and the prefix match
+    in ``heuristicLabelSomeNodesAndGetInitialClusters_BasedOn`` -- must build
+    it through this helper.  (The paired ``tree``/``code`` lists returned by
+    the encoder are intentionally left in BFS order.)
+    """
+    canon = code[:1] + sorted(code[1:])
+    return str(canon).replace(
+        "\'", "").replace("\\", "").replace("\"", "").replace(" ", "")
+
+
 def heuristicLabelSomeNodesAndGetInitialClusters(BLIFGraph, cells, netlist):
 
     treeDepth = 1
@@ -269,8 +287,7 @@ def heuristicLabelSomeNodesAndGetInitialClusters(BLIFGraph, cells, netlist):
         tree, code = extractAndEncodeSubgraph_Tree(cells, cell.id, treeDepth)
         if (len(tree) < 2):
             continue
-        codeStr = str(code).replace(
-            "\'", "").replace("\\", "").replace("\"", "").replace(" ", "")
+        codeStr = canonicalPatternCode(code)
         if (codeStr.find("bool-") >= 0):
             continue
         if (not codeStr in pattern2RootCells.keys()):
@@ -298,8 +315,7 @@ def heuristicLabelSomeNodesAndGetInitialClusters(BLIFGraph, cells, netlist):
                 cells, cellId, treeDepth, labeledCnt)
             if (tree is None):
                 continue
-            code = str(code).replace(
-                "\'", "").replace("\\", "").replace("\"", "").replace(" ", "")
+            code = canonicalPatternCode(code)
             newCluster = DesignPatternCluster(
                 labeledCnt, code, cells, tree, labelId)
             for cellId in tree:
@@ -371,8 +387,7 @@ def heuristicLabelSomeNodesAndGetInitialClusters_BasedOn(BLIFGraph, cells, netli
                 cells, cellId, treeDepth, labeledCnt)
             if (tree is None):
                 continue
-            code = str(code).replace(
-                "\'", "").replace("\\", "").replace("\"", "").replace(" ", "")
+            code = canonicalPatternCode(code)
             newCluster = DesignPatternCluster(
                 labeledCnt, code, cells, tree, labelId)
             for cellId in tree:
