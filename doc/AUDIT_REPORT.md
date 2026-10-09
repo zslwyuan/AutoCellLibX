@@ -779,3 +779,17 @@ libgcc_s_seh-1.dll、libstdc++-6.dll、libwinpthread-1.dll、liblzma-5.dll、lib
 **局限与下一步**:时序/功耗为布局前估计(无寄生);签署级表征需 SPICE——.sp 已可直接喂 ngspice(未来校验通道);function 组合依赖基础 function 字符串,个别特殊单元(DS0000/P0002 形式)不可组合时降级为注释。
 
 **验证**:269 单测通过(新增 test_liberty_gen.py:函数库解析、全词替换、真实簇生成+liberty.parser 回读)。
+
+### 5.23 yosys 重跑求设计级面积收益:abc 阻塞分析与会计式落地(2026-10-09)
+
+**abc 重映射路线被环境阻塞(两个独立原因,均已验证)**:
+1. **yowasp-yosys 无法执行 abc**:wasm 进程无法派生外部 ABC 二进制——最小 AND 门设计的 `abc -liberty` 也在 "Extracting gate netlist" 后静默退出(exit 0 但无 stat 输出);对已映射 BLIF 则报 "Extracted 0 gates"(它只提门级逻辑,不碰已映射单元);
+2. **MSYS2 pacman 深度损坏**:`pacman-key` 本身缺 makepkg 工具(parseopts 缺失),属安装级损坏;切换 TUNA/USTC 镜像后仍无法用,**镜像文件已还原**,未进一步动系统。oss-cad-suite(含 yosys-abc)为备选下载,未拉取(体积大、网络不稳)。
+
+**方法论注意**:abc 按 function 映射且**不使用多输出单元**——adder 现有 4 个 COMPLEX 单元均多输出(2-3 个),即使 abc 可用也不会被选;这反过来说明本项目的收益是**物理性**(扩散共享/互连内化),非逻辑映射可得。
+
+**会计式落地(yosys_eval.evaluateDesignSavings)**:基线=**yosys 独立直方图 × lib area**(直方图已与流程逐类型核对一致),收益=Σ 出现次数×(成员 lib 面积和−复合面积),复合面积=版图宽×行高。adder 实测:基线 2047.087;COMPLEX9(已采纳)=**+112.63(5.50%)**——比宽度口径的 3.06% 更高,因为 lib 面积含全矩形开销而复合版图打包更紧;独立参照 COMPLEX0 +28.6(1.40%)、COMPLEX1 +76.0(3.71%)、**COMPLEX10 −55.4(−2.71%,再次确认负收益)**。
+
+**产物**:outputs/adder/COMPLEX{0,1,9,10}.lib 已生成并随快照入库(liberty_gen 的 .sp 重建路径,无需重跑挖掘);`runYosysMappedArea`/`buildExtendedLiberty` 已就绪,abc 环境修复后即可启用重映射对照。
+
+**验证**:274 单测通过(新增 test_yosys_eval.py 5 例)。

@@ -318,3 +318,68 @@ def generateComplexLiberty(cluserSeq, complexName, widthUm,
         "grid": "%dx%d" % (len(loads), len(slews)),
     }
     return "\n".join(lines) + "\n", report
+
+
+# ---------------------------------------------------------------------------
+# Rebuild a cluster from an exported .sp (no re-mining needed)
+# ---------------------------------------------------------------------------
+
+_TRACE_COMMENT_RE = re.compile(r"^\* pattern code: (.+)$", re.M)
+_EXAMPLE_RE = re.compile(r"^\*\s+(\.subckt\s+.+)$", re.M)
+
+
+def parseSpiceExampleCells(spText):
+    """(trace, [example member .subckt lines in cluster order]) from a
+    generated COMPLEX*.sp's trailing comments."""
+    traceM = _TRACE_COMMENT_RE.search(spText)
+    trace = traceM.group(1).strip() if traceM else None
+    members = _EXAMPLE_RE.findall(spText)
+    return trace, members
+
+
+def rebuildClusterFromSpice(spPath, cells):
+    """Reconstruct the exact cluster a generated .sp was exported from,
+    by matching the '* Example occurence' member lines to design cells
+    (DesignCell.name is the .subckt line verbatim)."""
+    from BLIFGraphUtil import DesignPatternCluster, DesignPatternClusterSeq
+
+    text = open(spPath).read()
+    trace, memberNames = parseSpiceExampleCells(text)
+    if (trace is None or not memberNames):
+        raise ValueError("no pattern trace / example cells in %s" % spPath)
+    byName = {}
+    for c in cells:
+        byName.setdefault(c.name, c)
+    members = []
+    for name in memberNames:
+        cell = byName.get(name)
+        if (cell is None):
+            raise ValueError("example cell not found in the design graph: %s"
+                             % name)
+        members.append(cell)
+    cluster = DesignPatternCluster(
+        0, trace, cells, [c.id for c in members], 0)
+    seq = DesignPatternClusterSeq(trace)
+    seq.addCluster(cluster)
+    return seq
+
+
+def generateLibertyForSpiceFile(spPath, cells, lutMetrics,
+                                electricalMetrics, libFunctions,
+                                rowHeightUm=2.47):
+    """(.lib fragment, report) for an already-generated COMPLEX*.sp,
+    taking the width from the sibling .Astranlog."""
+    logPath = os.path.splitext(spPath)[0] + ".Astranlog"
+    width = None
+    if (os.path.exists(logPath)):
+        for line in open(logPath, 'r', errors="ignore"):
+            if (line.find("-> Cell Size (W x H): ") >= 0):
+                width = float(line.replace(
+                    "-> Cell Size (W x H): ", "").split("x")[0])
+    if (width is None or width <= 0):
+        raise RuntimeError("no usable width in %s" % logPath)
+    seq = rebuildClusterFromSpice(spPath, cells)
+    name = os.path.splitext(os.path.basename(spPath))[0]
+    return generateComplexLiberty(seq, name, width, lutMetrics,
+                                  electricalMetrics, libFunctions,
+                                  rowHeightUm=rowHeightUm)
