@@ -26,6 +26,7 @@ import re
 
 _num = r"([-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)"
 _LEAK_RE = re.compile(r"cell_leakage_power\s*:\s*" + _num)
+_AREA_RE = re.compile(r"^\s*area\s*:\s*" + _num, re.M)
 _CAP_RE = re.compile(r"^\s*capacitance\s*:\s*" + _num, re.M)
 _DIR_RE = re.compile(r"direction\s*:\s*(\w+)")
 _VALUES_RE = re.compile(r"[-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?")
@@ -69,11 +70,16 @@ def loadCellElectricalMetrics(libFileName):
         name = cellArgs.split()[0] if cellArgs else cellArgs
         m = _LEAK_RE.search(cellBody)
         leakage = float(m.group(1)) if m else 0.0
+        m = _AREA_RE.search(cellBody)
+        area = float(m.group(1)) if m else None
         inputCap = 0.0
+        pinCaps = {}
         delayVals = []
         for pinArgs, pinBody in _sliceBlocks(cellBody, "pin"):
             dirM = _DIR_RE.search(pinBody)
             capM = _CAP_RE.search(pinBody)
+            if (capM):
+                pinCaps[pinArgs] = float(capM.group(1))
             if (dirM and dirM.group(1) == "input" and capM):
                 inputCap += float(capM.group(1))
         for kind in ("cell_rise", "cell_fall"):
@@ -85,7 +91,9 @@ def loadCellElectricalMetrics(libFileName):
                         _VALUES_RE.findall(tableBody[vpos:]))
         metrics[name] = {
             "leakage": leakage,
+            "area": area,
             "input_cap": inputCap,
+            "pin_caps": pinCaps,
             "delay_proxy": (sum(delayVals) / len(delayVals)
                             if delayVals else None),
         }
@@ -103,6 +111,7 @@ def patternElectricalMetrics(exampleCells, cellMetrics):
     """
     inside = set(c.id for c in exampleCells)
     leakageSum = 0.0
+    areaSum = 0.0
     inputCapSum = 0.0
     delayVals = []
     internalNets = 0
@@ -110,6 +119,7 @@ def patternElectricalMetrics(exampleCells, cellMetrics):
         m = cellMetrics.get(cell.stdCellType.typeName)
         if (m is not None):
             leakageSum += m["leakage"]
+            areaSum += m.get("area") or 0.0
             inputCapSum += m["input_cap"]
             if (m["delay_proxy"] is not None):
                 delayVals.append(m["delay_proxy"])
@@ -119,6 +129,7 @@ def patternElectricalMetrics(exampleCells, cellMetrics):
                 internalNets += 1
     return {
         "leakage_sum": leakageSum,
+        "area_sum": areaSum,
         "input_cap_sum": inputCapSum,
         "delay_proxy_avg": (sum(delayVals) / len(delayVals)
                             if delayVals else None),

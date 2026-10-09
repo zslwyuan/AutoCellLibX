@@ -213,13 +213,17 @@ class FlowRunner(object):
         import benefit
         import routability
         import electrical
+        import timing_power
+        import yosys_import
         import layout_sanity
         self._flow = dict(Astran=Astran, BLIFPreProc=BLIFPreProc,
                           BLIFGraphUtil=BLIFGraphUtil,
                           BLIFPatternGrowth=BLIFPatternGrowth,
                           spice=spice, GDSIIAnalysis=GDSIIAnalysis,
                           benefit=benefit, routability=routability,
-                          electrical=electrical, layout_sanity=layout_sanity)
+                          electrical=electrical, timing_power=timing_power,
+                          yosys_import=yosys_import,
+                          layout_sanity=layout_sanity)
         return self._flow
 
     def _rel(self, abs_path):
@@ -490,6 +494,21 @@ class FlowRunner(object):
         context["cellElectricalMetrics"] = \
             flow["electrical"].loadCellElectricalMetrics(
                 str(self.cfg.liberty()))
+        context["cellTimingPower"] = flow["timing_power"].loadTimingPower(
+            str(self.cfg.liberty()))
+
+        # Yosys re-import: design-level area/histogram cross-check
+        # (graceful when no yosys executable is installed).
+        design_lib_area = 0.0
+        for c in cells:
+            m = context["cellElectricalMetrics"].get(c.stdCellType.typeName)
+            if m is not None and m["area"] is not None:
+                design_lib_area += m["area"]
+        yosys_stat = flow["yosys_import"].runYosysStat(
+            str(self.cfg.liberty()), str(self._blif_path(bench)))
+        self._log("yosys stat 交叉校验 / cross-check: %s"
+                  % flow["yosys_import"].compareWithFlowArea(
+                      yosys_stat, design_lib_area))
 
         context["subckts"] = spice.loadSpiceSubcircuits(
             self._rel(self.cfg.spice_lib()))
@@ -712,6 +731,9 @@ class FlowRunner(object):
 
                 elec_metrics = flow["electrical"].patternElectricalMetrics(
                     exampleCells, ctx["cellElectricalMetrics"])
+                timing_metrics = flow["timing_power"].patternTimingPower(
+                    exampleCells, ctx["cellTimingPower"],
+                    ctx["cellElectricalMetrics"])
 
                 # Structural layout sanity (P2 phase 0, mirrors main.py).
                 cell_name = "COMPLEX%d" % patternTraceId
@@ -753,6 +775,7 @@ class FlowRunner(object):
                     "save_total": (oriUnitAstranArea - newUnitAstranArea) * counted_clusters,
                     "routability": rt_metrics.asDict() if rt_metrics else None,
                     "electrical": elec_metrics,
+                    "timing_power": timing_metrics,
                     "out_dir": out_dir,
                 })
 

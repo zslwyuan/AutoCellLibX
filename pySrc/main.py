@@ -11,6 +11,8 @@ from GDSIIAnalysis import *
 from benefit import ShrinkModel, makeGrowthBenefitEstimator
 from routability import loadCellRoutability
 from electrical import loadCellElectricalMetrics, patternElectricalMetrics
+from timing_power import loadTimingPower, patternTimingPower
+from yosys_import import runYosysStat, compareWithFlowArea
 from layout_sanity import checkLayout
 
 
@@ -90,6 +92,19 @@ def main():
         # Reported only -- the selection metric stays width-based.
         cellElectricalMetrics = loadCellElectricalMetrics(
             "../stdCelllib/gscl45nm.lib")
+
+        # Delay/power from the liberty LUTs (mini-STA per candidate) and
+        # a Yosys re-import for design-level cross-check (user priority).
+        cellTimingPower = loadTimingPower("../stdCelllib/gscl45nm.lib")
+        designLibArea = 0.0
+        for tmpCell in cells:
+            m = cellElectricalMetrics.get(tmpCell.stdCellType.typeName)
+            if (m is not None and m["area"] is not None):
+                designLibArea += m["area"]
+        yosysStat = runYosysStat("../stdCelllib/gscl45nm.lib",
+                                 "../benchmark/blif/"+benchmarkName+".blif")
+        print("yosys stat cross-check: ",
+              compareWithFlowArea(yosysStat, designLibArea))
 
         clusterSeqs = sortPatternClusterSeqs(clusterSeqs)
 
@@ -230,6 +245,10 @@ def main():
                     exampleCells, cellElectricalMetrics)
                 print("electrical ", "COMPLEX"+str(patternTraceId),
                       ": ", elecMetrics)
+                timingMetrics = patternTimingPower(
+                    exampleCells, cellTimingPower, cellElectricalMetrics)
+                print("timing/power ", "COMPLEX"+str(patternTraceId),
+                      ": ", timingMetrics)
                 # Structural layout sanity (P2 phase 0): degenerate /
                 # wrong-height / off-grid / label-missing layouts are
                 # unambiguous breakage and are excluded when gated.
