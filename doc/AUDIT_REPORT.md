@@ -912,3 +912,56 @@ libgcc_s_seh-1.dll、libstdc++-6.dll、libwinpthread-1.dll、liblzma-5.dll、lib
 - **4.4 pin accessibility 度量**(flow/pin_accessibility.py,5 单测):按 §三 论文(ISPD'23/DAC'24/FastPass/DATE'23/ISCAS'24)的可检查结论实现 on-track(引脚中心落轨道网格)/blocked(多晶跨引脚金属)/crowd(同轨列引脚数),单元分=均值;与 GDS 查看器同一 log 校准纪律。合成 GDS 精确定住 1.0/0.5/0.9 与离轨 −0.5;COMPLEX0 实测 0.500(VCC/GND 轨 x=1.045 离格,VCC 多晶阻塞 0.00)。调试记录:loadCellGeometry 曾丢失图层信息导致"金属1自身+轮廓被判为 poly 阻塞"(A 引脚 1.0→0.5 误报),修复为保留 (layer, pts)。
 - **RESEARCH 文档膨胀事故**:5623712 的"刷新"把 doc/RESEARCH_AND_OPTIMIZATION.md 写成 28MB/32.4 万行——同一 14 行状态块重复 2.2 万次(唯一行仅 710),原 17KB 文献综述被覆盖。恢复 1ba428a 版本为基底,重写状态表(新增 SMT/LLM/pin-accessibility 行)、新增 §三(12 篇 pin accessibility 论文+整合说明)、§四(四项工作证据)、§五(更新版下一步 9 项),旧三/四/五 重编号为 六/七/八。教训:文档生成脚本必须校验输出大小/唯一行占比,写回前 diff。
 - **验证**:新增 30 单测(SMT 8 + LLM 9 + pin-accessibility 5 + pdk 4 新增/改写 + 既有 4),全量回归见提交记录。
+
+### 5.34 全面命名整改:模块/标识符/文件夹三级 snake_case(2026-10-10)
+
+**动机**:1ba428a 只重命名了 13 个核心入口;仓库仍残留约 650 个 camelCase 标识符、
+11 个 camelCase 模块文件、4 个 camelCase 文件夹,与 ARCHITECTURE 的 snake_case 约定
+不一致。本节记录三级整改(每步全量单测绿,行为零变化)。
+
+**修复(三个提交)**:
+
+1. `ca6caa7` 模块文件名:`Astran.py→astran.py`、`BLIFPreProc.py→blif_preproc.py`、
+   `BLIFGraphUtil.py→blif_graph_util.py`、`BLIFPatternGrowth.py→blif_pattern_growth.py`、
+   `GDSIIAnalysis.py→gds_analysis.py`、`GNNModel.py→gnn_model.py`、
+   `BLIFGNNTraining.py→blif_gnn_training.py`、`globalVariables.py→global_variables.py`、
+   `resultAnalysis*.py→result_analysis*.py`、`replay_seperateadder.py→replay_separate_adder.py`
+   (typo 一并修复);导入、模块对象引用(GUI flow dict 的 "Astran" 字符串键、
+   `monkeypatch.setattr(Astran, ...)` 目标)、文档同步改写。
+   **坑**:第一版正则用 `Astran\.(?=[A-Z_])` 只匹配大写属性,漏掉
+   `Astran.buildAstranCommands` 这类"模块.小写函数"引用,6 个测试立刻抓出。
+2. `d205c21` 标识符 633 条(91 文件):机械 snake_case + 语义/typo override——
+   `loadOrignalGSCL45nmGDS→load_original_gscl45_gds`、`dumpedPaterns→dumped_patterns`、
+   `cluserSeq→cluster_seq`、`colorArrtibute→color_attribute`、
+   `cellIdsContained→cell_ids`、`cellsContained→cells`、
+   `stdType2{GSCL,Astran}Area→{gscl,astran}_area_by_type`、`*2Obj/*2Cnt→by_name/by_type`、
+   `drawColorfulFigureForGraphWithAttributes→draw_graph_figure`、`ori*→orig*`、
+   `Que→queue`、`SeqsId→idx`。
+3. `9532d0c` 文件夹:`pySrc→flow`(与 FlowConfig/flow_core/get_flow_logger 的既有词汇
+   一致)、`stdCelllib→std_celllib`、`originalGSCL45StdCells→original_gscl45_cells`、
+   `originalAstranStdCells→original_astran_cells`;80 个代码/文档文件路径替换,
+   conftest `in_pysrc→in_flow`;基线 .Astranlog/.run 与 outputs/ 数据文件只随目录
+   移动、内容不动(它们是历史产物)。
+
+**有意不改(白名单,均有据)**:Qt 信号/方法名(Qt 惯例 camelCase,重命名会破坏
+override 与 connect);注释/文档里引用的 ASTRAN C++ 标识符(`foldTrans`、
+`seriesFolding`、`nGraphRouter` 等,改了就与 C++ 源对不上);matplotlib kwargs
+(`shrinkA/shrinkB`);**bestRecord-* 文件格式 token**(`patternCode`、`saveArea`、
+`clusterNum`、`designOverallArea`…作为受保护字面量保留,committed outputs 字节
+不变,重生成 diff 为空);数据文件名(`cellsAstranFriendly.sp`、`gscl45nm.lib`)。
+
+**抓到的真缺陷**:test_flow_parity 跳过表头行的条件是格式耦合字符串
+`"patternCode" in line`,机械替换误改为 `"pattern_code"`,解析器把表头当数据行、
+断言失败。全库 grep 确认保护名单之外这是唯一一处格式耦合字面量,已还原。
+
+**钉住**:`test_naming` LEGACY 名单从 11 个扩到约 130 个(模块名 + 入口函数 +
+数据模型属性 + 流程全局);死代码 GNN 模块(`gnn_model`/`blif_gnn_training`,
+TensorFlow 依赖缺失无法导入)与 test_naming 自身排除在扫描外。
+
+**证据**:324 个单测 ×4 轮全绿;`git diff flow/spice.py` 确认导出模板字面量未动
+(.sp 重生成字节相同);残留 camelCase 扫描只剩 11 个、全部位于 bestRecord 格式
+字面量/死注释内。
+
+**并行协作记录**:整改开始时另一会话正在仓库内落 P2 批次(llm_hint_provider/
+smt_cell_placer/pin_accessibility);等待其提交(ac2e4c4)后窗口期内完成全部三批,
+避免全库改名与在写文件冲突。

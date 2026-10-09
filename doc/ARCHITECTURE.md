@@ -39,9 +39,10 @@ gui/flow_core.py     ← 待迁移：第三份控制流副本，下一步改为�
 
 ## 代码质量约定（2026-10-10 起）
 
-1. **命名**：新代码一律 snake_case（`_collect_neighbor_features`、`get_flow_logger`）；
-   公开 API 保留历史 camelCase（`loadAstranArea` 等被 gui/测试/文档引用），新增别名
-   不破坏兼容；模块 docstring 标注。
+1. **命名**：全库 snake_case（2026-10-10 三级整改：模块文件名、633 个标识符、
+   文件夹，见 AUDIT 5.34）。例外白名单：Qt 信号/方法名（Qt 惯例）、注释里引用的
+   ASTRAN C++ 标识符、bestRecord-* 文件格式 token（受保护字面量）。
+   `test_naming` 用 ~130 个 LEGACY 名字钉住不回流。
 2. **大函数**：>80 行的函数必须拆分；重复块抽共享 helper（growth 的
    `_collect_neighbor_features` 已消掉两函数各 ~50 行重复与 4 层嵌套）。
 3. **日志/dfx**：一律走 `core.log.getFlowLogger()`（级别过滤、时间戳、控制台

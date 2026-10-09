@@ -191,7 +191,7 @@ def f2():
 
     rbox(ax, 2.5, 1.2, 4.0, 0.85, "是：写 bestRecord-基准名\n（最佳组合）", C_OK, E_IO, 9.5)
     rbox(ax, 8.1, 1.2, 3.6, 0.85, "否：停止扩展\n该基准", C_BAD, "#B03030", 9.5)
-    rbox(ax, cx, 0.35, 8.6, 0.6, "growASeqOfClusters：生长 top1 模式 → 新模式回池 → 重排 → 下一轮", C_FRONT, E_FRONT, 9.0)
+    rbox(ax, cx, 0.35, 8.6, 0.6, "grow_sequence_of_clusters：生长 top1 模式 → 新模式回池 → 重排 → 下一轮", C_FRONT, E_FRONT, 9.0)
 
     # arrows
     arr(ax, (cx, 11.0), (cx, 10.68), color=E_IO)
