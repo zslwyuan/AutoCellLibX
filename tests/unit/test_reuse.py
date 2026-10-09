@@ -1,5 +1,5 @@
 """Unit tests for pySrc/reuse.py (synthesis-reuse eligibility)."""
-from BLIFGraphUtil import StdCellType, DesignCell, DesignNet, \
+from blif_graph_util import StdCellType, DesignCell, DesignNet, \
     DesignPatternCluster, DesignPatternClusterSeq
 from reuse import functionComplexity, interfaceOutputCount, reuseEligible
 from liberty_gen import loadLibertyFunctions
@@ -104,9 +104,9 @@ def test_adder_top_patterns_are_not_eligible(in_pysrc):
     """Evidence for AUDIT 5.25: the mined patterns are all multi-output,
     which is why abc never touches them -- the reuse path needs the
     internalizeOnly growth bias or single-output seeds."""
-    from BLIFPreProc import gen_graph_from_liberty_and_blif, \
+    from blif_preproc import gen_graph_from_liberty_and_blif, \
         heuristic_label_initial_clusters
-    from BLIFGraphUtil import sortPatternClusterSeqs
+    from blif_graph_util import sortPatternClusterSeqs
     G, cells, netlist, types = gen_graph_from_liberty_and_blif(
         LIB, "../benchmark/blif/adder.blif")
     seqs, _ = heuristic_label_initial_clusters(G, cells, netlist)

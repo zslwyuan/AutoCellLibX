@@ -23,9 +23,9 @@ def test_substitute_whole_word():
 
 
 def test_generate_real_cluster_liberty(in_pysrc):
-    from BLIFPreProc import (gen_graph_from_liberty_and_blif,
+    from blif_preproc import (gen_graph_from_liberty_and_blif,
                              heuristic_label_initial_clusters)
-    from BLIFGraphUtil import sortPatternClusterSeqs
+    from blif_graph_util import sortPatternClusterSeqs
     from electrical import loadCellElectricalMetrics
     from timing_power import loadTimingPower
 

@@ -185,7 +185,7 @@ class ConfigureTab(QWidget):
 
         # ---- layout constraints: ASTRAN geometry, editable ----
         geo_card = Card("版图参数约束 / Layout constraints")
-        geo_note = faint("写入 ASTRAN .run 脚本的几何参数（默认取 pySrc/Astran.py 常量）。"
+        geo_note = faint("写入 ASTRAN .run 脚本的几何参数（默认取 pySrc/astran.py 常量）。"
                          "行高 H = cellsHeight × vGrid；改行高需重新做 DRC 验证。")
         geo_card.add(geo_note)
         form = QFormLayout()
@@ -217,7 +217,7 @@ class ConfigureTab(QWidget):
         form.addRow("nwellPos", self.geo_nwell)
         form.addRow("cellTemplate", self.geo_template)
         geo_card.add_layout(form)
-        reset_geo = QPushButton("恢复默认 (Astran.py 常量)")
+        reset_geo = QPushButton("恢复默认 (astran.py 常量)")
         reset_geo.clicked.connect(self._reset_geometry)
         geo_card.add(reset_geo)
         self._geo_hint = faint("")
@@ -304,17 +304,17 @@ class ConfigureTab(QWidget):
 
     # ---------------------------------------------------------- geometry
     def _load_geometry(self):
-        """Load the Astran.py constants as the defaults for the editable fields."""
+        """Load the astran.py constants as the defaults for the editable fields."""
         try:
             paths.ensure_pysrc_on_path()
-            import Astran
+            import astran
             self._geo_defaults = {
-                "cellsHeight": Astran.ASTRAN_CELLS_HEIGHT,
-                "hGrid": Astran.ASTRAN_HGRID,
-                "vGrid": Astran.ASTRAN_VGRID,
-                "supplySize": Astran.ASTRAN_SUPPLY_SIZE,
-                "nwellPos": Astran.ASTRAN_NWELL_POS,
-                "cellTemplate": Astran.ASTRAN_CELL_TEMPLATE,
+                "cellsHeight": astran.ASTRAN_CELLS_HEIGHT,
+                "hGrid": astran.ASTRAN_HGRID,
+                "vGrid": astran.ASTRAN_VGRID,
+                "supplySize": astran.ASTRAN_SUPPLY_SIZE,
+                "nwellPos": astran.ASTRAN_NWELL_POS,
+                "cellTemplate": astran.ASTRAN_CELL_TEMPLATE,
             }
         except Exception as exc:                        # noqa: BLE001
             self._geo_defaults = {"cellsHeight": 13, "hGrid": 0.19, "vGrid": 0.19,
@@ -363,7 +363,7 @@ class ConfigureTab(QWidget):
     def _reset_geometry(self):
         self.ctx.state.config.geometry = None
         self._sync_geometry()
-        self.ctx.log("已恢复 ASTRAN 几何默认值 (pySrc/Astran.py)", "info")
+        self.ctx.log("已恢复 ASTRAN 几何默认值 (pySrc/astran.py)", "info")
 
     def _spin(self, lo, hi, val, tip):
         s = QSpinBox()

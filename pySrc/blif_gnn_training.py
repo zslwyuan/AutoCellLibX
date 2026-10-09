@@ -1,7 +1,7 @@
 from turtle import shape
 import easydict
 import tensorflow as tf
-from GNNModel import GraphCNN
+from gnn_model import GraphCNN
 import networkx as nx
 import time
 import tensorflow.python.keras.backend as K

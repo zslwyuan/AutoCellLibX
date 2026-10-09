@@ -1,10 +1,10 @@
 """Parsing layer (core/parse): liberty / BLIF / SPICE readers.
 
-Extracted verbatim (AST) from BLIFPreProc.py (load_liberty_file,
+Extracted verbatim (AST) from blif_preproc.py (load_liberty_file,
 load_bool_gate_from_blif, gen_graph_from_liberty_and_blif) and spice.py
 (SPSubcircuit, load_spice_subcircuits).  Orchestration helpers built on
 top of parsing (loadDataAndPreprocess, dataset conversion, getArea)
-stay in the BLIFPreProc shim -- they are pipeline layers, not readers
+stay in the blif_preproc shim -- they are pipeline layers, not readers
 (see doc/ARCHITECTURE.md).
 """
 
@@ -13,8 +13,8 @@ import time
 import networkx as nx
 import blifparser.blifparser as blifparser
 from liberty.parser import parse_liberty
-from globalVariables import *
-from BLIFGraphUtil import *
+from global_variables import *
+from blif_graph_util import *
 
 
 _liberty_cache = {}

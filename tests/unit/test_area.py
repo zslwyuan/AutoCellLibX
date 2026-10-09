@@ -1,5 +1,5 @@
-"""Unit tests for GDS area readers (pySrc/GDSIIAnalysis.py)."""
-from GDSIIAnalysis import loadOrignalGSCL45nmGDS, loadAstranGDS
+"""Unit tests for GDS area readers (pySrc/gds_analysis.py)."""
+from gds_analysis import loadOrignalGSCL45nmGDS, loadAstranGDS
 
 
 def test_gscl_area_reader(in_pysrc):
@@ -19,7 +19,7 @@ def test_astran_area_reader(in_pysrc):
 
 def test_astran_cells_are_smaller_than_design(in_pysrc):
     """Sanity: individual cell footprints are far below the whole-design area."""
-    from BLIFPreProc import loadDataAndPreprocess, getArea
+    from blif_preproc import loadDataAndPreprocess, getArea
 
     G, cells, netlist, types, ds, ml, seqs, cn = loadDataAndPreprocess(
         libFileName="../stdCelllib/gscl45nm.lib",

@@ -9,7 +9,7 @@
 pySrc/
   main.py            ← 薄 CLI：构建 FlowConfig → 调 runPipeline（原 587 行单体内联已抽离）
   core/              ← 新分层核心（本架构的主体）
-    config.py        ← FlowConfig 数据类：全部可调参数集中（取代 globalVariables 可变全局
+    config.py        ← FlowConfig 数据类：全部可调参数集中（取代 global_variables 可变全局
                        与 main.py 顶部魔法数）；from_env() 读环境变量
     pipeline.py      ← runPipeline(cfg)：完整挖掘流水线（AST 逐字从 main() 提取，
                        行为由等价测试对 GUI 移植版钉住）；含阶段一（贪心/束生长+版图+评估）
@@ -17,14 +17,14 @@ pySrc/
     encoding.py      ← 编码（canonical_pattern_code/extract_and_encode_subgraph_tree/
                        escape_output_count）
     seeding.py       ← 初始聚类（heuristicLabel.../..._BasedOn，AST 逐字提取，
-                       BLIFPreProc 现为 re-export shim）
-    graph.py         ← （规划）数据结构门面（BLIFGraphUtil）
+                       blif_preproc 现为 re-export shim）
+    graph.py         ← （规划）数据结构门面（blif_graph_util）
     evaluate.py      ← 评估层门面：电气/时序/可布性/复用/宽度代理/版图体检/表征/PDK
                        （收编 electrical/timing_power/routability/reuse/width_proxy/
                          layout_sanity/benefit/liberty_gen/pdk_config）
-    external.py      ← 外部工具门面：ASTRAN / GDSIIAnalysis / yosys / 重映射评估
-  BLIFPreProc.py     ← shim：seeding 已迁 core，其余解析暂留（下一步迁 core/parse）
-  BLIFPatternGrowth.py ← 生长（下一步迁 core/growth）
+    external.py      ← 外部工具门面：ASTRAN / gds_analysis / yosys / 重映射评估
+  blif_preproc.py     ← shim：seeding 已迁 core，其余解析暂留（下一步迁 core/parse）
+  blif_pattern_growth.py ← 生长（下一步迁 core/growth）
   ...其余单职责模块（benefit/routability/electrical/timing_power/liberty_gen/
      reuse/width_proxy/layout_sanity/yosys_import/yosys_eval/pdk_config/...）
   smt_cell_placer.py    ← 2026-10-09 新增：SMT 联合 folding+placement 参考实现
@@ -62,14 +62,14 @@ gui/flow_core.py     ← 待迁移：第三份控制流副本，下一步改为�
 | main() 587 行 → core/pipeline.runPipeline | AST 逐字提取 + FlowConfig 参数化 | test_flow_parity（main≡flow_core）通过 |
 | main.py → 薄 CLI | 重写（22 行） | 同上 |
 | 可变全局 → FlowConfig | 新数据类，默认值=旧行为 | test_config（新增） |
-| heuristicLabel...×2 → core/seeding | AST 逐字提取，BLIFPreProc shim | test_clustering/encoding/reuse 全绿 |
-| grow_sequence_of_clusters(+_BasedOn) → core/growth | AST 逐字提取，BLIFPatternGrowth shim | test_pattern_growth/benefit 全绿 |
+| heuristicLabel...×2 → core/seeding | AST 逐字提取，blif_preproc shim | test_clustering/encoding/reuse 全绿 |
+| grow_sequence_of_clusters(+_BasedOn) → core/growth | AST 逐字提取，blif_pattern_growth shim | test_pattern_growth/benefit 全绿 |
 
 ## 待迁移（按优先级）
 
 1. ~~core/parse~~ ✅ 已迁（2026-10-10）：load_liberty_file/load_bool_gate_from_blif/
    gen_graph_from_liberty_and_blif + SPSubcircuit/load_spice_subcircuits（AST 逐字），
-   BLIFPreProc 与 spice 变 shim（编排/GNN/导出留在 shim）；
+   blif_preproc 与 spice 变 shim（编排/GNN/导出留在 shim）；
 
 2. ~~core/growth~~ ✅ 已迁（2026-10-10）；
 3. ~~gui/flow_core 消费 core.pipeline~~ ✅ 已迁（2026-10-10）；

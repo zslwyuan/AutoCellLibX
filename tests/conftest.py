@@ -12,7 +12,7 @@ import pytest
 REPO_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PYSRC_DIR = os.path.join(REPO_DIR, "pySrc")
 
-# Make the flow importable as top-level modules (BLIFPreProc, spice, ...).
+# Make the flow importable as top-level modules (blif_preproc, spice, ...).
 if PYSRC_DIR not in sys.path:
     sys.path.insert(0, PYSRC_DIR)
 

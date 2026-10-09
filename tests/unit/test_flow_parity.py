@@ -28,9 +28,9 @@ own module namespace, flow_core calls them as module attributes):
   This reconstructs each flow's ``detectedPatterns`` (in order) and
   ``dumpedPaterns`` (trace -> id) exactly.
 * ``drawColorfulFigureForGraphWithAttributes`` (patched on ``main`` /
-  ``BLIFGraphUtil``): the dumped COMPLEX id sequence.
+  ``blif_graph_util``): the dumped COMPLEX id sequence.
 * ``heuristic_label_initial_clusters_based_on`` (patched on
-  ``main`` / ``BLIFPreProc``): the phase-2 target trace sequence.
+  ``main`` / ``blif_preproc``): the phase-2 target trace sequence.
 """
 import hashlib
 import os
@@ -91,7 +91,7 @@ def _write_fake_layout(command_dir, cell_name, width):
 
 def _fake_run_astran_for_netlist(AstranPath, gurobiPath, technologyPath,
                                  spiceNetlistPath, complexName, commandDir):
-    """Drop-in for ``Astran.runAstranForNetlist`` in main.py's namespace."""
+    """Drop-in for ``astran.runAstranForNetlist`` in main.py's namespace."""
     _write_fake_layout(commandDir, complexName,
                        _fake_cell_width(spiceNetlistPath, complexName))
 
@@ -199,8 +199,8 @@ def _run_gui_flow(sandbox, monkeypatch):
     Returns (out_dir, summary, tracker, phase2_targets) -- the same
     symmetric capture as the main run.
     """
-    import BLIFGraphUtil
-    import BLIFPreProc
+    import blif_graph_util
+    import blif_preproc
     import spice
     from gui import artifacts, flow_core
 
@@ -234,10 +234,10 @@ def _run_gui_flow(sandbox, monkeypatch):
     # Symmetric capture: flow_core resolves these as module attributes.
     tracker = _DumpTracker()
     phase2_targets = []
-    real_draw = BLIFGraphUtil.drawColorfulFigureForGraphWithAttributes
+    real_draw = blif_graph_util.drawColorfulFigureForGraphWithAttributes
     real_export = spice.exportSpiceNetlist
     real_based_on = \
-        BLIFPreProc.heuristic_label_initial_clusters_based_on
+        blif_preproc.heuristic_label_initial_clusters_based_on
 
     def spy_draw(*args, **kwargs):
         tracker.on_draw(kwargs.get("save_to_file", ""))

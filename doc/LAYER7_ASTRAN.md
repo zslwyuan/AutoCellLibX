@@ -22,7 +22,7 @@
 **运行契约**（前后端只靠文件）：
 
 ```
-pySrc/Astran.py 写出  COMPLEX1.run ──► Astran --shell COMPLEX1.run
+pySrc/astran.py 写出  COMPLEX1.run ──► Astran --shell COMPLEX1.run
                                         │
    tech_freePDK45.rul ──┐               ├─► stdout（GUI/CLI 存为 COMPLEX1.Astranlog）
    COMPLEX1.sp ─────────┤               ├─► COMPLEX1.gds
@@ -30,7 +30,7 @@ pySrc/Astran.py 写出  COMPLEX1.run ──► Astran --shell COMPLEX1.run
 ```
 
 `.run` 脚本逐行解释（`outputs/adder/COMPLEX1.run` 的真实内容，常量定义在
-`pySrc/Astran.py:58-63`）：
+`pySrc/astran.py:58-63`）：
 
 ```tcl
 set lpsolve "…/gurobi_cl.cmd"        # compact 阶段外部求解器的命令行

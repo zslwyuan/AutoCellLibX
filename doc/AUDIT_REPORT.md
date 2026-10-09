@@ -99,8 +99,8 @@ exit
 
 | 位置 | 现行做法 | 问题 |
 |---|---|---|
-| `GDSIIAnalysis.loadOrignalGSCL45nmGDS` | `curCell.area(((6,0),))[(6,0)]` —— 取 GDS **第 6 层**图形面积 | 第 6 层是某个内部层(GSCL 层表中 6=?),其图形面积**不代表单元占用的版图面积**;用单层面积当"单元面积"在物理上无意义 |
-| `GDSIIAnalysis.loadAstranGDS` / `Astran.loadAstranArea` | `W(日志) × 0.8 × 3.2` | `0.8` 为缩放系数、`3.2` 是**上游单元高度**;对本机生成单元(高 2.6)系数不匹配 |
+| `gds_analysis.loadOrignalGSCL45nmGDS` | `curCell.area(((6,0),))[(6,0)]` —— 取 GDS **第 6 层**图形面积 | 第 6 层是某个内部层(GSCL 层表中 6=?),其图形面积**不代表单元占用的版图面积**;用单层面积当"单元面积"在物理上无意义 |
+| `gds_analysis.loadAstranGDS` / `Astran.loadAstranArea` | `W(日志) × 0.8 × 3.2` | `0.8` 为缩放系数、`3.2` 是**上游单元高度**;对本机生成单元(高 2.6)系数不匹配 |
 
 **关于 `0.8 × 3.2` 的澄清**:实测上游 `NAND2X1.Astranlog` 的 `Cell Size = 0.8 x 3.2`、`INVX1 = 0.4 x 3.2`,可见 `3.2` 正是上游单元高度,`0.8` 为附加缩放。由于 `saveArea = (oriUnit − newUnit) × clusterNum` 中两项使用**同一系数**,高度系数被消去,故 `saveRatio`(原 9.53%)实为**宽度减少比例**,在比例意义上自洽;但 `astranArea`(绝对值)与跨库对比不可靠。
 
@@ -134,13 +134,13 @@ exit
 
 发现并修复以下确凿错误(均在 `pySrc/`):
 
-### 3.1 `BLIFPreProc.extract_and_encode_subgraph_tree` —— 编码与节点错位
+### 3.1 `blif_preproc.extract_and_encode_subgraph_tree` —— 编码与节点错位
 
 - **错误**:`encodes.append(...)` 位于 `if (not predCell.id in tree)` **之外**,而 `tree.append(...)` 在之内。当同一前驱经多条 net 驱动同一下游(多输出单元如 FAX1,或菱形结构)时,`encodes` 会比 `tree` 多出重复项,导致**编码串与子图结构不对应**;结构等价的模式被编码成不同串 → **模式被错误拆分/归并**。
 - **修复**:将 `encodes.append` 移入去重分支,保证编码与树节点严格一一对应。
 - **验证**:adder 初始聚类 128 簇,`编码长度 == 簇内单元数` 的不匹配数为 **0**。
 
-### 3.2 `BLIFPatternGrowth.grow_sequence_of_clusters` / `_BasedOn` —— 生长方向不对称
+### 3.2 `blif_pattern_growth.grow_sequence_of_clusters` / `_BasedOn` —— 生长方向不对称
 
 - **错误**:输入前驱方向有"跳过同类型模式邻居"的检查
   ```python
@@ -150,7 +150,7 @@ exit
 - **修复**:在两个函数的输出后继循环中补上同类型模式跳过检查,使两个方向语义对称。
 - **说明**:该修复改变模式生长路径,故结果会变化;见 §3.4 关于结果波动的说明。
 
-### 3.3 `BLIFPreProc.heuristic_label_initial_clusters_based_on` —— labelId 递增不一致
+### 3.3 `blif_preproc.heuristic_label_initial_clusters_based_on` —— labelId 递增不一致
 
 - **错误**:与同名函数(非 `_BasedOn`)不同,`labelId += 1` 被放在循环体末尾**无条件执行**(即使该模式的簇数为 0、序列被丢弃),导致`clusterTypeId` 出现空洞。
 - **后果**:`main.py` 第二轮以 `patternNum = len(clusterSeqs)` 作为新模式的 `clusterTypeId` 起点,而初始 `clusterTypeId` 已跳号 → **新旧模式编号可能冲突**,使生长中的"同类型模式"判断(依赖 `clusterTypeId` 比较)出错。
@@ -160,13 +160,13 @@ exit
 
 | 文件 | 修复 |
 |---|---|
-| `BLIFPreProc.convertBLIFGraphIntoDataset` | `node_features` 列数由固定 `maxNumType=36` 改为 `max(maxNumType, len(feat_dict))`,消除单元类型数 >36 时的 `IndexError`(此前越界检查被注释) |
+| `blif_preproc.convertBLIFGraphIntoDataset` | `node_features` 列数由固定 `maxNumType=36` 改为 `max(maxNumType, len(feat_dict))`,消除单元类型数 >36 时的 `IndexError`(此前越界检查被注释) |
 | `main.py`(两处) | 访问 `clusterSeqs[0]` 前增加 `len(clusterSeqs) == 0` 保护,避免空序列列表导致的 `IndexError` |
 | `spice.SPSubcircuit.__init__` | `interfaces` 从**未剥离换行**的 `texts[0]` 提取(而 `self.texts` 已剥离),导致最后一个引脚名带 `"\n"`(实测 `AND2X1` 的接口为 `['Y','B','VCC','GND','A\n']`);改为从 `self.texts[0]` 提取,`internalSignals` 同步改用 `self.texts` |
 
 ### 3.5 测试体系与验证
 
-**项目合并**:ASTRAN 源码与 LP 求解器包装已 vendored 进本仓库(`tools/astran/`、`tools/gurobi_cl/`),`pySrc/Astran.py` 集中定义项目内路径,项目自包含。
+**项目合并**:ASTRAN 源码与 LP 求解器包装已 vendored 进本仓库(`tools/astran/`、`tools/gurobi_cl/`),`pySrc/astran.py` 集中定义项目内路径,项目自包含。
 
 **测试套件**(`tests/`,pytest,分层):
 
@@ -198,7 +198,7 @@ exit
 2. **Layout 生成配置**:**不合理**。核心是**单元高度三方不一致**(目标库 2.47 / 上游基准 3.2 / 本机产物 2.6),叠加**层映射不一致**与**面积度量不当**。当前生成的复杂单元在物理上无法直接与 GSCL45 库集成;面积对比的绝对值不可靠。需显式配置 ASTRAN circuit 参数、统一层映射与面积度量。
 3. **Pattern 算法**:修复了 3 处确凿错误(编码错位、生长方向不对称、labelId 不一致)+ 4 处缺陷(特征维度越界、空序列保护、SPICE 接口换行),已通过 adder 全流程与测试套件验证。
 
-**工程化交付**:ASTRAN 与 AutoCellLibX 已合并为单一项目管理(`tools/astran`、`tools/gurobi_cl` vendored,路径集中于 `pySrc/Astran.py`,`BUILDING.md` 说明构建/运行/测试);建立分层测试体系(unit 31 + integration 3,含针对上述每个 bug 的回归用例)。
+**工程化交付**:ASTRAN 与 AutoCellLibX 已合并为单一项目管理(`tools/astran`、`tools/gurobi_cl` vendored,路径集中于 `pySrc/astran.py`,`BUILDING.md` 说明构建/运行/测试);建立分层测试体系(unit 31 + integration 3,含针对上述每个 bug 的回归用例)。
 
 > 本次实施:第 3 部分的代码修复 + 项目合并 + 测试体系;第 1、2 部分按"分析"交付,其修复涉及 ASTRAN 源码与工艺配置,建议单独立项并重新标定。
 
@@ -235,7 +235,7 @@ exit
 |---|---|
 | 面积度量 | 三类单元(ASTRAN 基准 / ASTRAN 产物 / GSCL 库)统一为**标称宽度**作面积代理(同库行高固定 ⇒ 面积 ∝ 宽度),消除基准(3.2um)与产物(2.6um)行高不一致引入的偏差;GSCL 侧从 LEF `SIZE` 取宽度(不再用单个 GDS 层的图形面积) |
 | 工艺参数 | `.run` 脚本显式固化 `set rowheight/grid/supplysize/nwellpos/celltemplate`,不再依赖编译内置默认,配置可复现 |
-| 项目自包含 | ASTRAN 与求解器包装 vendored 至 `tools/`,路径集中于 `pySrc/Astran.py` |
+| 项目自包含 | ASTRAN 与求解器包装 vendored 至 `tools/`,路径集中于 `pySrc/astran.py` |
 
 ### 5.4 验证
 
@@ -307,7 +307,7 @@ Cexpr6794: astranExpr6794 - y186_width - inf x186_width = 0
 
 先前 `outputs/adder` 的增益是在"**基准 H=3.2 × 产物 H=2.6**"下算出的:GSCL45 LEF 的单元高度是 **2.47**(见 `stdCelllib/gscl45nm.lef` 的 `SIZE … BY 2.47`),而 `originalAstranStdCells/` 里的 ASTRAN 基准是上游**另一套** ASTRAN(日志自证 Linux + `/opt/gurobi950` + `cellsHeight=16`)以 **H=3.2** 生成的,本仓库无法复现。行高不同则"面积 ∝ 宽度"不成立,比较无意义——实测 `COMPLEX9` 因此从 +6.5% 翻成 −19.5%。
 
-修复:用 vendored 工具链、**同一套几何常量**重生成 `originalAstranStdCells/`(H=2.6),使基准与产物同高,整条结果可用本仓库复现。与 GSCL45 仍有 2.6 vs 2.47 的残余差异(约 5%);如需完全对齐,把 `Astran.ASTRAN_VGRID` 调为 0.19(13×0.19=2.47)后重做 DRC 复核即可。
+修复:用 vendored 工具链、**同一套几何常量**重生成 `originalAstranStdCells/`(H=2.6),使基准与产物同高,整条结果可用本仓库复现。与 GSCL45 仍有 2.6 vs 2.47 的残余差异(约 5%);如需完全对齐,把 `astran.ASTRAN_VGRID` 调为 0.19(13×0.19=2.47)后重做 DRC 复核即可。
 
 **(3) 流水线不可复现(`PYTHONHASHSEED`)**
 
@@ -415,7 +415,7 @@ cpt.insertConstraint("ZERO", "y"+metNode+"_width" + " + " + to_string(-tmp2) + "
 `bestRecord-adder`:**节省 106.2(ASTRAN 同高基准的 13.25%;GSCL LEF 的 11.44%)**,选定单元 COMPLEX10(59 次出现,5 单元)。内部自洽:原 5 单元宽度合计 5.6,合并后 3.8,1.8 × 59 = 106.2。
 
 **未完成(已记录)**:
-- 6 单元生长图案(COMPLEX11):求解在两段预算内未终止,由 0×0 防护排除;其后的 7 单元图案(COMPLEX12)同样无法生成——CBC 在最大模型上**不遵守时间上限**(无法中断超长的根松弛求解),故这两个图案的生成不会终止,已从数据集中移除(不会进入任何记录);<s>`bestRecord-seperateadder`(phase 2 的逐图案记录)未生成</s>——已用 phase 2 的忠实回放(`pySrc/replay_seperateadder.py`)生成,与真实循环同公式、同浮点;
+- 6 单元生长图案(COMPLEX11):求解在两段预算内未终止,由 0×0 防护排除;其后的 7 单元图案(COMPLEX12)同样无法生成——CBC 在最大模型上**不遵守时间上限**(无法中断超长的根松弛求解),故这两个图案的生成不会终止,已从数据集中移除(不会进入任何记录);<s>`bestRecord-seperateadder`(phase 2 的逐图案记录)未生成</s>——已用 phase 2 的忠实回放(`pySrc/replay_separate_adder.py`)生成,与真实循环同公式、同浮点;
 - 行高仍为 2.6 vs GSCL45 的 2.47(见 §5.5/§5.7(2));`originalAstranStdCells/` 已全部按 2.6 重生成(16 个单元,含本轮的 CLKBUF1/DFFNEGX1/DFFPOSX1/MUX2X1/NOR3X1)。
 
 ### 5.9 第五轮:补齐基线单元时的 ASTRAN 崩溃(2026-09-25)
@@ -432,7 +432,7 @@ P/N 数量不等时,`transPlacement` 用 `link=-1` 的 GAP 条目把两条 order
 
 **(3) MSYS2 自带 python 遮蔽求解器包装(环境问题)**
 
-为装 gdb 而 `pacman -S mingw-w64-x86_64-gdb` 时,依赖把 `mingw-w64-x86_64-python`(3.14,无 python-mip)装进了 `C:\msys64\mingw64\bin`。`Astran.py` 把该目录置于 PATH 之前(ASTRAN 运行期 DLL 需要),于是 `gurobi_cl.cmd` 里的裸 `python` 解析到 MSYS2 解释器 → `ModuleNotFoundError: No module named 'mip'`,压缩静默失效。修复:`Astran.py` 把**当前流程所用的解释器目录**放在 PATH 最前(mingw64 其次),DLL 仍能解析、求解器包装始终用带 mip 的 python。
+为装 gdb 而 `pacman -S mingw-w64-x86_64-gdb` 时,依赖把 `mingw-w64-x86_64-python`(3.14,无 python-mip)装进了 `C:\msys64\mingw64\bin`。`astran.py` 把该目录置于 PATH 之前(ASTRAN 运行期 DLL 需要),于是 `gurobi_cl.cmd` 里的裸 `python` 解析到 MSYS2 解释器 → `ModuleNotFoundError: No module named 'mip'`,压缩静默失效。修复:`astran.py` 把**当前流程所用的解释器目录**放在 PATH 最前(mingw64 其次),DLL 仍能解析、求解器包装始终用带 mip 的 python。
 
 **验证**:`NOR3X1` 修复后 1.4 × 2.6、48 s、OPTIMAL(objective 2.86e6);16 个基线单元全部 H=2.6;44 单元 + 3 集成测试全通过。
 
@@ -466,7 +466,7 @@ P/N 数量不等时,`transPlacement` 用 `link=-1` 的 GAP 条目把两条 order
 
 **(1) GDS UNITS 记录是乱码字节,几何被按 0.8× 解读(P0)**
 
-`gds.cpp: generateUnits` 硬编码的 UNITS 双精度字节解码为 (8.17e-9, 7.98e-33) —— 物理上荒谬。写出器对内部坐标统一乘 2(`designmng.cpp` EXPORT_LAYOUT),内部单位为 1/MINSTEP=2.5nm,故一个 DBU 实为 MINSTEP/2=1.25nm;但乱码 UNITS 使任何遵守规范的读者无法按此解释,gdstk 等回退到 1nm DBU,把全部图形画成设计值的 80%(接触孔 52nm vs 规则 65nm、栅长 40nm vs 50nm、单元 3.36×2.08 vs 日志 4.2×2.6)。而面积度量读的是**日志**宽度(`GDSIIAnalysis._readAstranCellWidth`),与物理 GDS 相差 25%。修复:UNITS 字节改为 (0.00125, 1.25e-9)(`struct.pack('>d')` 计算的 IEEE 754),并注明推导。验证:重生成后 GDS 实测尺寸与日志完全一致(AND2X1 1.0×2.6µm、接触孔 0.065µm)。
+`gds.cpp: generateUnits` 硬编码的 UNITS 双精度字节解码为 (8.17e-9, 7.98e-33) —— 物理上荒谬。写出器对内部坐标统一乘 2(`designmng.cpp` EXPORT_LAYOUT),内部单位为 1/MINSTEP=2.5nm,故一个 DBU 实为 MINSTEP/2=1.25nm;但乱码 UNITS 使任何遵守规范的读者无法按此解释,gdstk 等回退到 1nm DBU,把全部图形画成设计值的 80%(接触孔 52nm vs 规则 65nm、栅长 40nm vs 50nm、单元 3.36×2.08 vs 日志 4.2×2.6)。而面积度量读的是**日志**宽度(`gds_analysis._readAstranCellWidth`),与物理 GDS 相差 25%。修复:UNITS 字节改为 (0.00125, 1.25e-9)(`struct.pack('>d')` 计算的 IEEE 754),并注明推导。验证:重生成后 GDS 实测尺寸与日志完全一致(AND2X1 1.0×2.6µm、接触孔 0.065µm)。
 
 **(2) 压缩器 a2/b2 端线变量无下界,对角间距约束被架空(P0)**
 
@@ -504,7 +504,7 @@ ASTRAN 只给 IOgeometries 里的信号端口打标(route() 把 vdd/gnd 排除�
 
 从 `stdCelllib` 提取的 GSCL45 约定:LEF `CoreSite SIZE 0.38 BY 2.47`、M1 pitch 0.19µm、abutment 导轨 0.13µm 高、宽度取 0.19 的倍数、`gscl45nm.lib` 标称电压 1.1V、`gds2_encounter.map` 的 stream 号(metal1=49、via=50、metal2=51、via2=61、metal3=62、via3=30、metal4=31、via4=32、metal5=33)。
 
-- `pySrc/Astran.py`:`ASTRAN_VGRID=ASTRAN_HGRID=0.19`(原 0.20)、`ASTRAN_SUPPLY_SIZE=0.26`(原 0.72;内部 `supWidth = max(supplyVSize, W1M1)/2 = 0.13` → 导轨高 0.13µm)、`ASTRAN_NWELL_POS=1.235 = H/2`(使 nwell/pwell 等高,与手工库一致;初版取过 1.0825,井高不等)。行高 = 13 × 0.19 = **2.47µm = GSCL45 site 高**。
+- `pySrc/astran.py`:`ASTRAN_VGRID=ASTRAN_HGRID=0.19`(原 0.20)、`ASTRAN_SUPPLY_SIZE=0.26`(原 0.72;内部 `supWidth = max(supplyVSize, W1M1)/2 = 0.13` → 导轨高 0.13µm)、`ASTRAN_NWELL_POS=1.235 = H/2`(使 nwell/pwell 等高,与手工库一致;初版取过 1.0825,井高不等)。行高 = 13 × 0.19 = **2.47µm = GSCL45 site 高**。
 - `tools/astran/build/Work/tech_freePDK45.rul`:金属/通孔层号改为 GSCL45 stream 号;`VDD 3.3 → 1.1`。
 - `tools/astran/build_astran.sh`:链接后 `strip` 二进制 —— 360 的启动启发式(HEUR/QVM…Malware.Gen)会删除刚链接的 `Astran.exe`,strip 后不再误杀(替代此前"加信任列表"的说法)。
 
@@ -623,7 +623,7 @@ ASTRAN 只给 IOgeometries 里的信号端口打标(route() 把 vdd/gnd 排除�
 - 深度不刷新的真 bug:`_show_neighbourhood` 的 BFS 里 `keep |= nxt` 之后才算 `frontier = nxt - keep`,永远为空——**深度 1/2/3 实际都只展开一层**;再加上深度 QSpinBox 没有连任何刷新信号,调深度完全无效果。
 
 **修复**:
-- `pySrc/BLIFPreProc.py`:`load_liberty_file` 增加 (路径,mtime) 键控的进程级缓存,返回浅拷贝隔离 `load_bool_gate_from_blif` 的 bool-* 注入(避免跨基准污染)。实测:第二次解析 0.93s→0.01s。
+- `pySrc/blif_preproc.py`:`load_liberty_file` 增加 (路径,mtime) 键控的进程级缓存,返回浅拷贝隔离 `load_bool_gate_from_blif` 的 bool-* 注入(避免跨基准污染)。实测:第二次解析 0.93s→0.01s。
 - `gui/tabs/design.py`:
   - BFS 重写:先 `nxt -= keep` 再并入,frontier 保持"本层新发现"节点;深度 1/2/3 实测节点数 2/3/3(修复前恒为 2);
   - `depth.valueChanged` 连接 `_show_neighbourhood`,调深度立即重绘;
@@ -653,17 +653,17 @@ ASTRAN 只给 IOgeometries 里的信号端口打标(route() 把 vdd/gnd 排除�
 - `AGENTS.md` option-3 条目:"COMPLEX1 needs the recovery at H=2.47"是 1.0825 旧几何残留——现行几何下 adder 四单元全部首解可行,重试一次未触发(已改为"安全网而非常态"的表述)。
 
 **代码隐患(记录在案,未改行为)**:
-1. `pySrc/Astran.py:45-46`:日志缺 `Cell Size` 行时 `assert(False); return 123`——`python -O` 下 assert 被剥离会静默返回 123µm 假宽度(应改抛异常);
+1. `pySrc/astran.py:45-46`:日志缺 `Cell Size` 行时 `assert(False); return 123`——`python -O` 下 assert 被剥离会静默返回 123µm 假宽度(应改抛异常);
 2. `pySrc/main.py:247-248`:`bestRecord-seperate` 在逐模式循环之前以 `'w'` 打开,循环中途异常会留下空/半截记录;
 3. `pySrc/main.py:92`:`cellIdsContained>=11` 用 `continue` 跳过但队首未弹出,依赖后续分支弹出才不死循环(脆弱);
-4. `pySrc/BLIFPreProc.py:123-124`:库中找不到 `.subckt` 类型直接 `assert(False)`;`BLIFGraphUtil.py:82-84` 多驱动网静默覆盖 `predCell`,均无告警;
-5. `pySrc/GDSIIAnalysis.py:18-21` 注释仍写"基线 H=3.2/本地 2.6"(现行 2.47),且两个 `load*GDS*` 函数名误导(实际读 LEF/日志)——文档漂移,行为正确。
+4. `pySrc/blif_preproc.py:123-124`:库中找不到 `.subckt` 类型直接 `assert(False)`;`blif_graph_util.py:82-84` 多驱动网静默覆盖 `predCell`,均无告警;
+5. `pySrc/gds_analysis.py:18-21` 注释仍写"基线 H=3.2/本地 2.6"(现行 2.47),且两个 `load*GDS*` 函数名误导(实际读 LEF/日志)——文档漂移,行为正确。
 
 **算法层面风险(转化为优化路线图的动机,详见 doc/RESEARCH_AND_OPTIMIZATION.md)**:
-- 编码不对子节点排序(`BLIFPreProc.py:222-235` 无 sort):根节点多输入类型不同时,同构实例会得到不同编码→频次系统性低估(P0-1);
+- 编码不对子节点排序(`blif_preproc.py:222-235` 无 sort):根节点多输入类型不同时,同构实例会得到不同编码→频次系统性低估(P0-1);
 - 节省求和无重叠去重:不同模式的簇可共享单元(`setCluster` 覆盖),`main.py:185-188` 直接求和会重复计收益(P0-2);
-- 生长宽度恒为 1(`BLIFPatternGrowth.py:104` 的 `[:1]`)且不知面积:COMPLEX10 实证负收益(−56.05,bestRecord-seperateadder:5)(P0-3);
-- 唯一归属为破坏式 enforcement:占用冲突时整个旧簇被 `disabled=True`,无收益比较(`BLIFPatternGrowth.py:118-120`);
+- 生长宽度恒为 1(`blif_pattern_growth.py:104` 的 `[:1]`)且不知面积:COMPLEX10 实证负收益(−56.05,bestRecord-seperateadder:5)(P0-3);
+- 唯一归属为破坏式 enforcement:占用冲突时整个旧簇被 `disabled=True`,无收益比较(`blif_pattern_growth.py:118-120`);
 - flow_core 与 main.py 无任何等价测试,"faithful port"靠人工评审(P0-5)。
 
 **验证**:194 单测通过(校验未触碰流程代码,仅改文档)。
@@ -674,19 +674,19 @@ ASTRAN 只给 IOgeometries 里的信号端口打标(route() 把 vdd/gnd 排除�
 1. `Astran.loadAstranArea` 缺日志时改为 `raise RuntimeError`(原 `assert(False); return 123` 在 `python -O` 下静默造假宽度);
 2. `main.py` 两个 `>=11` 守卫由 `continue` 改为弹出队首(原写法空转整个迭代预算);`flow_core.py` 两处同步;
 3. `main.py` 第二阶段 `bestRecord-seperate` 改为末尾才打开写盘(原开头 `'w'` 截断,中途崩溃留空文件);
-4. `BLIFPreProc` 未知单元类型改抛 `ValueError`(含类型名与 lib 路径),`PIN=net` 畸形行显式报错;
+4. `blif_preproc` 未知单元类型改抛 `ValueError`(含类型名与 lib 路径),`PIN=net` 畸形行显式报错;
 5. `DesignNet.addPin` 多驱动网保留 last-wins 但发出 `RuntimeWarning` 并计数(`DesignNet.multiDriverCount`)。
 
 **P0 优化(行为变化已标定)**:
 - P0-1 编码规范化(`canonical_pattern_code`,根在前、子节点排序):trace 字符串因此对既有 outputs 快照改名(如 `[XNOR2X1,XOR2X1,OAI21X1]`→`[XNOR2X1,OAI21X1,XOR2X1]`),重生成时以新名为准。**大基准实测收益显著**(`pySrc/canon_impact.py`):BoomBranchPredictor 2721→1793 组(合并 737 个虚假分裂、回收 21541 个实例)、DCache 2084→1459(13503)、GemminiLoopConv 2829→1787(14588);adder 网表顺序本来就一致,数字不变。
 - P0-2 节省重叠去重(`countUncoveredClusters`):同轮候选共享的簇只计一次;bestRecord 中 clusterNum 变为去重后计数。
-- P0-3 束搜索+预估剪枝:`grow_sequence_of_clusters` 接受 `benefitEstimator`(新增 `pySrc/benefit.py` 的 ShrinkModel,按"尺寸→收缩率"在线标定、取保守 max);`growBeamWidth=2`(globalVariables)/`cfg.grow_beam=2`(GUI)每轮生长前 2 个队首;≥10 单元的队首不再生长(其 11 单元后代在版图阶段必然被剔除)。COMPLEX10 型负收益(−56.05)在其首个观测后会被剪枝。
+- P0-3 束搜索+预估剪枝:`grow_sequence_of_clusters` 接受 `benefitEstimator`(新增 `pySrc/benefit.py` 的 ShrinkModel,按"尺寸→收缩率"在线标定、取保守 max);`growBeamWidth=2`(global_variables)/`cfg.grow_beam=2`(GUI)每轮生长前 2 个队首;≥10 单元的队首不再生长(其 11 单元后代在版图阶段必然被剔除)。COMPLEX10 型负收益(−56.05)在其首个观测后会被剪枝。
 - P0-4 可布性第二指标(新增 `pySrc/routability.py`):从 .Astranlog 解析 `Rt. Density` 与 Pathfinder 尝试轮数,报告默认开启;硬门限 `routabilityDensityGate`/`cfg.max_rt_density` 默认 None(先测量后执法)。
 - P0-5 flow_core≡main.py 等价测试:桩 ASTRAN(按 .sp 内容哈希定宽)比较两流程 bestRecord(见 tests/unit/test_flow_parity.py)。
 
 **P1 优化**:
 - P1-7 电气量(新增 `pySrc/electrical.py`):解析 liberty 的 `cell_leakage_power`/引脚电容/LUT 均值延迟代理;模式级汇总含 internal_nets(合并内化的网数=动态功耗节省代理)。report-only,不改选择准则。
-- P1-8 PDK 注册表(新增 `pySrc/pdk_config.py`):freepdk45 与 Astran.py 常量强一致(测试钉住);sky130(8×0.34µm)/gf180(14×0.28µm)为脚手架,.rul 未编写前 raise;`nwellPos` 恒取 H/2 防再次漂移。
+- P1-8 PDK 注册表(新增 `pySrc/pdk_config.py`):freepdk45 与 astran.py 常量强一致(测试钉住);sky130(8×0.34µm)/gf180(14×0.28µm)为脚手架,.rul 未编写前 raise;`nwellPos` 恒取 H/2 防再次漂移。
 - P1-9 端口顺序变体(新增 `pySrc/portorder.py`):确定性变体集(恒等/电源在前排序/反转/种子洗牌),只重写 .subckt 头部;评估走注入式 runner。
 - P1-11 多行高(`pdk_config.multiRowVariant`):行高翻倍时 nwellpos 自动 H/2;跨 profile 比较必须按 宽×高 面积(不变量 10)。
 
@@ -867,8 +867,8 @@ libgcc_s_seh-1.dll、libstdc++-6.dll、libwinpthread-1.dll、liblzma-5.dll、lib
 
 ### 5.29 架构重构:core/evaluate + core/external 门面(2026-10-10)
 
-- core/evaluate.py 收编评估层:electrical/timing_power/routability/reuse/width_proxy/layout_sanity/benefit/liberty_gen/pdk_config 的公开面;core/external.py 收编工具层:ASTRAN 常量与运行面/GDSIIAnalysis/yosys_import/yosys_eval。
-- core/pipeline 的依赖导入全部改走两个门面(BLIFPreProc/BLIFPatternGrowth/spice 星号导入保留,属 parse/seed/growth/export 层);test_facades 钉住"pipeline 绑定的对象与门面导出的对象是同一份"(杜绝双实现漂移)与"门面 Qt-free"。
+- core/evaluate.py 收编评估层:electrical/timing_power/routability/reuse/width_proxy/layout_sanity/benefit/liberty_gen/pdk_config 的公开面;core/external.py 收编工具层:ASTRAN 常量与运行面/gds_analysis/yosys_import/yosys_eval。
+- core/pipeline 的依赖导入全部改走两个门面(blif_preproc/blif_pattern_growth/spice 星号导入保留,属 parse/seed/growth/export 层);test_facades 钉住"pipeline 绑定的对象与门面导出的对象是同一份"(杜绝双实现漂移)与"门面 Qt-free"。
 - 验证:289 单测全绿(新增 4 例)。
 
 ### 5.30 性能层落地:CP-SAT 默认化与宽度代理训练管线(2026-10-10)

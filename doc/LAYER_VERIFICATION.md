@@ -24,7 +24,7 @@
 | # | 指南声明 | 结论 | 证据 |
 |---|---|---|---|
 | 1 | adder.blif 由 `.subckt`/`.names` 组成 | ✅ | 707 行 `.subckt` + 3 行 `.names`；但 3 行实为 `$false/$true/$undef` 常量门，指南示例 `.names g_27 g_31` 是示意非原文 |
-| 2 | Liberty 只被用来取引脚方向 | ✅ | `pySrc/BLIFPreProc.py:59-73`、`pySrc/BLIFGraphUtil.py:18-23`；lib 中 759 行 timing/power 全部未读 |
+| 2 | Liberty 只被用来取引脚方向 | ✅ | `pySrc/blif_preproc.py:59-73`、`pySrc/blif_graph_util.py:18-23`；lib 中 759 行 timing/power 全部未读 |
 | 3 | NAND2X1 为 W=0.205u 的 4 管结构 | ❌ **W=0.5u**，且引脚序为 `VCC Y GND A B` | `stdCelllib/cellsAstranFriendly.sp:590-598`（已修订指南） |
 | 4 | LEF 每单元一行 SIZE；NAND2X1=1.14×2.47 | ❌ **NAND2X1=0.76×2.47**（1.14 是 AND2X1）；行高 2.47 全库一致 ✅ | `stdCelllib/gscl45nm.lef:2132-2136, 411-414`（已修订指南） |
 | 5 | .rul/.map 格式与前缀语义（S/E/W） | ✅ | `tech_freePDK45.rul:8` 等抽查成立；另有指南未提的 R=电阻类规则（`:21/:39`） |
@@ -35,13 +35,13 @@
 | # | 指南声明 | 结论 | 证据 |
 |---|---|---|---|
 | 7 | adder 解析得 710 节点 / 803 边 | ✅ **实跑复现** | `gen_graph_from_liberty_and_blif` 输出 `710 803`；NAND2X1 实例 192 个亦属实 |
-| 8 | `bypassTypes=["DFF","bool"]` 阻断时序/未映射门 | ✅ | `pySrc/globalVariables.py:2`；消费点 `BLIFPreProc.py:204-207,225-229,253-260`、`BLIFPatternGrowth.py:41,62,192,213` |
-| 9 | 节点=实例、bool 门入图为 `bool-...` 虚拟类型 | ✅ | `BLIFPreProc.py:79-87,126-137,184-190` |
+| 8 | `bypassTypes=["DFF","bool"]` 阻断时序/未映射门 | ✅ | `pySrc/global_variables.py:2`；消费点 `blif_preproc.py:204-207,225-229,253-260`、`blif_pattern_growth.py:41,62,192,213` |
+| 9 | 节点=实例、bool 门入图为 `bool-...` 虚拟类型 | ✅ | `blif_preproc.py:79-87,126-137,184-190` |
 
 **⚠️ 解析鲁棒性**（正确输入下无影响，畸形输入不防御）：
-- 库中找不到 `.subckt` 类型直接 `assert(False)`（`BLIFPreProc.py:123-124`）；
-- 多驱动网静默覆盖 `predCell`（`BLIFGraphUtil.py:82-84`），无告警；
-- 扇出网有 `<10000` 硬编码截断（`BLIFPreProc.py:196-199`）；
+- 库中找不到 `.subckt` 类型直接 `assert(False)`（`blif_preproc.py:123-124`）；
+- 多驱动网静默覆盖 `predCell`（`blif_graph_util.py:82-84`），无告警；
+- 扇出网有 `<10000` 硬编码截断（`blif_preproc.py:196-199`）；
 - bool 门被静默排除，未映射逻辑占比无覆盖率报告（仅 `gui/flow_core.py:425` 有统计）。
 
 **合理性**：Liberty 只取 direction 对"结构合并"够用且快，但 delay/leakage/电容
@@ -51,7 +51,7 @@
 
 | # | 指南声明 | 结论 | 证据 |
 |---|---|---|---|
-| 10 | 深度 1 BFS、类型名拼接成编码 | ✅（调用点确实 depth=1；函数默认 `depthLimit=2`） | `BLIFPreProc.py:212,250,261` |
+| 10 | 深度 1 BFS、类型名拼接成编码 | ✅（调用点确实 depth=1；函数默认 `depthLimit=2`） | `blif_preproc.py:212,250,261` |
 | 11 | "编码相同⇒结构等价" | ⚠️ 是启发式非证明 | 编码只拼 `typeName`（`:215,233`）：引脚排列、跨边（reconvergent fanout）、根扇出、多输出形态全部不可见 |
 | 12 | 线性时间分组 | ✅ | dict 按键分组 `:252-268`，无两两同构比较；仅取 top-30 编码进入聚类（`:284`） |
 
@@ -65,10 +65,10 @@ vs `[XOR2X1,OR2X1,NAND2X1]`），同构实例会得到不同编码 → **系统�
 
 | # | 指南声明 | 结论 | 证据 |
 |---|---|---|---|
-| 13 | 簇数×簇大小排序 | ✅ | `BLIFGraphUtil.py:136-153`（`np.lexsort`） |
-| 14 | 特征码 `XNOR2X1_c0o0`、一次只吸收最高频一类 | ✅ | `BLIFPatternGrowth.py:51-53,70-73,104` |
+| 13 | 簇数×簇大小排序 | ✅ | `blif_graph_util.py:136-153`（`np.lexsort`） |
+| 14 | 特征码 `XNOR2X1_c0o0`、一次只吸收最高频一类 | ✅ | `blif_pattern_growth.py:51-53,70-73,104` |
 | 15 | 演化链 `[NAND2X1,NAND2X1,OR2X1]→+XNOR2X1_c0o0→+OAI21X1_c2o0` | ✅ | `outputs/adder/bestRecord-adder`、`COMPLEX9.sp:55`（60 occurrences）、`COMPLEX10.sp:67`（59 occurrences） |
-| 16 | trace 是唯一身份、`dumpedPaterns` 以 trace 为键 | ✅ | `BLIFGraphUtil.py:90-91`、`BLIFPatternGrowth.py:124`、`main.py:78,112,123` |
+| 16 | trace 是唯一身份、`dumpedPaterns` 以 trace 为键 | ✅ | `blif_graph_util.py:90-91`、`blif_pattern_growth.py:124`、`main.py:78,112,123` |
 
 **⚠️ 指南未披露的三个事实**（已在指南补注）：
 1. **COMPLEX10 实际是负收益**（`bestRecord-seperateadder:5`：saveArea **−56.05**）——
@@ -77,7 +77,7 @@ vs `[XOR2X1,OR2X1,NAND2X1]`），同构实例会得到不同编码 → **系统�
    c0/c1 分配任意，跨簇不保证指向同构位置——特征码可能把同一真实特征拆成两类，
    频次被稀释；
 3. 实例唯一归属的 enforcement 是**破坏式**的：邻居已被别的模式占用时直接
-   `disabled=True` 踢掉旧簇（`BLIFPatternGrowth.py:118-120`），无收益比较。
+   `disabled=True` 踢掉旧簇（`blif_pattern_growth.py:118-120`），无收益比较。
 
 ## 第 5 层 · 导出 SPICE
 
@@ -92,19 +92,19 @@ vs `[XOR2X1,OR2X1,NAND2X1]`），同构实例会得到不同编码 → **系统�
 
 | # | 指南声明 | 结论 | 证据 |
 |---|---|---|---|
-| 21 | 三个面积来源统一返回宽度 | ✅ | `Astran.py:31-46`（find "Cell Size (W x H)"）、`GDSIIAnalysis.py:43-49,59-75`（LEF/日志取宽） |
+| 21 | 三个面积来源统一返回宽度 | ✅ | `astran.py:31-46`（find "Cell Size (W x H)"）、`gds_analysis.py:43-49,59-75`（LEF/日志取宽） |
 | 22 | 0×0 版图剔除 | ✅ 三道防线 | `main.py:154-158,180-181,318-322` |
 | 23 | 基线与产物同为 2.47µm 行高 | ✅ | `originalAstranStdCells/NAND2X1.Astranlog`（0.76×2.47）与产物同由 `runAstranForNetlist` 生成 |
 | 24 | 节省公式 = 出现次数×(基线宽度−新宽度) | ✅ | `main.py:176-193`；分母为全设计基线宽度和（`main.py:72`） |
 
 **⚠️ 代码隐患（已记入 AUDIT_REPORT）**：
-- `Astran.py:45-46`：日志缺失时 `assert(False); return 123`——`python -O` 下
+- `astran.py:45-46`：日志缺失时 `assert(False); return 123`——`python -O` 下
   assert 被剥离，**静默返回 123µm 假宽度**；
-- `GDSIIAnalysis.py:18-21` 注释仍写"基线 H=3.2/本地 2.6"，与现行 2.47µm 常量
+- `gds_analysis.py:18-21` 注释仍写"基线 H=3.2/本地 2.6"，与现行 2.47µm 常量
   矛盾（文档漂移，行为正确）。
 
 **❗ 新发现（合理性）**：**节省求和无重叠去重**。`setCluster` 直接覆盖
-（`BLIFGraphUtil.py:60-63`），不同模式的簇可共享单元；`main.py:185-188` 对
+（`blif_graph_util.py:60-63`），不同模式的簇可共享单元；`main.py:185-188` 对
 top-5 候选的节省直接求和，共享部分被重复计收益（方向：高估）。反向的保守因子
 （0×0 剔除、门限 bypass）部分对冲，但净方向偏乐观（优化路线图 P0-2）。
 
@@ -112,7 +112,7 @@ top-5 候选的节省直接求和，共享部分被重复计收益（方向：�
 
 | # | 指南声明 | 结论 | 证据 |
 |---|---|---|---|
-| 25 | .run 含 rowheight13/grid0.19/supplysize0.26/nwellpos | ❌ **nwellpos 实为 1.235**（=2.47/2，指南写 1.0825 过期）；❌ 示例**漏 `set celltemplate "Tapless"`** | `Astran.py:58-63,74-86`、`outputs/adder/COMPLEX1.run:4-8`（已修订指南） |
+| 25 | .run 含 rowheight13/grid0.19/supplysize0.26/nwellpos | ❌ **nwellpos 实为 1.235**（=2.47/2，指南写 1.0825 过期）；❌ 示例**漏 `set celltemplate "Tapless"`** | `astran.py:58-63,74-86`、`outputs/adder/COMPLEX1.run:4-8`（已修订指南） |
 | 26 | 几何与 GSCL45 CoreSite 一致 | ✅ | LEF `SITE CoreSite SIZE 0.38 BY 2.47`（`gscl45nm.lef:411-414`） |
 | 27 | autoflow 七阶段 | ⚠️ 实为六阶段 + 独立 export 命令；place 是 **Threshold Accept**（SA 的确定性变体）非教科书 SA | `autocell2.cpp:140-169`、`thresholdaccept.h:86-197`、`designmng.cpp:331-381` |
 | 28 | ILP 压缩：坐标变量+间距约束+宽度最小化 | ✅ | 变量/析取/big-M=20000/目标权重详见深潜文档 §3 |
@@ -130,8 +130,8 @@ no-op；表达式重命名+定义约束在 C++ 侧（`compaction.cpp:469-512,605
 | # | 指南声明 | 结论 | 证据 |
 |---|---|---|---|
 | 32 | 贪心主循环（topThr=5、超最佳才继续、生长 top-1） | ✅ 与伪代码逐句吻合 | `main.py:89-239` |
-| 33 | 初始候选池 Top-30 | ✅（在 `BLIFPreProc.py:284` 硬编码 `[:30]`，勿与 `cntThr=30` 混淆） | 同左 |
-| 34 | 缓存契约两半（mtime + 内容不变不写盘） | ✅ | `Astran.py:119-133`、`spice.py:165-170`、`tests/unit/test_layout_cache.py:17-41` |
+| 33 | 初始候选池 Top-30 | ✅（在 `blif_preproc.py:284` 硬编码 `[:30]`，勿与 `cntThr=30` 混淆） | 同左 |
+| 34 | 缓存契约两半（mtime + 内容不变不写盘） | ✅ | `astran.py:119-133`、`spice.py:165-170`、`tests/unit/test_layout_cache.py:17-41` |
 | 35 | 失败隔离 + 增量写 bestRecord | ✅ | `main.py:140-168,198-213` |
 | 36 | 流水线不清理过期产物 | ✅（CLI 无清理；GUI 侧有 `flow_core._clean_output`，默认关） | `main.py` 无 remove/shutil；`gui/flow_core.py:380-390` |
 
@@ -158,7 +158,7 @@ no-op；表达式重命名+定义约束在 C++ 侧（`compaction.cpp:469-512,605
 
 **❗ 新发现（合理性）**：**没有任何测试断言 flow_core 与 main.py 输出等价**。
 "faithful port"目前靠 code review 保证；main.py 已有三份控制流副本
-（main.py / replay_seperateadder.py / flow_core.py），漂移风险实质存在
+（main.py / replay_separate_adder.py / flow_core.py），漂移风险实质存在
 （优化路线图 P0-5）。
 
 ---
@@ -168,7 +168,7 @@ no-op；表达式重命名+定义约束在 C++ 侧（`compaction.cpp:469-512,605
 | 类别 | 数量 | 处置 |
 |---|---|---|
 | 指南数字/示例错误（❌） | 4（W=0.5u、引脚序、LEF 0.76、nwellpos 1.235+漏 celltemplate） | 已修订指南 |
-| 代码隐患（⚠️ 待修） | 5：`Astran.py:45` assert 假宽度；`main.py:247` bestRecord 半截；`main.py:92` 死循环风险；`BLIFPreProc.py:123` assert(False)；多驱动网静默覆盖 | 记入 [AUDIT_REPORT.md](AUDIT_REPORT.md)，未改行为 |
+| 代码隐患（⚠️ 待修） | 5：`astran.py:45` assert 假宽度；`main.py:247` bestRecord 半截；`main.py:92` 死循环风险；`blif_preproc.py:123` assert(False)；多驱动网静默覆盖 | 记入 [AUDIT_REPORT.md](AUDIT_REPORT.md)，未改行为 |
 | 算法合理性风险（优化动机） | 6：编码顺序敏感漏匹配；生长宽度 1 且不知面积（COMPLEX10 −56.05）；收益无重叠去重；纯宽度代理无电气量；贪心停止脆弱+魔法数无依据；flow_core 无等价测试 | 展开为 [RESEARCH_AND_OPTIMIZATION.md](RESEARCH_AND_OPTIMIZATION.md) 路线图 |
 
 *校验日期：2026-10-09。校验代理对每条声明直接阅读源码并抽样实跑，证据行号以

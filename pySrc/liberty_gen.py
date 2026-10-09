@@ -389,7 +389,7 @@ def rebuildClusterFromSpice(spPath, cells):
     """Reconstruct the exact cluster a generated .sp was exported from,
     by matching the '* Example occurence' member lines to design cells
     (DesignCell.name is the .subckt line verbatim)."""
-    from BLIFGraphUtil import DesignPatternCluster, DesignPatternClusterSeq
+    from blif_graph_util import DesignPatternCluster, DesignPatternClusterSeq
 
     text = open(spPath).read()
     trace, memberNames = parseSpiceExampleCells(text)

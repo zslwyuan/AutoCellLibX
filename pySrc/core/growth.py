@@ -1,13 +1,13 @@
 """Pattern growth (layer: growth).
 
-Extracted from BLIFPatternGrowth.py (AST-verbatim): the greedy/beam
+Extracted from blif_pattern_growth.py (AST-verbatim): the greedy/beam
 growth of a cluster sequence by absorbing the most frequent absorbable
 neighbour class, with the optional benefit-estimator pruning (P0-3),
 the internalizeOnly synthesis-reuse bias (AUDIT 5.26) and the _BasedOn
 replay variant.
 """
 
-from BLIFGraphUtil import DesignPatternClusterSeq
+from blif_graph_util import DesignPatternClusterSeq
 
 
 def _collect_neighbor_features(clusters, internalizeOnly):

@@ -13,8 +13,8 @@ import sys
 HELPER = r'''
 import hashlib, os, sys, tempfile
 sys.path.insert(0, os.getcwd())
-from BLIFPreProc import loadDataAndPreprocess
-from BLIFGraphUtil import sortPatternClusterSeqs
+from blif_preproc import loadDataAndPreprocess
+from blif_graph_util import sortPatternClusterSeqs
 from spice import load_spice_subcircuits, exportSpiceNetlist
 
 out = tempfile.mkdtemp()

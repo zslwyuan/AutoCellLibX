@@ -25,7 +25,7 @@
 **实测结果**：12 样本 LOO MAPE 16.4%、R²=0.79——粗筛可用。对 COMPLEX10
 （负收益）方向正确（预测 5.42 > 基线 4.94），但对 COMPLEX9 过估
 （预测 4.54 vs 实际 3.61）——故默认 **report-only**，替换生长估计器需显式
-开启 `useWidthProxyForGrowth`（globalVariables）/ cfg 开关（GUI）。样本量
+开启 `useWidthProxyForGrowth`（global_variables）/ cfg 开关（GUI）。样本量
 到 ~50+ 后重新评估是否默认启用。
 
 对应论文：FusionCell（arXiv'26）的"先预测再版图"思想。全量双模态深度模型

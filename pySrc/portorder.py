@@ -87,7 +87,7 @@ def writePortOrderVariants(spPath, outDir, maxVariants=4):
 def evaluatePortOrderVariants(spPath, outDir, runLayout, maxVariants=4):
     """Run a layout for each variant; return [(variantPath, widthOrNone)].
 
-    ``runLayout`` is injected so the CLI can pass Astran.runAstranForNetlist
+    ``runLayout`` is injected so the CLI can pass astran.runAstranForNetlist
     (slow) while tests pass a stub.  The callable receives
     (variantSpPath, cellName, outDir) and returns the cell width in um.
     """

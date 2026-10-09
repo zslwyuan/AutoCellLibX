@@ -3,7 +3,7 @@ import warnings
 
 import pytest
 
-from Astran import loadAstranArea
+from astran import loadAstranArea
 
 
 def test_load_astran_area_raises_instead_of_fabricating(tmp_path):
@@ -20,7 +20,7 @@ def test_load_astran_area_parses_cell_size(tmp_path):
 
 
 def test_unknown_cell_type_raises(in_pysrc, tmp_path):
-    from BLIFPreProc import gen_graph_from_liberty_and_blif
+    from blif_preproc import gen_graph_from_liberty_and_blif
 
     blif = tmp_path / "bad.blif"
     blif.write_text(
@@ -31,7 +31,7 @@ def test_unknown_cell_type_raises(in_pysrc, tmp_path):
 
 
 def test_multi_driver_net_warns_and_keeps_last():
-    from BLIFGraphUtil import DesignCell, DesignNet, StdCellType
+    from blif_graph_util import DesignCell, DesignNet, StdCellType
 
     t = StdCellType("NAND2X1")
     c1, c2 = DesignCell(0, "c1", t), DesignCell(1, "c2", t)

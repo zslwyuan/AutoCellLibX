@@ -133,8 +133,8 @@ M2 Y A net_1 GND NMOS W=0.5u L=0.05u
 
 ## 第 2 层 · 解析与数据结构：把文件变成对象
 
-**代码入口**：`BLIFPreProc.gen_graph_from_liberty_and_blif`
-（配合 `BLIFGraphUtil.py` 里的三个类）。
+**代码入口**：`blif_preproc.gen_graph_from_liberty_and_blif`
+（配合 `blif_graph_util.py` 里的三个类）。
 
 解析分三步：
 
@@ -148,7 +148,7 @@ M2 Y A net_1 GND NMOS W=0.5u L=0.05u
 
 ```python
 # 在 pySrc 目录下
-from BLIFPreProc import gen_graph_from_liberty_and_blif
+from blif_preproc import gen_graph_from_liberty_and_blif
 g, cells, netlist, types = gen_graph_from_liberty_and_blif(
     "../stdCelllib/gscl45nm.lib", "../benchmark/blif/adder.blif")
 print(g.number_of_nodes(), g.number_of_edges())   # 710 803
@@ -156,7 +156,7 @@ print(g.number_of_nodes(), g.number_of_edges())   # 710 803
 
 **两个设计决策要理解**：
 
-- `bypassTypes = ["DFF", "bool"]`（`globalVariables.py`）：时序单元（触发器）
+- `bypassTypes = ["DFF", "bool"]`（`global_variables.py`）：时序单元（触发器）
   和未映射的 bool 门**不参与**合并——前者打破组合逻辑的边界，后者没有库里
   对应的 SPICE 实现。
 - 图的节点是**实例**不是类型：同一类型的 NAND2X1 有 192 个实例，就是 192 个
@@ -169,7 +169,7 @@ print(g.number_of_nodes(), g.number_of_edges())   # 710 803
 **问题**：找出网表里反复出现的子电路，学术上叫频繁子图挖掘（FSM），核心
 难点是判断"两个子电路是否同构"——通用解法是 NP-hard 的图同构判定。
 
-**这层的关键想法**（`BLIFPreProc.extract_and_encode_subgraph_tree`）：
+**这层的关键想法**（`blif_preproc.extract_and_encode_subgraph_tree`）：
 以某个单元为根，沿输入方向做深度为 1 的 BFS，把沿途单元的**类型名按顺序拼成
 一个字符串**。以上面 NAND2X1(NAND2X1, NAND2X1) → OR2X1 的结构为例，编码就是：
 
@@ -195,8 +195,8 @@ print(g.number_of_nodes(), g.number_of_edges())   # 710 803
 
 ## 第 4 层 · 聚类与生长：从种子到更大的模式
 
-**代码入口**：`BLIFPreProc.heuristic_label_initial_clusters` 与
-`BLIFPatternGrowth.grow_sequence_of_clusters`。
+**代码入口**：`blif_preproc.heuristic_label_initial_clusters` 与
+`blif_pattern_growth.grow_sequence_of_clusters`。
 
 - **初始聚类**：把所有实例按编码分组，每组叫一个 `DesignPatternCluster`，
   同编码的所有簇构成一个 `DesignPatternClusterSeq`（一个"模式"）。按
@@ -229,7 +229,7 @@ print(g.number_of_nodes(), g.number_of_edges())   # 710 803
    （每轮长前 2 个队首，`growBeamWidth`）。
 2. "一个实例只属于一个单元"的 enforcement 是**破坏式**的：想吸收的邻居已被
    别的模式占用时，直接把对方的簇整个 `disabled=True` 踢掉，没有收益比较
-   （`BLIFPatternGrowth.py:118-120`）。
+   （`blif_pattern_growth.py:118-120`）。
 
 ---
 

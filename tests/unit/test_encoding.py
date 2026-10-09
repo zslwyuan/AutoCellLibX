@@ -1,4 +1,4 @@
-"""Regression tests for subgraph encoding (pySrc/BLIFPreProc.py).
+"""Regression tests for subgraph encoding (pySrc/blif_preproc.py).
 
 Bug fixed: ``extract_and_encode_subgraph_tree`` appended an entry to ``encodes``
 even when the predecessor was already in ``tree``.  For multi-output cells
@@ -6,8 +6,8 @@ even when the predecessor was already in ``tree``.  For multi-output cells
 was longer than the node list, so structurally-equal patterns got different
 codes and were split apart.
 """
-from BLIFGraphUtil import StdCellType, DesignCell, DesignNet
-from BLIFPreProc import extract_and_encode_subgraph_tree
+from blif_graph_util import StdCellType, DesignCell, DesignNet
+from blif_preproc import extract_and_encode_subgraph_tree
 
 
 def _cell(cid, name, nin, nout):
@@ -44,7 +44,7 @@ def test_multi_output_driver_is_encoded_once():
 
 
 def test_encoding_pairs_one_to_one_on_benchmark(in_pysrc):
-    from BLIFPreProc import gen_graph_from_liberty_and_blif
+    from blif_preproc import gen_graph_from_liberty_and_blif
 
     G, cells, netlist, types = gen_graph_from_liberty_and_blif(
         "../stdCelllib/gscl45nm.lib", "../benchmark/blif/adder.blif")
@@ -59,7 +59,7 @@ def test_encoding_pairs_one_to_one_on_benchmark(in_pysrc):
 
 
 def test_tree_nodes_are_unique(in_pysrc):
-    from BLIFPreProc import gen_graph_from_liberty_and_blif
+    from blif_preproc import gen_graph_from_liberty_and_blif
 
     G, cells, netlist, types = gen_graph_from_liberty_and_blif(
         "../stdCelllib/gscl45nm.lib", "../benchmark/blif/adder.blif")
@@ -69,7 +69,7 @@ def test_tree_nodes_are_unique(in_pysrc):
 
 
 def test_canonical_code_sorts_children_after_root():
-    from BLIFPreProc import canonical_pattern_code
+    from blif_preproc import canonical_pattern_code
 
     assert canonical_pattern_code(
         ["OR2X1", "XNOR2X1", "NAND2X1", "NAND2X1"]) == \
@@ -82,7 +82,7 @@ def test_canonical_code_is_net_order_invariant():
     """Two isomorphic instances whose input nets enumerate in different
     orders must produce the same pattern code (they used to be split into
     separate groups, under-counting the pattern's frequency)."""
-    from BLIFPreProc import extract_and_encode_subgraph_tree, canonical_pattern_code
+    from blif_preproc import extract_and_encode_subgraph_tree, canonical_pattern_code
 
     def build(order):
         # root AND2X1 driven by NAND2X1 and OR2X1 in the given order
@@ -106,7 +106,7 @@ def test_canonical_code_is_net_order_invariant():
 def test_benchmark_codes_are_canonical(in_pysrc):
     """Every initial-cluster trace on the benchmark must be in canonical
     form (children after the root are sorted)."""
-    from BLIFPreProc import (gen_graph_from_liberty_and_blif,
+    from blif_preproc import (gen_graph_from_liberty_and_blif,
                              heuristic_label_initial_clusters)
 
     G, cells, netlist, types = gen_graph_from_liberty_and_blif(

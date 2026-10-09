@@ -25,7 +25,7 @@ def test_collect_samples_on_real_outputs(in_pysrc):
     import os
     if not os.path.exists("./outputs/adder/COMPLEX1.sp"):
         pytest.skip("outputs snapshot not present")
-    from GDSIIAnalysis import loadAstranGDS
+    from gds_analysis import loadAstranGDS
     counts = countTransistorsPerType("../stdCelllib/cellsAstranFriendly.sp")
     widths = loadAstranGDS()
     samples = collectSamples(
@@ -60,7 +60,7 @@ def test_loo_evaluation_runs_on_real_data(in_pysrc):
     import os
     if not os.path.exists("./outputs/adder/COMPLEX1.sp"):
         pytest.skip("outputs snapshot not present")
-    from GDSIIAnalysis import loadAstranGDS
+    from gds_analysis import loadAstranGDS
     counts = countTransistorsPerType("../stdCelllib/cellsAstranFriendly.sp")
     widths = loadAstranGDS()
     samples = collectSamples(
@@ -99,7 +99,7 @@ def test_training_pipeline_roundtrip(tmp_path, in_pysrc):
     import os
     if not os.path.exists("./outputs/adder/COMPLEX1.sp"):
         pytest.skip("outputs snapshot not present")
-    from GDSIIAnalysis import loadAstranGDS
+    from gds_analysis import loadAstranGDS
     from width_proxy import (trainOrLoadWidthProxy, loadWidthProxy)
     counts = countTransistorsPerType("../stdCelllib/cellsAstranFriendly.sp")
     widths = loadAstranGDS()

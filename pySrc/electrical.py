@@ -31,7 +31,7 @@ _CAP_RE = re.compile(r"^\s*capacitance\s*:\s*" + _num, re.M)
 _DIR_RE = re.compile(r"direction\s*:\s*(\w+)")
 _VALUES_RE = re.compile(r"[-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?")
 
-# parse cache keyed like BLIFPreProc._liberty_cache (path, mtime)
+# parse cache keyed like blif_preproc._liberty_cache (path, mtime)
 _electrical_cache = {}
 
 

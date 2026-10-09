@@ -216,17 +216,17 @@ def test_baseline_staleness_with_custom_geometry():
 def test_geometry_override_in_run_script():
     """The GUI's layout-constraint overrides must reach the ASTRAN .run script
     while the defaults stay byte-identical to the CLI flow."""
-    import Astran
-    default = Astran.buildAstranCommands(
+    import astran
+    default = astran.buildAstranCommands(
         "gu", "tech", "net.sp", "CELL", "dir")
-    assert "set nwellpos %g" % Astran.ASTRAN_NWELL_POS in default
-    assert "set rowheight %d" % Astran.ASTRAN_CELLS_HEIGHT in default
-    custom = Astran.buildAstranCommands(
+    assert "set nwellpos %g" % astran.ASTRAN_NWELL_POS in default
+    assert "set rowheight %d" % astran.ASTRAN_CELLS_HEIGHT in default
+    custom = astran.buildAstranCommands(
         "gu", "tech", "net.sp", "CELL", "dir",
         geometry={"nwellPos": 1.0, "cellsHeight": 20})
     assert "set nwellpos 1" in custom
     assert "set rowheight 20" in custom
-    assert "set grid %g %g" % (Astran.ASTRAN_HGRID, Astran.ASTRAN_VGRID) in custom
+    assert "set grid %g %g" % (astran.ASTRAN_HGRID, astran.ASTRAN_VGRID) in custom
 
 
 # -------------------------------------------------------- PDK editor parsers

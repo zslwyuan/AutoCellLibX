@@ -3,7 +3,7 @@ import os
 
 import pytest
 
-import Astran
+import astran
 from pdk_config import (PdkProfile, getPdk, listPdks, loadTechnologyRul,
                         pdkGeometryDict)
 
@@ -13,15 +13,15 @@ _REQUIRED_LAYERS = ("CONT", "POLY", "NDIF", "PDIF", "NWEL", "PWEL",
 
 def test_freepdk45_matches_astran_constants():
     """The registry's validated profile must reproduce the constants in
-    Astran.py bit for bit (AGENTS.md invariant 2 keeps one source of
+    astran.py bit for bit (AGENTS.md invariant 2 keeps one source of
     truth -- this test pins the sync)."""
     pdk = getPdk("freepdk45")
-    assert pdk.cellsHeight == Astran.ASTRAN_CELLS_HEIGHT
-    assert pdk.hGrid == Astran.ASTRAN_HGRID
-    assert pdk.vGrid == Astran.ASTRAN_VGRID
-    assert pdk.supplySize == Astran.ASTRAN_SUPPLY_SIZE
-    assert pdk.cellTemplate == Astran.ASTRAN_CELL_TEMPLATE
-    assert pdk.nwellPos == pytest.approx(Astran.ASTRAN_NWELL_POS)
+    assert pdk.cellsHeight == astran.ASTRAN_CELLS_HEIGHT
+    assert pdk.hGrid == astran.ASTRAN_HGRID
+    assert pdk.vGrid == astran.ASTRAN_VGRID
+    assert pdk.supplySize == astran.ASTRAN_SUPPLY_SIZE
+    assert pdk.cellTemplate == astran.ASTRAN_CELL_TEMPLATE
+    assert pdk.nwellPos == pytest.approx(astran.ASTRAN_NWELL_POS)
 
 
 def test_nwell_pos_is_always_half_row_height():
@@ -32,10 +32,10 @@ def test_nwell_pos_is_always_half_row_height():
 
 def test_geometry_dict_feeds_build_astran_commands():
     pdk = getPdk("freepdk45")
-    script = Astran.buildAstranCommands(
+    script = astran.buildAstranCommands(
         "gurobi", "tech.rul", "cell.sp", "C0", ".",
         geometry=pdkGeometryDict(pdk))
-    default = Astran.buildAstranCommands(
+    default = astran.buildAstranCommands(
         "gurobi", "tech.rul", "cell.sp", "C0", ".")
     assert script == default            # validated profile == defaults
     assert 'set nwellpos 1.235' in script
@@ -92,7 +92,7 @@ def test_multi_row_variant_geometry():
     assert dbl.rowHeightUm == pytest.approx(4.94)
     assert dbl.nwellPos == pytest.approx(2.47)     # equal wells at any H
     geom = pdkGeometryDict(dbl)
-    script = Astran.buildAstranCommands(
+    script = astran.buildAstranCommands(
         "g", "t", "n", "C0", ".", geometry=geom)
     assert "set rowheight 26" in script
     assert "set nwellpos 2.47" in script

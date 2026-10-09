@@ -1,6 +1,6 @@
 """Unit tests for pySrc/electrical.py (P1-7)."""
 from electrical import loadCellElectricalMetrics, patternElectricalMetrics
-from BLIFGraphUtil import StdCellType, DesignCell, DesignNet
+from blif_graph_util import StdCellType, DesignCell, DesignNet
 
 
 def test_real_liberty_metrics(in_pysrc):

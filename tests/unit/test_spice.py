@@ -43,8 +43,8 @@ def test_replace_input_pin():
 
 
 def test_export_spice_netlist(in_pysrc, tmp_path):
-    from BLIFPreProc import loadDataAndPreprocess
-    from BLIFGraphUtil import sortPatternClusterSeqs
+    from blif_preproc import loadDataAndPreprocess
+    from blif_graph_util import sortPatternClusterSeqs
 
     G, cells, netlist, types, ds, ml, seqs, cn = loadDataAndPreprocess(
         libFileName="../stdCelllib/gscl45nm.lib",
@@ -68,8 +68,8 @@ def test_export_spice_netlist_only_writes_on_change(in_pysrc, tmp_path):
     main.py uses the netlist mtime to decide whether a cached ASTRAN layout is
     stale, so re-running the pipeline must not touch an unchanged .sp file.
     """
-    from BLIFPreProc import loadDataAndPreprocess
-    from BLIFGraphUtil import sortPatternClusterSeqs
+    from blif_preproc import loadDataAndPreprocess
+    from blif_graph_util import sortPatternClusterSeqs
 
     G, cells, netlist, types, ds, ml, seqs, cn = loadDataAndPreprocess(
         libFileName="../stdCelllib/gscl45nm.lib",

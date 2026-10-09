@@ -16,8 +16,8 @@ from core.log import get_flow_logger
 
 _flowLog = get_flow_logger()
 
-from BLIFPreProc import *
-from BLIFPatternGrowth import *
+from blif_preproc import *
+from blif_pattern_growth import *
 from spice import *
 from core.external import *
 from core.evaluate import *

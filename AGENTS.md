@@ -67,8 +67,8 @@ is only in the code is effectively undocumented.
 ## Invariants — do not break these
 
 1. **Area is measured as nominal cell *width*, never GDS bounding-box area.**
-   `Astran.loadAstranArea`, `GDSIIAnalysis.loadOrignalGSCL45nmGDS` and
-   `GDSIIAnalysis.loadAstranGDS` all return width. Row height is fixed per
+   `Astran.loadAstranArea`, `gds_analysis.loadOrignalGSCL45nmGDS` and
+   `gds_analysis.loadAstranGDS` all return width. Row height is fixed per
    library, so area ∝ width; the three sources used to be measured
    inconsistently (ASTRAN baseline at H=3.2µm, generated cells at H=2.6µm),
    which alone inflated the reported savings. If you add a new area source,
@@ -212,7 +212,7 @@ is only in the code is effectively undocumented.
 - **MSYS2's own python shadows the solver wrapper.** Installing any mingw
   package that pulls `mingw-w64-x86_64-python` puts a python.exe (no python-mip)
   into `C:\msys64\mingw64\bin`, and `gurobi_cl.cmd` calls bare `python`.
-  `Astran.py` now puts the flow interpreter first on PATH; keep that ordering
+  `astran.py` now puts the flow interpreter first on PATH; keep that ordering
   if you touch it.
 - **Do not call `Model.read()` on the generated LP** (see invariant 3).
 - **`build/bin/Astran.exe` looks like malware to 360 Total Security**
@@ -262,7 +262,7 @@ cd pySrc && python regenerate_cells.py --dir outputs/adder COMPLEX1
   runtimes in `tests/integration/` under `@pytest.mark.slow`.
 - Prefer a regression test over no test when a fix is cheap to pin down; the
   cache and netlist-export contracts above exist because tests caught them.
-- Keep tool paths centralised in `pySrc/Astran.py`; do not hard-code absolute
+- Keep tool paths centralised in `pySrc/astran.py`; do not hard-code absolute
   paths in new code.
 - Commit messages: state the defect and the evidence, not just the edit. If a
   change alters generated cells, say how the width moved.

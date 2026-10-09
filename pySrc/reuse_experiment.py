@@ -22,9 +22,9 @@ import subprocess
 import sys
 import tempfile
 
-from BLIFPreProc import (gen_graph_from_liberty_and_blif,
+from blif_preproc import (gen_graph_from_liberty_and_blif,
                          heuristic_label_initial_clusters)
-from BLIFGraphUtil import sortPatternClusterSeqs
+from blif_graph_util import sortPatternClusterSeqs
 from electrical import loadCellElectricalMetrics
 from liberty_gen import loadLibertyFunctions, generateComplexLiberty
 from reuse import reuseEligible, verilogDesignForFunction
@@ -84,7 +84,7 @@ def main():
     os.makedirs(outDir, exist_ok=True)
 
     if (runLayout):
-        from Astran import (ASTRAN_BUILD_PATH, ASTRAN_TECHNOLOGY, GUROBI_CL,
+        from astran import (ASTRAN_BUILD_PATH, ASTRAN_TECHNOLOGY, GUROBI_CL,
                             runAstranForNetlist, loadAstranArea)
         # find the seed seq again and export its .sp (the flow's export)
         from spice import exportSpiceNetlist, load_spice_subcircuits
@@ -113,7 +113,7 @@ def main():
         members = [c for c in cells if c.name in
                    [l.split()[1] for l in open(spPath).read().split("\n")
                     if l.startswith("*   .subckt")]]
-        from BLIFGraphUtil import DesignPatternCluster, \
+        from blif_graph_util import DesignPatternCluster, \
             DesignPatternClusterSeq
         cluster = DesignPatternCluster(
             0, top["trace"], cells, [c.id for c in members], 0)

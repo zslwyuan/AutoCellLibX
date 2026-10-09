@@ -1,6 +1,6 @@
 """FlowConfig: single configuration object for the mining pipeline.
 
-Replaces the mutable module-level globals (globalVariables.py) and the
+Replaces the mutable module-level globals (global_variables.py) and the
 hard-coded tunables at the top of main.py.  Defaults reproduce the
 current behaviour exactly; ``FlowConfig.from_env()`` reads the
 environment overrides (AUTOCELL_REUSE_MODE, AUTOCELL_PDK).
@@ -20,7 +20,7 @@ class FlowConfig:
     # special-case threshold for tc_008_arthmetic_sin (historical)
     tc008RatioThr: float = 0.025
 
-    # --- growth / gates (were globalVariables) ---
+    # --- growth / gates (were global_variables) ---
     growBeamWidth: int = 2
     routabilityDensityGate: float = None          # None = report only
     layoutSanityGate: bool = True

@@ -98,7 +98,7 @@ def checkLayout(gdsPath, logPath=None, expectedHeightUm=2.47,
     expectedH = expectedHeightUm
     if (logPath is not None and os.path.exists(logPath)):
         # The log's Cell Size is the authoritative target (same source as
-        # Astran.loadAstranArea).
+        # astran.loadAstranArea).
         for line in open(logPath, 'r', errors="ignore"):
             if (line.find("-> Cell Size (W x H): ") >= 0):
                 parts = line.replace(

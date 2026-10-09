@@ -45,11 +45,11 @@
 ### 1.4 AutoCellLibX 代码适配（`D:\AutoCellLibX\pySrc\`）
 | 文件 | 改动 |
 |---|---|
-| `Astran.py` | 求解器路径常量 `GUROBI_CL=D:/aclx-tools/gurobi_cl.cmd`；`cellgen autoflow nTrack`→`cellgen autoflow`（原命令多参数会被 ASTRAN 判为非法命令跳过）；PATH 前置 `C:\msys64\mingw64\bin`（wx DLL）；单次尝试 |
+| `astran.py` | 求解器路径常量 `GUROBI_CL=D:/aclx-tools/gurobi_cl.cmd`；`cellgen autoflow nTrack`→`cellgen autoflow`（原命令多参数会被 ASTRAN 判为非法命令跳过）；PATH 前置 `C:\msys64\mingw64\bin`（wx DLL）；单次尝试 |
 | `main.py` | `ASTRANBuildPath=D:/astran/Astran/build`；两处 gurobiPath→`GUROBI_CL`；technologyPath→`D:/astran/Astran/build/Work/tech_freePDK45.rul`；**benchmarks 临时改为 `["adder"]`（冒烟用，跑通后需恢复 5 个）** |
-| `GDSIIAnalysis.py` | gdspy→gdstk（gdspy 在 Windows/py3.11 无 wheel） |
-| `BLIFPreProc.py` | tensorflow→numpy（TF 在 Windows/py3.11 无 wheel；GNN 训练本就在主流程中被注释） |
-| `BLIFGraphUtil.py` | graphviz 布局失败回退 spring_layout（免装 pygraphviz） |
+| `gds_analysis.py` | gdspy→gdstk（gdspy 在 Windows/py3.11 无 wheel） |
+| `blif_preproc.py` | tensorflow→numpy（TF 在 Windows/py3.11 无 wheel；GNN 训练本就在主流程中被注释） |
+| `blif_graph_util.py` | graphviz 布局失败回退 spring_layout（免装 pygraphviz） |
 
 ### 1.5 Python 依赖（系统 Python 3.11.9，TUNA PyPI 镜像）
 `tqdm numpy networkx easydict blifparser liberty-parser gdstk matplotlib scikit-learn lark mip`
@@ -63,7 +63,7 @@
 
 ### 1.7 全流程闭环（2026-09-24 16:20 达成）
 - **ASTRAN 从源码重建成功**（360 误报清除后）：CodeBlocks 工程 `nbproject/Makefile-Release.mk`
-  经 mingw32-make 编译，0 错误，产物 `build/bin/Astran`（5.1MB，无扩展名，正好匹配 `Astran.py` 调用路径）。
+  经 mingw32-make 编译，0 错误，产物 `build/bin/Astran`（5.1MB，无扩展名，正好匹配 `astran.py` 调用路径）。
   工具链路径问题用自定义 `D:\astran\Astran\bin\wx-config` shim 解决（见 §3）。
 - **adder 冒烟全流程通过**（约 15 分钟），产物在 `pySrc/outputs/adder/`：
   - `COMPLEX0/1/9.{sp,gds,Astranlog,run,png}` + `GDSIILTable.txt`
@@ -119,6 +119,6 @@ C:/Users/Administrator/AppData/Local/Programs/Python/Python311/python.exe main.p
 1. ~~360 白名单 + 重建 Astran.exe + 重跑 adder~~（已解决：重建成功、adder 闭环，见 §1.7；360 白名单仍未做，建议尽快添加）
 2. 恢复 5 基准列表（`main.py` 当前仅 `["adder"]`），全量运行
 3. Yosys Windows 二进制下载（可选，仓库 BLIF 已足够跑主流程）
-4. 若需 GNN 训练模块（BLIFGNNTraining.py，主流程已注释），需在 WSL/Linux 装 tensorflow
+4. 若需 GNN 训练模块（blif_gnn_training.py，主流程已注释），需在 WSL/Linux 装 tensorflow
 5. 清理：`D:\msys2-installer.exe`（94MB）、`D:\astran.tar.gz`（6.1MB）可删
 6. 详细项目文档见 `doc/PROJECT_ANALYSIS.md`（目录结构、模块解析、数据流、故障修复记录）

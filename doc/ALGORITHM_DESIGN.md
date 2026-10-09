@@ -85,11 +85,11 @@
 AutoCellLibX/
 ├── pySrc/                    # 前端算法（Python）
 │   ├── main.py               #   主流水线：挖掘→生长→评估→导出 的编排
-│   ├── BLIFPreProc.py        #   解析 liberty/BLIF、构图、初始聚类
-│   ├── BLIFPatternGrowth.py  #   模式生长算法
-│   ├── BLIFGraphUtil.py      #   数据结构 + 模式子图可视化
+│   ├── blif_preproc.py        #   解析 liberty/BLIF、构图、初始聚类
+│   ├── blif_pattern_growth.py  #   模式生长算法
+│   ├── blif_graph_util.py      #   数据结构 + 模式子图可视化
 │   ├── spice.py              #   复杂单元 SPICE 网表拼装
-│   ├── Astran.py             #   调用 ASTRAN + 读回宽度（接口层）
+│   ├── astran.py             #   调用 ASTRAN + 读回宽度（接口层）
 │   └── outputs/<bench>/      #   每个基准的产物（COMPLEX*.sp/gds/png、bestRecord-*）
 ├── tools/
 │   ├── astran/               # 后端版图综合（vendored C++ 源码 + build/bin/Astran）
@@ -116,7 +116,7 @@ python regenerate_cells.py COMPLEX1     # 只重生成指定单元的版图，�
 
 ### 3.1 输入解析与图建模
 
-`BLIFPreProc.gen_graph_from_liberty_and_blif` 做三件事：
+`blif_preproc.gen_graph_from_liberty_and_blif` 做三件事：
 
 - **解析 Liberty**（`.lib`）得到每种单元的引脚名与方向，构建 `StdCellType`；
 - **解析 BLIF** 网表，把每个 `.subckt` 实例建成一个 `DesignCell`，把每条信号线建成一个 `DesignNet`（记录它的驱动单元和负载单元）；
@@ -127,7 +127,7 @@ python regenerate_cells.py COMPLEX1     # 只重生成指定单元的版图，�
 两个对后续很重要的细节：
 
 - **`bool-` 虚拟单元**：BLIF 里未被映射的布尔函数（真值表）会被当成 `bool-<真值表>` 类型的虚拟单元加入图中；
-- **`bypassTypes = ["DFF", "bool"]`**（`globalVariables.py`）：含 DFF（时序单元）或 bool 的节点被标记为 `stopType`，**不参与模式聚类**——时序单元和未定型的布尔门不适合被合并进组合逻辑复杂单元。
+- **`bypassTypes = ["DFF", "bool"]`**（`global_variables.py`）：含 DFF（时序单元）或 bool 的节点被标记为 `stopType`，**不参与模式聚类**——时序单元和未定型的布尔门不适合被合并进组合逻辑复杂单元。
 
 ### 3.2 顶点编码：把"子图结构"变成一个可比较的字符串
 
@@ -149,7 +149,7 @@ python regenerate_cells.py COMPLEX1     # 只重生成指定单元的版图，�
 
 ![模式挖掘与聚类](figures/pattern_mining.png)
 
-> 为什么不用 GNN？仓库里其实有一支 GNN（`GNNModel.py` 是 GIN 风格的 GraphCNN，`BLIFGNNTraining.py` 做节点嵌入，用来辅助聚类），但当前主流程把它注释掉了（`main.py` 第 3 行），用确定性更强的启发式编码替代——见 §3.9。
+> 为什么不用 GNN？仓库里其实有一支 GNN（`gnn_model.py` 是 GIN 风格的 GraphCNN，`blif_gnn_training.py` 做节点嵌入，用来辅助聚类），但当前主流程把它注释掉了（`main.py` 第 3 行），用确定性更强的启发式编码替代——见 §3.9。
 
 ### 3.4 模式生长：一次只吸收"同一类"邻居
 
@@ -170,7 +170,7 @@ python regenerate_cells.py COMPLEX1     # 只重生成指定单元的版图，�
 
 **为什么"一次只吸收一类"？** 因为同一个模式的不同实例，其边界上"结构等价"的邻居才应该被一起吸收；按特征码分组保证了吸收后产生的新模式仍然是结构同构的、且互不重叠。这正是论文里说的"carefully handle the overlaps between pattern subgraphs to meet the technology mapping constraint"。
 
-**核心循环伪代码**（`main.py` 主循环 + `BLIFPatternGrowth`）：
+**核心循环伪代码**（`main.py` 主循环 + `blif_pattern_growth`）：
 
 ```
 clusterSeqs = 初始模式序列(Top-30)，按 簇数×簇大小 降序
@@ -239,7 +239,7 @@ $$\text{saveArea} = \sum_{\text{选中模式 } i}\Big(\underbrace{\sum_{c\in\tex
 这是本仓库最重要的不变量（AGENTS.md 第 1、10 条）：
 
 - **面积 ∝ 宽度**。同一标准单元库的行高是固定的，所以比较"宽度"就等价于比较"面积"。三个面积来源——ASTRAN 基线、ASTRAN 生成的复杂单元、GSCL 库——**都返回宽度**（分别从 `.Astranlog` 的 `Cell Size (W x H)` 和 LEF 的 `SIZE` 读取）。
-- **比较必须同高**。宽度只有在行高一致时才是合法代理。早期曾把"H=3.2 µm 的基线"和"H=2.6 µm 的产物"直接比较，导致一个候选的增益从 **+6.5% 翻转成 −19.5%**。现在基线（`originalAstranStdCells/`）和产物都用**同一套几何常量**（`Astran.py:54-59`）重新生成，保证同高。
+- **比较必须同高**。宽度只有在行高一致时才是合法代理。早期曾把"H=3.2 µm 的基线"和"H=2.6 µm 的产物"直接比较，导致一个候选的增益从 **+6.5% 翻转成 −19.5%**。现在基线（`originalAstranStdCells/`）和产物都用**同一套几何常量**（`astran.py:54-59`）重新生成，保证同高。
 
 ### 3.8 确定性设计
 
@@ -250,7 +250,7 @@ $$\text{saveArea} = \sum_{\text{选中模式 } i}\Big(\underbrace{\sum_{c\in\tex
 
 ### 3.9 （可选）GNN 分支
 
-`GNNModel.py` / `BLIFGNNTraining.py` 实现了论文中可选的 GNN 嵌入路径（GIN 风格 GraphCNN，sum 聚合 + 可学习 ε，4 层、隐藏维 64），用节点嵌入来辅助模式聚类。当前主流程已注释掉它（`main.py` 第 3 行），改用确定性的启发式编码——原因有二：去掉 TensorFlow 依赖、提升可复现性。若要恢复，需把 `convertBLIFGraphIntoDataset` 的输出改回 TensorFlow 张量并恢复导入（见 [PROJECT_ANALYSIS.md](PROJECT_ANALYSIS.md) §3.9）。
+`gnn_model.py` / `blif_gnn_training.py` 实现了论文中可选的 GNN 嵌入路径（GIN 风格 GraphCNN，sum 聚合 + 可学习 ε，4 层、隐藏维 64），用节点嵌入来辅助模式聚类。当前主流程已注释掉它（`main.py` 第 3 行），改用确定性的启发式编码——原因有二：去掉 TensorFlow 依赖、提升可复现性。若要恢复，需把 `convertBLIFGraphIntoDataset` 的输出改回 TensorFlow 张量并恢复导入（见 [PROJECT_ANALYSIS.md](PROJECT_ANALYSIS.md) §3.9）。
 
 ---
 
@@ -384,7 +384,7 @@ export layout COMPLEX1 <...>/outputs/adder/COMPLEX1.gds
 exit
 ```
 
-**几何参数集中在 `Astran.py:54-59`**，是复现性的关键（AGENTS.md 第 2 条）：
+**几何参数集中在 `astran.py:54-59`**，是复现性的关键（AGENTS.md 第 2 条）：
 
 | 参数 | 值 | 含义 |
 |---|---|---|
@@ -497,7 +497,7 @@ ASTRAN 原生调用的是商业求解器 **Gurobi** 的命令行 `gurobi_cl`。�
 本节是"算法相关的"不变量速记，完整且带证据的版本见 [AGENTS.md](../AGENTS.md) 与 [AUDIT_REPORT.md](AUDIT_REPORT.md)：
 
 1. **面积 = 宽度，且必须同高**（§3.7）。新增面积来源时，返回宽度。
-2. **几何参数集中在 `Astran.py`**，不改 ASTRAN 源码（§5.1）。
+2. **几何参数集中在 `astran.py`**，不改 ASTRAN 源码（§5.1）。
 3. **LP 里表达式要"重命名 + 显式定义约束"**，不能塌缩成自由变量；不要用 `Model.read()` 读这份 LP（§6）。
 4. **FEASIBLE 算成功**；**inf 系数丢弃**；**0×0 版图排除**（§5.5、§6）。
 5. **模式身份 = `patternExtensionTrace` 字符串**，去重必须比对 trace（比对整型 id 会恒真、等于没去重）。
@@ -528,12 +528,12 @@ ASTRAN 原生调用的是商业求解器 **Gurobi** 的命令行 `gurobi_cl`。�
 | 文件 | 一句话职责 |
 |---|---|
 | `pySrc/main.py` | 主循环：挖掘→生长→评估→导出的编排 |
-| `pySrc/BLIFPreProc.py` | 解析 liberty/BLIF、构图、树编码、初始聚类 |
-| `pySrc/BLIFPatternGrowth.py` | 模式生长（吸收邻居） |
-| `pySrc/BLIFGraphUtil.py` | 数据结构 + 模式子图可视化 |
+| `pySrc/blif_preproc.py` | 解析 liberty/BLIF、构图、树编码、初始聚类 |
+| `pySrc/blif_pattern_growth.py` | 模式生长（吸收邻居） |
+| `pySrc/blif_graph_util.py` | 数据结构 + 模式子图可视化 |
 | `pySrc/spice.py` | 复杂单元 SPICE 网表拼装 |
-| `pySrc/Astran.py` | ASTRAN 调用 + 几何常量 + 宽度读取 + 缓存判定 |
-| `pySrc/GDSIIAnalysis.py` | 基线/库单元宽度读取 |
+| `pySrc/astran.py` | ASTRAN 调用 + 几何常量 + 宽度读取 + 缓存判定 |
+| `pySrc/gds_analysis.py` | 基线/库单元宽度读取 |
 | `pySrc/regenerate_cells.py` | 按名重生成指定单元版图（不重跑挖掘） |
 | `tools/astran/src/autocell2.cpp` | ASTRAN autoflow 主流程（fold/place/route/compact） |
 | `tools/astran/src/compaction.cpp` | ILP/LP 模型写出与求解器调用 |

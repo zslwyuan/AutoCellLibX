@@ -1,8 +1,8 @@
-"""Unit tests for the ASTRAN layout cache decision (pySrc/Astran.py)."""
+"""Unit tests for the ASTRAN layout cache decision (pySrc/astran.py)."""
 import os
 import time
 
-from Astran import astranLayoutIsStale
+from astran import astranLayoutIsStale
 
 
 def _make(path, mtime):

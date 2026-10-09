@@ -1,4 +1,4 @@
-"""Unit tests for heuristic initial clustering (pySrc/BLIFPreProc.py).
+"""Unit tests for heuristic initial clustering (pySrc/blif_preproc.py).
 
 Regression covered: in ``heuristic_label_initial_clusters_based_on``
 the pattern counter ``labelId`` was incremented even for patterns whose cluster
@@ -7,7 +7,7 @@ collided with the new-pattern numbering used by main.py.
 """
 import pytest
 
-from BLIFPreProc import (
+from blif_preproc import (
     loadDataAndPreprocess,
     heuristic_label_initial_clusters,
     heuristic_label_initial_clusters_based_on,

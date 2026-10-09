@@ -1,5 +1,5 @@
-"""Unit tests for pySrc/BLIFGraphUtil.py: data structures and helpers."""
-from BLIFGraphUtil import (
+"""Unit tests for pySrc/blif_graph_util.py: data structures and helpers."""
+from blif_graph_util import (
     StdCellType,
     DesignCell,
     DesignNet,
@@ -122,7 +122,7 @@ class TestCountUncoveredClusters:
     again."""
 
     def test_disjoint_clusters_all_counted(self):
-        from BLIFGraphUtil import countUncoveredClusters
+        from blif_graph_util import countUncoveredClusters
         cells = _mk_cells(6)
         clusters = [DesignPatternCluster(i, "[A]", cells, [2 * i, 2 * i + 1], 0)
                     for i in range(3)]
@@ -131,7 +131,7 @@ class TestCountUncoveredClusters:
         assert covered == {0, 1, 2, 3, 4, 5}
 
     def test_overlapping_cluster_skipped_once(self):
-        from BLIFGraphUtil import countUncoveredClusters
+        from blif_graph_util import countUncoveredClusters
         cells = _mk_cells(6)
         covered = set()
         first = [DesignPatternCluster(0, "[A]", cells, [0, 1], 0)]
@@ -143,7 +143,7 @@ class TestCountUncoveredClusters:
         assert covered == {0, 1, 3, 4}
 
     def test_fully_covered_candidate_counts_zero(self):
-        from BLIFGraphUtil import countUncoveredClusters
+        from blif_graph_util import countUncoveredClusters
         cells = _mk_cells(4)
         clusters = [DesignPatternCluster(0, "[A]", cells, [0, 1], 0)]
         covered = {0, 1}

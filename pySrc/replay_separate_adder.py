@@ -14,14 +14,14 @@ import sys
 import time
 
 sys.path.insert(0, os.getcwd())
-from Astran import loadAstranArea
-from BLIFGraphUtil import (removeEmptySeqsAndDisableClusters,
+from astran import loadAstranArea
+from blif_graph_util import (removeEmptySeqsAndDisableClusters,
                            sortPatternClusterSeqs)
-from BLIFPatternGrowth import grow_sequence_of_clusters_based_on
-from BLIFPreProc import (getArea,
+from blif_pattern_growth import grow_sequence_of_clusters_based_on
+from blif_preproc import (getArea,
                          heuristic_label_initial_clusters_based_on,
                          loadDataAndPreprocess)
-from GDSIIAnalysis import loadAstranGDS, loadOrignalGSCL45nmGDS
+from gds_analysis import loadAstranGDS, loadOrignalGSCL45nmGDS
 from spice import exportSpiceNetlist, load_spice_subcircuits
 
 benchmarkName = "adder"

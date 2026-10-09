@@ -1,16 +1,16 @@
 """Initial clustering (layer: seeding).
 
-Extracted from BLIFPreProc.py (AST-verbatim): group root cells by
+Extracted from blif_preproc.py (AST-verbatim): group root cells by
 canonical pattern code into DesignPatternClusterSeq candidates ordered
 by (cluster count x cluster size); the _BasedOn variant replays one
 specific trace for phase-2 records.  singleOutputSeeds implements the
 synthesis-reuse seed filter (AUDIT 5.27).
 """
 
-from BLIFGraphUtil import (DesignPatternCluster,
+from blif_graph_util import (DesignPatternCluster,
                            DesignPatternClusterSeq,
                            sortPatternClusterSeqs)
-from globalVariables import bypassTypes
+from global_variables import bypassTypes
 from core.encoding import (canonical_pattern_code, escape_output_count,
                            extract_and_encode_subgraph_tree)
 

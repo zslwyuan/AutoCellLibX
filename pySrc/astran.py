@@ -34,7 +34,7 @@ def loadAstranArea(GDSPath, typeName):
     Width is used as the area proxy: cell area is proportional to width at a
     fixed row height, so this compares the ASTRAN baseline and the locally
     generated cells (both at the GSCL45 row height H=2.47um) consistently.
-    Same metric as GDSIIAnalysis.loadAstranGDS / loadOrignalGSCL45nmGDS.
+    Same metric as gds_analysis.loadAstranGDS / loadOrignalGSCL45nmGDS.
     """
     logFileName = os.path.join(GDSPath, typeName + ".Astranlog")
     if (os.path.exists(logFileName)):

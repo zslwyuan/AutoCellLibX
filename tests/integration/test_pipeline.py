@@ -13,9 +13,9 @@ BLIF = "../benchmark/blif/adder.blif"
 
 
 def test_mining_growth_and_export(in_pysrc, tmp_path):
-    from BLIFPreProc import loadDataAndPreprocess
-    from BLIFGraphUtil import sortPatternClusterSeqs
-    from BLIFPatternGrowth import grow_sequence_of_clusters
+    from blif_preproc import loadDataAndPreprocess
+    from blif_graph_util import sortPatternClusterSeqs
+    from blif_pattern_growth import grow_sequence_of_clusters
     from spice import load_spice_subcircuits, exportSpiceNetlist
 
     G, cells, netlist, types, ds, ml, seqs, cn = loadDataAndPreprocess(

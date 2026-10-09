@@ -7,8 +7,8 @@ older consumers (gui, tests, pipeline).
 
 import os
 import blifparser.blifparser as blifparser
-from globalVariables import *
-from BLIFGraphUtil import *
+from global_variables import *
+from blif_graph_util import *
 from core.seeding import (heuristic_label_initial_clusters,
                           heuristic_label_initial_clusters_based_on)
 from core.encoding import (extract_and_encode_subgraph_tree,

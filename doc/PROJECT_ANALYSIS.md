@@ -49,17 +49,17 @@
 │   └── PROJECT_ANALYSIS.md    # 本文档
 ├── pySrc/                     # Python 主代码
 │   ├── main.py                # 入口:完整流水线
-│   ├── BLIFPreProc.py         # BLIF/liberty 解析、构图、启发式初始聚类、数据集转换
-│   ├── BLIFGraphUtil.py       # 数据结构(StdCellType/DesignCell/DesignNet/PatternCluster...) + 画图
-│   ├── BLIFPatternGrowth.py   # 模式生长算法(吸收邻居扩展模式)
-│   ├── Astran.py              # 调用 ASTRAN 工具生成版图 + 读取面积
-│   ├── GDSIIAnalysis.py       # GDS 版图面积解析(gdstk)
+│   ├── blif_preproc.py         # BLIF/liberty 解析、构图、启发式初始聚类、数据集转换
+│   ├── blif_graph_util.py       # 数据结构(StdCellType/DesignCell/DesignNet/PatternCluster...) + 画图
+│   ├── blif_pattern_growth.py   # 模式生长算法(吸收邻居扩展模式)
+│   ├── astran.py              # 调用 ASTRAN 工具生成版图 + 读取面积
+│   ├── gds_analysis.py       # GDS 版图面积解析(gdstk)
 │   ├── spice.py               # SPICE 子电路解析与复杂单元网表导出
-│   ├── globalVariables.py     # 全局常量(bypassTypes = ["DFF", "bool"])
-│   ├── GNNModel.py            # GraphCNN 模型(TensorFlow,实验性)
-│   ├── BLIFGNNTraining.py     # GNN 训练(当前主流程未使用,被注释)
-│   ├── resultAnalysis.py      # 结果汇总脚本(生成 results/result.csv)
-│   ├── resultAnalysisCountTops.py # 按 top 模式汇总结果的变体
+│   ├── global_variables.py     # 全局常量(bypassTypes = ["DFF", "bool"])
+│   ├── gnn_model.py            # GraphCNN 模型(TensorFlow,实验性)
+│   ├── blif_gnn_training.py     # GNN 训练(当前主流程未使用,被注释)
+│   ├── result_analysis.py      # 结果汇总脚本(生成 results/result.csv)
+│   ├── result_analysis_count_tops.py # 按 top 模式汇总结果的变体
 │   ├── clean.sh / README / requirements.txt
 │   ├── originalAstranStdCells/ # 原始单元经 ASTRAN 生成的 .gds/.run/.Astranlog
 │   ├── originalGSCL45StdCells/ # FreePDK45 GSCL 库原始 .gds(31 个单元)
@@ -87,7 +87,7 @@
 └── pytest.ini                 # pytest 配置(默认跳过 slow 用例)
 ```
 
-> 说明:ASTRAN 与求解器包装已 vendored 进本仓库(`tools/`),Python 代码、ASTRAN 源码、测试作为**单一项目管理**。工具路径统一由 `pySrc/Astran.py` 从仓库根解析(`ASTRAN_BUILD_PATH`/`ASTRAN_TECHNOLOGY`/`GUROBI_CL`)。
+> 说明:ASTRAN 与求解器包装已 vendored 进本仓库(`tools/`),Python 代码、ASTRAN 源码、测试作为**单一项目管理**。工具路径统一由 `pySrc/astran.py` 从仓库根解析(`ASTRAN_BUILD_PATH`/`ASTRAN_TECHNOLOGY`/`GUROBI_CL`)。
 
 ---
 
@@ -123,9 +123,9 @@
 - `technologyPath = ASTRAN_TECHNOLOGY` = `<repo>/tools/astran/build/Work/tech_freePDK45.rul`;
 - 求解器 `GUROBI_CL` = `<repo>/tools/gurobi_cl/gurobi_cl.cmd`(python-mip + CBC,替代 Gurobi `gurobi_cl`);
 - benchmark 列表当前只启用 `["adder"]`。
-- 上述常量均定义于 `pySrc/Astran.py`,由仓库根解析,与 cwd 无关。
+- 上述常量均定义于 `pySrc/astran.py`,由仓库根解析,与 cwd 无关。
 
-### 3.2 `BLIFPreProc.py` — 数据预处理与初始聚类
+### 3.2 `blif_preproc.py` — 数据预处理与初始聚类
 
 - `load_liberty_file()`:用 `liberty.parser.parse_liberty` 解析 `.lib`,构建 `StdCellType`(引脚方向)。
 - `load_bool_gate_from_blif()`:把 BLIF 中的布尔函数(真值表)作为 `bool-<tt>` 类型的虚拟单元加入库。
@@ -133,11 +133,11 @@
 - `extract_and_encode_subgraph_tree()`:以某单元为根、沿输入反向做深度受限(`depthLimit`)的树编码,编码串 = 单元类型序列。
 - `heuristic_label_initial_clusters()`:对每个非 bypass 单元提取深度 1 的树编码,按编码频次排序取 top 30 作为初始模式;把同编码单元簇成 `DesignPatternCluster`,同一编码的所有簇构成一个 `DesignPatternClusterSeq`;打印标注/聚类覆盖率。
 - `heuristic_label_initial_clusters_based_on()`:同上,但只保留编码串与 `targetPatternTrace` 前缀匹配的模式(用于第二轮逐模式追踪)。
-- `convertBLIFGraphIntoDataset()`:把图转成 GNN 训练用数据集(`S2VGraph`,节点 one-hot 特征、`edge_mat`)。**注意:已从 TensorFlow 常量改为 numpy 数组**(见 §11),`BLIFGNNTraining`/`GNNModel` 在主流程中被注释掉。
+- `convertBLIFGraphIntoDataset()`:把图转成 GNN 训练用数据集(`S2VGraph`,节点 one-hot 特征、`edge_mat`)。**注意:已从 TensorFlow 常量改为 numpy 数组**(见 §11),`blif_gnn_training`/`gnn_model` 在主流程中被注释掉。
 - `getArea()`:按单元类型面积字典累加总面积。
 - `loadDataAndPreprocess()`:串联上述步骤,返回 `(BLIFGraph, cells, netlist, stdCellTypesForFeature, dataset, maxLabelIndex, clusterSeqs, clusterNum)`。
 
-### 3.3 `BLIFGraphUtil.py` — 数据结构与绘图
+### 3.3 `blif_graph_util.py` — 数据结构与绘图
 
 数据结构(核心):
 
@@ -154,7 +154,7 @@
 - `sortPatternClusterSeqs()`:按 `簇数×簇大小` 降序、大小升序排序(lexsort)。
 - `drawColorfulFigureForGraphWithAttributes()`:绘制模式子图,优先 `graphviz_layout(dot)`,失败回退 `spring_layout`(本地修改);按 `type` 属性着色并标注单元名,导出 PNG。
 
-### 3.4 `BLIFPatternGrowth.py` — 模式生长算法
+### 3.4 `blif_pattern_growth.py` — 模式生长算法
 
 `grow_sequence_of_clusters(BLIFGraph, clusterSeq, ...)`,对应论文中的**模式增长/组合**环节:
 
@@ -172,32 +172,32 @@
 - `load_spice_subcircuits()`:从 `cellsAstranFriendly.sp` 加载全部子电路。
 - `exportSpiceNetlist()`:把一个模式簇内所有单元的子电路拼接:加前缀 → 按网表内部连接替换引脚 → 计算接口(删除完全内部化的输出)→ 生成 `COMPLEX<n>.sp`,文件头/尾注释记录 pattern code、出现次数、单元数、示例实例。
 
-### 3.6 `Astran.py` — ASTRAN 版图综合
+### 3.6 `astran.py` — ASTRAN 版图综合
 
 - 模块级设置:把 `C:\msys64\mingw64\bin` 加入 PATH(MinGW 运行库,供 Astran.exe 使用);定义项目内路径常量 `ASTRAN_BUILD_PATH`/`ASTRAN_TECHNOLOGY`/`GUROBI_CL`(均在 `<repo>/tools/` 下,vendored)。`GUROBI_CL` 是 python-mip + COIN-OR CBC 的 `gurobi_cl` 兼容包装。
 - `loadAstranArea(GDSPath, typeName)`:从 `.Astranlog` 解析 `-> Cell Size (W x H):` 行,面积 = 宽 × 0.8 × 3.2(单位换算系数)。
 - `runAstranForNetlist()`:生成 ASTRAN shell 命令脚本(`set lpsolve`/`load technology`/`load netlist`/`cellgen select`/`cellgen autoflow`/`export layout`),写 `.run` 文件后调用 `Astran --shell` 执行。**本地修改**:由多轨道循环 `for nTrack in [5,3,4,6]` 改为单次 `cellgen autoflow`(无 nTrack 参数)。
 
-### 3.7 `GDSIIAnalysis.py` — GDS 面积解析
+### 3.7 `gds_analysis.py` — GDS 面积解析
 
 - `loadOrignalGSCL45nmGDS()`:遍历 31 个 GSCL45 单元名,用 `gdstk.read_gds` 读取 `originalGSCL45StdCells/<name>.gds`,计算第 6 层(金属?)面积。
 - `loadAstranGDS()`:从 `originalAstranStdCells/` 所有 `.gds` 对应的 `.Astranlog` 读取面积(复用宽×0.8×3.2 换算)。
 - **本地修改**:从 `gdspy` 迁移到 `gdstk`(API: `read_gds`/`cell.area(((6,0),))`)。
 
-### 3.8 `globalVariables.py`
+### 3.8 `global_variables.py`
 
 仅一行:`bypassTypes = ["DFF", "bool"]` —— 带 DFF(时序)或 bool(布尔函数)字样的单元不参与模式聚类。
 
 ### 3.9 GNN 相关(实验性,当前未启用)
 
-- `GNNModel.py`:TensorFlow 实现的 GraphCNN(多层 MLP + 邻域聚合 + epsilon 重加权 + 节点级输出),用于节点嵌入预测。
-- `BLIFGNNTraining.py`:`enbeddedNodes_GNN()` 训练该模型并为节点生成嵌入,`encodedEntireGraphWIthLabelOrder()` 把嵌入转成特征排序。
-- 主流程中对应导入被注释(`# from BLIFGNNTraining import *`),即当前版本**以启发式聚类替代 GNN 嵌入**,这也是 `convertBLIFGraphIntoDataset` 改为 numpy 数组的原因。
+- `gnn_model.py`:TensorFlow 实现的 GraphCNN(多层 MLP + 邻域聚合 + epsilon 重加权 + 节点级输出),用于节点嵌入预测。
+- `blif_gnn_training.py`:`enbeddedNodes_GNN()` 训练该模型并为节点生成嵌入,`encodedEntireGraphWIthLabelOrder()` 把嵌入转成特征排序。
+- 主流程中对应导入被注释(`# from blif_gnn_training import *`),即当前版本**以启发式聚类替代 GNN 嵌入**,这也是 `convertBLIFGraphIntoDataset` 改为 numpy 数组的原因。
 
 ### 3.10 结果分析脚本
 
-- `resultAnalysis.py`:扫描 `outputs/*/best*` 文件,解析保存面积与百分比,生成 `results/result.csv`,并把最佳复杂单元相关文件复制到 `results/<benchmark>/`。
-- `resultAnalysisCountTops.py`:针对 `bestRecord-seperate` 格式(按 top 模式明细表)复制对应 `COMPLEX*.sp/gds` 到结果目录。
+- `result_analysis.py`:扫描 `outputs/*/best*` 文件,解析保存面积与百分比,生成 `results/result.csv`,并把最佳复杂单元相关文件复制到 `results/<benchmark>/`。
+- `result_analysis_count_tops.py`:针对 `bestRecord-seperate` 格式(按 top 模式明细表)复制对应 `COMPLEX*.sp/gds` 到结果目录。
 
 ---
 
@@ -205,7 +205,7 @@
 
 ```
 gscl45nm.lib ──┐
-               ├─> BLIFPreProc ──> BLIFGraph(有向图)+cells+nets ──> 初始模式簇(深度1树编码)
+               ├─> blif_preproc ──> BLIFGraph(有向图)+cells+nets ──> 初始模式簇(深度1树编码)
 adder.blif ────┘                        │
                                          ▼
           originalGSCL45StdCells/*.gds ─> loadOrignalGSCL45nmGDS() ─> stdType2GSCLArea
@@ -257,7 +257,7 @@ adder.blif ────┘                        │
 **第三方工具**:
 - **ASTRAN**(开源标准单元自动综合工具):安装于 `D:\astran\Astran\build`,工艺文件 `tech_freePDK45.rul`。
 - **Gurobi 求解器替代**:`D:\aclx-tools\gurobi_cl.cmd`(python-mip + CBC 的 gurobi_cl 兼容包装),避免商业许可。
-- **MinGW 运行库**:`C:\msys64\mingw64\bin`(已由 Astran.py 自动加入 PATH)。
+- **MinGW 运行库**:`C:\msys64\mingw64\bin`(已由 astran.py 自动加入 PATH)。
 
 **运行环境**:Windows 10(26100)、Python 3.11(`__pycache__` 中 cpython-311)、Git Bash。
 
@@ -304,10 +304,10 @@ adder.blif ────┘                        │
 
 | 文件 | 修改内容 |
 |---|---|
-| `pySrc/Astran.py` | 引入 MinGW PATH;用开源 `gurobi_cl.cmd` 包装替代 Gurobi;`cellgen autoflow` 去掉 nTrack 多轨道循环(单次执行);`gdspy`/`os.path` 统一化 |
-| `pySrc/BLIFPreProc.py` | 移除 `tensorflow` 依赖:`edge_mat`/`node_features` 由 `tf.constant` 改为 numpy 数组;删除无用 import |
-| `pySrc/BLIFGraphUtil.py` | 画图布局:graphviz 失败时回退 `spring_layout`(不强制依赖 pygraphviz) |
-| `pySrc/GDSIIAnalysis.py` | `gdspy` → `gdstk` 迁移 |
+| `pySrc/astran.py` | 引入 MinGW PATH;用开源 `gurobi_cl.cmd` 包装替代 Gurobi;`cellgen autoflow` 去掉 nTrack 多轨道循环(单次执行);`gdspy`/`os.path` 统一化 |
+| `pySrc/blif_preproc.py` | 移除 `tensorflow` 依赖:`edge_mat`/`node_features` 由 `tf.constant` 改为 numpy 数组;删除无用 import |
+| `pySrc/blif_graph_util.py` | 画图布局:graphviz 失败时回退 `spring_layout`(不强制依赖 pygraphviz) |
+| `pySrc/gds_analysis.py` | `gdspy` → `gdstk` 迁移 |
 | `pySrc/main.py` | ASTRAN 路径改为本地 `D:/astran/...`;benchmark 列表改为仅 `adder`;使用 `GUROBI_CL` 常量 |
 
 **解读**:这些改动把上游(面向 Linux + Gurobi 商业许可)的实现适配到了**本地 Windows 环境**,同时解耦了 TensorFlow 依赖,使核心挖掘/聚类/版图流程可在无 GPU、无 Gurobi 许可的情况下运行。
@@ -317,10 +317,10 @@ adder.blif ────┘                        │
 ## 12. 注意事项与潜在问题
 
 1. **ASTRAN 未成功**:`adder` 输出的 `Astranlog` 为空且无 GDS,流水线在版图综合环节未闭环;建议检查 `D:\astran\Astran\build\bin\Astran.exe` 能否独立运行、`gurobi_cl.cmd` 包装是否可执行、MinGW DLL 是否齐全。
-2. **面积换算系数**:`*0.8*3.2` 硬编码在 `Astran.py`/`GDSIIAnalysis.py`,换 PDK 需重新标定。
+2. **面积换算系数**:`*0.8*3.2` 硬编码在 `astran.py`/`gds_analysis.py`,换 PDK 需重新标定。
 3. **`lib` 与 `sp` 单元集合需一致**:`gscl45nm.lib` 中单元必须都在 `cellsAstranFriendly.sp` 中存在,否则 `exportSpiceNetlist`/ASTRAN 会报错。
 4. **模式数量假设**:`main.py` 多次引用 `clusterSeqs[0].patternClusters[0]`,空列表时依赖 `len()==0` 提前 break,但 `heuristicLabel...` 需保证初始至少有一个模式。
-5. **GNN 分支未启用**:`BLIFGNNTraining`/`GNNModel` 需要 TensorFlow 2.x,若需复现论文中的 GNN 变体需恢复导入并把 `convertBLIFGraphIntoDataset` 输出改回 TF 格式。
+5. **GNN 分支未启用**:`blif_gnn_training`/`gnn_model` 需要 TensorFlow 2.x,若需复现论文中的 GNN 变体需恢复导入并把 `convertBLIFGraphIntoDataset` 输出改回 TF 格式。
 6. **覆盖率阈值耦合**:`ratioThr/cntThr` 与设计规模相关,小设计(如 adder)可能触发 "pattern is too small and bypassed" 提前终止。
 
 ---
@@ -332,7 +332,7 @@ pip install -r requirements.txt   # 安装 Python 依赖
 # 确认 ASTRAN 安装于 D:/astran/Astran/build 且 gurobi_cl.cmd 可用
 cd pySrc
 python main.py                    # 运行 adder 流水线(当前配置)
-python resultAnalysis.py          # 汇总 outputs/*/bestRecord* → results/
+python result_analysis.py          # 汇总 outputs/*/bestRecord* → results/
 ```
 
 ---
@@ -345,10 +345,10 @@ python resultAnalysis.py          # 汇总 outputs/*/bestRecord* → results/
 
 1. **工具链确认**:`C:/msys64/mingw64/bin/` 下 g++ 16.2.0、mingw32-make 4.4.1、wxWidgets 3.2 开发包(头文件 `include/wx-3.2`、库 `libwx_baseu-3.2.a` 等)齐全。
 2. **解决 wx-config 路径问题**:msys64 的 `wx-config` 用 `cygpath` 按调用 shell 根解析 `/mingw64`,在 Git Bash 下解析到 Git 的 mingw64(无开发包)。创建自定义 shim:`D:/astran/Astran/bin/wx-config`,硬编码输出 msys64 的 `--cppflags`(`-IC:/msys64/mingw64/lib/wx/include/msw-unicode-3.2 -IC:/msys64/mingw64/include/wx-3.2 -DWXUSINGDLL -D__WXMSW__`)与 `--libs`(`-LC:/msys64/mingw64/lib -lwx_mswu_xrc-3.2 ...`),置于 PATH 首位。
-3. **编译**:`cd D:/astran/Astran && PATH="/d/astran/Astran/bin:/c/msys64/mingw64/bin:$PATH" mingw32-make -f nbproject/Makefile-Release.mk build/bin/Astran`,约 2 分钟完成,生成 5.1MB 可执行文件(无扩展名,正好匹配 `Astran.py` 的调用路径 `build/bin/Astran`)。
+3. **编译**:`cd D:/astran/Astran && PATH="/d/astran/Astran/bin:/c/msys64/mingw64/bin:$PATH" mingw32-make -f nbproject/Makefile-Release.mk build/bin/Astran`,约 2 分钟完成,生成 5.1MB 可执行文件(无扩展名,正好匹配 `astran.py` 的调用路径 `build/bin/Astran`)。
 4. **功能验证**:`Astran --shell` 跑 INVX1 全流程成功(求解器经 `gurobi_cl.cmd` 包装调用 CBC,LP 最优,输出 `Cell Size 0.6 x 2.6`,GDS 生成),与 14:15 官方二进制结果一致。
 5. **流水线验证**:重跑 adder,COMPLEX0/1/9 的 SPICE/GDS/日志全部生成,`bestRecord-adder` 与 `bestRecord-seperateadder` 正常输出(见 §9)。
 
 **遗留事项**:
 - 新编译的 Astran.exe 与官方版本一样含 `_popen` 调用,360 可能再次误报。**建议在 360 安全卫士中把 `D:\astran\Astran\build\bin` 与 `D:\aclx-tools` 加入信任目录**;若再被清除,从 360 恢复区恢复或按上述步骤重编(对象文件仍在 `build/Release/...` 下,增量重编约 1 分钟)。
-- 运行时依赖:wx 3.2 DLL 与工具位于 `C:/msys64/mingw64/bin`,已由 `Astran.py` 自动加入 PATH,无需额外配置。
+- 运行时依赖:wx 3.2 DLL 与工具位于 `C:/msys64/mingw64/bin`,已由 `astran.py` 自动加入 PATH,无需额外配置。

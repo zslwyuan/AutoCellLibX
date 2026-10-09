@@ -1,5 +1,5 @@
 """Unit tests for liberty/BLIF parsing and graph construction."""
-from BLIFPreProc import load_liberty_file, gen_graph_from_liberty_and_blif
+from blif_preproc import load_liberty_file, gen_graph_from_liberty_and_blif
 
 
 def test_load_liberty_library(in_pysrc):
@@ -37,7 +37,7 @@ def test_edge_direction_follows_signal_flow(in_pysrc):
 
 
 def test_bypass_types_are_marked(in_pysrc):
-    from globalVariables import bypassTypes
+    from global_variables import bypassTypes
 
     G, cells, netlist, types = gen_graph_from_liberty_and_blif(
         "../stdCelllib/gscl45nm.lib", "../benchmark/blif/adder.blif")

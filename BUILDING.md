@@ -53,7 +53,7 @@ cd pySrc
 python main.py
 ```
 
-- `pySrc/Astran.py` defines the project-internal paths
+- `pySrc/astran.py` defines the project-internal paths
   (`ASTRAN_BUILD_PATH`, `ASTRAN_TECHNOLOGY`, `GUROBI_CL`) from the repo root.
 - `pySrc/main.py` selects the benchmark(s) to run (`benchmarks = ["adder"]` by
   default).
@@ -119,7 +119,7 @@ Test layout:
 ## 5. Toolchain notes (Windows)
 
 - Runtime wxWidgets DLLs are staged into `tools/astran/build/bin/` by the build
-  script; `pySrc/Astran.py` additionally prepends `C:\msys64\mingw64\bin`.
+  script; `pySrc/astran.py` additionally prepends `C:\msys64\mingw64\bin`.
 - If 360 Total Security flags the freshly built `Astran.exe`
   (`HEUR/QVM...Malware.Gen`, caused by its `_popen` usage), add
   `tools/astran/build/bin` to its trust list — this is a known false positive.
@@ -161,7 +161,7 @@ Verification before handing out a build (all must pass):
 cd dist/stage
 ./runtime/python.exe -c "import sys; sys.path[:0] = ['.', 'pySrc']; \
     import matplotlib; matplotlib.use('Agg'); \
-    import Astran, BLIFPreProc, BLIFPatternGrowth, spice, GDSIIAnalysis; \
+    import astran, blif_preproc, blif_pattern_growth, spice, gds_analysis; \
     from gui import paths; \
     print([c.label for c in paths.probe_environment() if not c.ok and c.required])"
 ```

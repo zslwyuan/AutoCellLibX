@@ -1,13 +1,13 @@
 """Pattern encoding (layer: encoding).
 
-Extracted from BLIFPreProc.py: ``extract_and_encode_subgraph_tree`` builds
+Extracted from blif_preproc.py: ``extract_and_encode_subgraph_tree`` builds
 the BFS type-name code for a root cell; ``canonical_pattern_code`` makes
 the identity order-invariant (children sorted after the root, AUDIT
 5.18/P0-1); ``escape_output_count`` counts a seed's escaping outputs
 (synthesis-reuse mode, AUDIT 5.27).
 """
 
-from globalVariables import bypassTypes
+from global_variables import bypassTypes
 
 
 def extract_and_encode_subgraph_tree(cells, rootNode, depthLimit=2, clusterId=None):

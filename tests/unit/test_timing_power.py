@@ -4,7 +4,7 @@ import pytest
 from timing_power import (bilinear, loadTimingPower, patternTimingPower,
                           stageDelaySlew, stageEnergy)
 from electrical import loadCellElectricalMetrics
-from BLIFGraphUtil import StdCellType, DesignCell, DesignNet
+from blif_graph_util import StdCellType, DesignCell, DesignNet
 
 LIB = "../stdCelllib/gscl45nm.lib"
 

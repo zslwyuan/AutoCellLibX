@@ -8,7 +8,7 @@
 | seeding.py | 聚类 | 初始聚类（heuristic_label…_based_on，含单输出种子过滤） |
 | growth.py | 生长 | grow_sequence_of_clusters（预估剪枝/内化偏置/_collect_neighbor_features） |
 | evaluate.py | 评估门面 | 电气/时序/可布性/复用/宽度代理/体检/表征/PDK |
-| external.py | 工具门面 | ASTRAN / GDSIIAnalysis / yosys |
+| external.py | 工具门面 | ASTRAN / gds_analysis / yosys |
 | pipeline.py | 编排 | run_pipeline(cfg, hooks)——CLI 与 GUI 唯一控制流 |
 | log.py | dfx | get_flow_logger（级别过滤/时间戳/控制台） |
 

@@ -14,7 +14,7 @@ make complex cells genuinely reusable in logic synthesis they must be
 
 This module scores a cluster for that property.  ``_clusterInterface``
 (liberty_gen) and ``_composeFunction`` provide the primitives; the
-growth side gains an ``internalizeOnly`` bias (BLIFPatternGrowth) so
+growth side gains an ``internalizeOnly`` bias (blif_pattern_growth) so
 patterns can *grow* without gaining outputs.
 """
 

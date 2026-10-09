@@ -1,6 +1,6 @@
-"""Unit tests for the ASTRAN run-script builder (pySrc/Astran.py)."""
-import Astran
-from Astran import (ASTRAN_CELLS_HEIGHT, ASTRAN_CELL_TEMPLATE,
+"""Unit tests for the ASTRAN run-script builder (pySrc/astran.py)."""
+import astran
+from astran import (ASTRAN_CELLS_HEIGHT, ASTRAN_CELL_TEMPLATE,
                     ASTRAN_SUPPLY_SIZE, ASTRAN_VGRID, buildAstranCommands)
 
 
@@ -48,6 +48,6 @@ def test_default_geometry_matches_the_gscl45_row_height():
 
 def test_geometry_constants_drive_the_script(monkeypatch):
     """Calibrating the row height is a constants change, nothing else."""
-    monkeypatch.setattr(Astran, "ASTRAN_VGRID", 0.2)
+    monkeypatch.setattr(astran, "ASTRAN_VGRID", 0.2)
     script = _cmd()
     assert "set grid 0.19 0.2" in script

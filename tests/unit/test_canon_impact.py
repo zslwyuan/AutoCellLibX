@@ -1,5 +1,5 @@
 """Unit tests for pySrc/canon_impact.py (P1-10 prototype)."""
-from BLIFGraphUtil import StdCellType, DesignCell, DesignNet
+from blif_graph_util import StdCellType, DesignCell, DesignNet
 from canon_impact import canonicalizationImpact
 
 
@@ -40,7 +40,7 @@ def test_merges_order_split_instances():
 
 
 def test_adder_report_structure(in_pysrc):
-    from BLIFPreProc import gen_graph_from_liberty_and_blif
+    from blif_preproc import gen_graph_from_liberty_and_blif
     _, cells, _, _ = gen_graph_from_liberty_and_blif(
         "../stdCelllib/gscl45nm.lib", "../benchmark/blif/adder.blif")
     report = canonicalizationImpact(cells)

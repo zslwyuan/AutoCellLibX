@@ -8,7 +8,7 @@ variable, not a constant to bury in code.
 
 This module collects each PDK's geometry and technology-file pointers
 into one registry.  ``freepdk45`` reproduces the validated GSCL45
-constants in Astran.py (the test suite pins the equivalence).  The
+constants in astran.py (the test suite pins the equivalence).  The
 ``sky130`` / ``gf180`` entries have their .rul rule files written
 (status ``draft``) from primary LEF sources -- geometry is real, but no
 DRC deck has been run on generated cells yet, so they still require the
@@ -117,7 +117,7 @@ def listPdks():
 
 
 def pdkGeometryDict(pdk):
-    """Geometry dict for Astran.buildAstranCommands(..., geometry=...)."""
+    """Geometry dict for astran.buildAstranCommands(..., geometry=...)."""
     return {
         "cellsHeight": pdk.cellsHeight,
         "hGrid": pdk.hGrid,

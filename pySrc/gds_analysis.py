@@ -59,7 +59,7 @@ def _readAstranCellWidth(logFileName):
 def loadAstranGDS():
     """Nominal width of each ASTRAN-generated original cell, from its log.
 
-    Same metric as loadOrignalGSCL45nmGDS and Astran.loadAstranArea (nominal
+    Same metric as loadOrignalGSCL45nmGDS and astran.loadAstranArea (nominal
     width) so the ASTRAN baseline, the generated complex cells and the GSCL
     library are all compared consistently.
     """

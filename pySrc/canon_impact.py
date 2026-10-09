@@ -15,7 +15,7 @@ commutativity, functional equivalence) would recover on top.
 import glob
 import os
 
-from BLIFPreProc import (canonical_pattern_code,
+from blif_preproc import (canonical_pattern_code,
                          extract_and_encode_subgraph_tree,
                          gen_graph_from_liberty_and_blif)
 

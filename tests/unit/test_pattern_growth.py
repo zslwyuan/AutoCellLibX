@@ -1,4 +1,4 @@
-"""Unit tests for the pattern growth algorithm (pySrc/BLIFPatternGrowth.py).
+"""Unit tests for the pattern growth algorithm (pySrc/blif_pattern_growth.py).
 
 Regression covered: ``grow_sequence_of_clusters`` skipped neighbours that already
 belonged to another cluster of the *same* pattern on the input-predecessor
@@ -6,7 +6,7 @@ side, but not on the output-successor side.  As a result a cluster could
 absorb cells of a sibling instance (which then got disabled), silently
 merging same-pattern instances.
 """
-from BLIFGraphUtil import (
+from blif_graph_util import (
     StdCellType,
     DesignCell,
     DesignNet,
@@ -14,7 +14,7 @@ from BLIFGraphUtil import (
     DesignPatternClusterSeq,
     sortPatternClusterSeqs,
 )
-from BLIFPatternGrowth import grow_sequence_of_clusters
+from blif_pattern_growth import grow_sequence_of_clusters
 
 LIB = "../stdCelllib/gscl45nm.lib"
 BLIF = "../benchmark/blif/adder.blif"
@@ -93,7 +93,7 @@ def test_input_side_does_not_absorb_same_pattern_cluster():
 
 
 def test_growth_invariants_on_benchmark(in_pysrc):
-    from BLIFPreProc import loadDataAndPreprocess
+    from blif_preproc import loadDataAndPreprocess
 
     G, cells, netlist, types, ds, ml, seqs, cn = loadDataAndPreprocess(
         libFileName=LIB, blifFileName=BLIF, startTime=0)

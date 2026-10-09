@@ -95,7 +95,7 @@ class FlowConfig(object):
         self.technology_file = None     # .rul (ASTRAN design rules)
         self.lef_file = None            # .lef (nominal cell widths for area)
         self.layer_map_file = None      # Cadence layer map (stream -> name)
-        # ASTRAN geometry overrides; None keeps pySrc/Astran.py constants.
+        # ASTRAN geometry overrides; None keeps pySrc/astran.py constants.
         # Keys: cellsHeight, hGrid, vGrid, supplySize, nwellPos, cellTemplate.
         self.geometry = None
         self.top_thr = 5            # main.py: topThr
@@ -206,8 +206,8 @@ class _GuiPipelineHooks(object):
                 and self.runner.astran_available()):
             name = "COMPLEX%d" % pattern_trace_id
             try:
-                import Astran
-                return Astran.loadAstranArea(self.ctx["out_dir"], name)
+                import astran
+                return astran.loadAstranArea(self.ctx["out_dir"], name)
             except Exception:                    # noqa: BLE001
                 return None
         return self.runner._generate_complex_layout(
@@ -251,12 +251,12 @@ class FlowRunner(object):
         paths.ensure_pysrc_on_path()
         import matplotlib
         matplotlib.use("Agg", force=True)
-        import Astran
-        import BLIFPreProc
-        import BLIFGraphUtil
-        import BLIFPatternGrowth
+        import astran
+        import blif_preproc
+        import blif_graph_util
+        import blif_pattern_growth
         import spice
-        import GDSIIAnalysis
+        import gds_analysis
         import benefit
         import routability
         import electrical
@@ -266,10 +266,10 @@ class FlowRunner(object):
         import width_proxy
         import liberty_gen
         import reuse
-        self._flow = dict(Astran=Astran, BLIFPreProc=BLIFPreProc,
-                          BLIFGraphUtil=BLIFGraphUtil,
-                          BLIFPatternGrowth=BLIFPatternGrowth,
-                          spice=spice, GDSIIAnalysis=GDSIIAnalysis,
+        self._flow = dict(astran=astran, blif_preproc=blif_preproc,
+                          blif_graph_util=blif_graph_util,
+                          blif_pattern_growth=blif_pattern_growth,
+                          spice=spice, gds_analysis=gds_analysis,
                           benefit=benefit, routability=routability,
                           electrical=electrical, timing_power=timing_power,
                           yosys_import=yosys_import,
@@ -292,7 +292,7 @@ class FlowRunner(object):
                     netlist_lib=None, technology_path=None, geometry=None):
         """Run ASTRAN for one cell, streaming its log.  Returns an AstranLog.
 
-        Reuses ``Astran.buildAstranCommands`` so the geometry constants stay
+        Reuses ``astran.buildAstranCommands`` so the geometry constants stay
         centralised (AGENTS.md invariant 2) and the emitted ``.run`` matches
         what the CLI flow writes.  ``geometry`` lets the GUI override the
         constants (row height, grid, supply rails, ...) per the Configure tab.
@@ -300,12 +300,12 @@ class FlowRunner(object):
         the process working directory, so concurrent runs would clobber each other.
         """
         flow = self._import_flow()
-        Astran = flow["Astran"]
+        astran = flow["astran"]
 
         netlist_rel = self._rel(netlist_abs)
         command_dir_rel = self._rel(command_dir_abs)
-        script = Astran.buildAstranCommands(
-            Astran.GUROBI_CL, technology_path or Astran.ASTRAN_TECHNOLOGY,
+        script = astran.buildAstranCommands(
+            astran.GUROBI_CL, technology_path or astran.ASTRAN_TECHNOLOGY,
             netlist_rel, name, command_dir_rel, geometry=geometry)
 
         run_path = os.path.join(command_dir_abs, name + ".run")
@@ -456,11 +456,11 @@ class FlowRunner(object):
 
     def _run_benchmark(self, bench, t0):
         flow = self._import_flow()
-        BLIFPreProc = flow["BLIFPreProc"]
-        BLIFGraphUtil = flow["BLIFGraphUtil"]
-        BLIFPatternGrowth = flow["BLIFPatternGrowth"]
+        blif_preproc = flow["blif_preproc"]
+        blif_graph_util = flow["blif_graph_util"]
+        blif_pattern_growth = flow["blif_pattern_growth"]
         spice = flow["spice"]
-        GDSIIAnalysis = flow["GDSIIAnalysis"]
+        gds_analysis = flow["gds_analysis"]
 
         blif_abs = self._blif_path(bench)
         if not os.path.exists(blif_abs):
@@ -479,7 +479,7 @@ class FlowRunner(object):
         self._stage("parse", "running", "解析 liberty + BLIF / parsing design")
         self._check_cancel()
         (BLIFGraph, cells, netlist, stdCellTypesForFeature) = \
-            BLIFPreProc.gen_graph_from_liberty_and_blif(
+            blif_preproc.gen_graph_from_liberty_and_blif(
                 self._rel(self.cfg.liberty()), self._rel(blif_abs))
 
         type_count = {}
@@ -507,9 +507,9 @@ class FlowRunner(object):
         self._stage("cluster", "running", "按编码聚类模式 / grouping by pattern code")
         self._check_cancel()
         clusterSeqs, clusterNum = \
-            BLIFPreProc.heuristic_label_initial_clusters(
+            blif_preproc.heuristic_label_initial_clusters(
                 BLIFGraph, cells, netlist)
-        dataset, maxLabelIndex = BLIFPreProc.convertBLIFGraphIntoDataset(
+        dataset, maxLabelIndex = blif_preproc.convertBLIFGraphIntoDataset(
             BLIFGraph, stdCellTypesForFeature, 36)
         self._log("初始模式序列 / initial pattern sequences: %d" % len(clusterSeqs))
         self._stage("cluster", "done", "%d pattern sequences" % len(clusterSeqs))
@@ -518,14 +518,14 @@ class FlowRunner(object):
         # GSCL reference widths come from the LEF the user configured (default:
         # gscl45nm.lef); same METRIC as loadOrignalGSCL45nmGDS, any PDK.
         stdType2GSCLArea = artifacts.read_lef_widths(self.cfg.lef())
-        oriArea = BLIFPreProc.getArea(cells, stdType2GSCLArea)
-        stdType2AstranArea = GDSIIAnalysis.loadAstranGDS()
-        astranArea = BLIFPreProc.getArea(cells, stdType2AstranArea)
+        oriArea = blif_preproc.getArea(cells, stdType2GSCLArea)
+        stdType2AstranArea = gds_analysis.loadAstranGDS()
+        astranArea = blif_preproc.getArea(cells, stdType2AstranArea)
         self._log("面积基准 / area baseline: GSCL=%.2f, ASTRAN=%.2f (总宽 µm)"
                   % (oriArea, astranArea))
         self._stage("baseline", "done", "ASTRAN baseline %.1f µm" % astranArea)
 
-        clusterSeqs = BLIFGraphUtil.sortPatternClusterSeqs(clusterSeqs)
+        clusterSeqs = blif_graph_util.sortPatternClusterSeqs(clusterSeqs)
 
         context = dict(
             flow=flow, bench=bench, out_dir=out_dir, cells=cells,
@@ -616,7 +616,7 @@ class FlowRunner(object):
         """Whether the cached baseline cells match the configured geometry.
 
         A custom ASTRAN technology file, or geometry values that differ from
-        the pySrc/Astran.py constants, invalidate every cached baseline cell:
+        the pySrc/astran.py constants, invalidate every cached baseline cell:
         the area comparison needs the baseline and the generated cells at the
         same row height (AGENTS.md invariant 10).
         """
@@ -625,14 +625,14 @@ class FlowRunner(object):
             return False
         if cfg.technology_file is not None:
             return True
-        Astran = self._import_flow()["Astran"]
+        astran = self._import_flow()["astran"]
         g = cfg.geometry
-        return not (g["cellsHeight"] == Astran.ASTRAN_CELLS_HEIGHT and
-                    g["hGrid"] == Astran.ASTRAN_HGRID and
-                    g["vGrid"] == Astran.ASTRAN_VGRID and
-                    g["supplySize"] == Astran.ASTRAN_SUPPLY_SIZE and
-                    g["nwellPos"] == Astran.ASTRAN_NWELL_POS and
-                    g["cellTemplate"] == Astran.ASTRAN_CELL_TEMPLATE)
+        return not (g["cellsHeight"] == astran.ASTRAN_CELLS_HEIGHT and
+                    g["hGrid"] == astran.ASTRAN_HGRID and
+                    g["vGrid"] == astran.ASTRAN_VGRID and
+                    g["supplySize"] == astran.ASTRAN_SUPPLY_SIZE and
+                    g["nwellPos"] == astran.ASTRAN_NWELL_POS and
+                    g["cellTemplate"] == astran.ASTRAN_CELL_TEMPLATE)
 
     def _run_baseline(self, stdCellTypesForFeature, t0):
         """Generate the ASTRAN reference layouts the area comparison needs.
@@ -741,10 +741,10 @@ class FlowRunner(object):
         sp_path = os.path.join(out_dir, name + ".sp")
 
         if not cfg.force_regenerate and \
-                not flow["Astran"].astranLayoutIsStale(gds_path, sp_path):
+                not flow["astran"].astranLayoutIsStale(gds_path, sp_path):
             self._log("%s: 复用已缓存版图 / reusing cached layout" % name)
             try:
-                width = flow["Astran"].loadAstranArea(out_dir, name)
+                width = flow["astran"].loadAstranArea(out_dir, name)
             except Exception:                            # noqa: BLE001
                 return None
             return width if width > 0 else None
@@ -833,7 +833,7 @@ def regenerate_cell(benchmark, cell, shared_netlist=False, hooks=None,
     paths.ensure_pysrc_on_path()
     import matplotlib
     matplotlib.use("Agg", force=True)
-    import Astran
+    import astran
 
     out_dir = paths.output_dir(benchmark)
     name = os.path.basename(cell)
@@ -846,8 +846,8 @@ def regenerate_cell(benchmark, cell, shared_netlist=False, hooks=None,
     if os.path.exists(gds):
         shutil.move(gds, gds + ".bak")
 
-    script = Astran.buildAstranCommands(
-        Astran.GUROBI_CL, technology_path or Astran.ASTRAN_TECHNOLOGY,
+    script = astran.buildAstranCommands(
+        astran.GUROBI_CL, technology_path or astran.ASTRAN_TECHNOLOGY,
         _rel_to_pysrc(netlist), name, _rel_to_pysrc(out_dir),
         geometry=geometry)
     run_path = os.path.join(out_dir, name + ".run")
@@ -899,7 +899,7 @@ def parse_design(benchmark, hooks=None, cancel_event=None, blif_path=None,
     paths.ensure_pysrc_on_path()
     import matplotlib
     matplotlib.use("Agg", force=True)
-    import BLIFPreProc
+    import blif_preproc
 
     blif_abs = blif_path or paths.benchmark_path(benchmark)
     if not os.path.exists(blif_abs):
@@ -911,7 +911,7 @@ def parse_design(benchmark, hooks=None, cancel_event=None, blif_path=None,
     os.chdir(paths.PYSRC_DIR)
     try:
         BLIFGraph, cells, netlist, stdCellTypesForFeature = \
-            BLIFPreProc.gen_graph_from_liberty_and_blif(
+            blif_preproc.gen_graph_from_liberty_and_blif(
                 _rel_to_pysrc(lib_abs), _rel_to_pysrc(blif_abs))
     finally:
         os.chdir(prev)
