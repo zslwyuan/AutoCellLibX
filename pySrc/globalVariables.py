@@ -11,3 +11,9 @@ growBeamWidth = 2
 # reported) -- measure first, gate deliberately.
 routabilityDensityGate = None
 
+# Layout sanity gate (P2 phase 0): structurally broken layouts (degenerate,
+# wrong row height, off-grid, missing layers/supply labels) are excluded
+# from the savings.  These are unambiguous failures, so the gate defaults
+# to on.
+layoutSanityGate = True
+

@@ -104,6 +104,7 @@ class FlowConfig(object):
         self.max_cells = 11         # patterns with >= this many cells are skipped
         self.grow_beam = 2          # heads grown per round (P0-3; 1 = legacy)
         self.max_rt_density = None  # routability gate (P0-4); None = report only
+        self.layout_sanity_gate = True   # structural layout gate (P2 phase 0)
         self.do_baseline = True
         self.do_layouts = True
         self.do_phase2 = True
@@ -212,12 +213,13 @@ class FlowRunner(object):
         import benefit
         import routability
         import electrical
+        import layout_sanity
         self._flow = dict(Astran=Astran, BLIFPreProc=BLIFPreProc,
                           BLIFGraphUtil=BLIFGraphUtil,
                           BLIFPatternGrowth=BLIFPatternGrowth,
                           spice=spice, GDSIIAnalysis=GDSIIAnalysis,
                           benefit=benefit, routability=routability,
-                          electrical=electrical)
+                          electrical=electrical, layout_sanity=layout_sanity)
         return self._flow
 
     def _rel(self, abs_path):
@@ -710,6 +712,19 @@ class FlowRunner(object):
 
                 elec_metrics = flow["electrical"].patternElectricalMetrics(
                     exampleCells, ctx["cellElectricalMetrics"])
+
+                # Structural layout sanity (P2 phase 0, mirrors main.py).
+                cell_name = "COMPLEX%d" % patternTraceId
+                sanity = flow["layout_sanity"].checkLayout(
+                    os.path.join(out_dir, cell_name + ".gds"),
+                    logPath=os.path.join(out_dir, cell_name + ".Astranlog"))
+                if not sanity.ok():
+                    self._log("版图体检 / layout sanity %s: %s"
+                              % (cell_name, sanity.asDict()), "warn")
+                if cfg.layout_sanity_gate and not sanity.ok():
+                    self._log("COMPLEX%d 版图体检未过，剔除 / failed sanity, "
+                              "excluded" % patternTraceId, "warn")
+                    continue
 
                 n_clusters = len(tmpClusterSeq.patternClusters)
                 counted_clusters = n_clusters

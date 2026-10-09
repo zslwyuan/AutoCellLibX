@@ -11,6 +11,7 @@ from GDSIIAnalysis import *
 from benefit import ShrinkModel, makeGrowthBenefitEstimator
 from routability import loadCellRoutability
 from electrical import loadCellElectricalMetrics, patternElectricalMetrics
+from layout_sanity import checkLayout
 
 
 def mkdir(pathStr):
@@ -229,6 +230,21 @@ def main():
                     exampleCells, cellElectricalMetrics)
                 print("electrical ", "COMPLEX"+str(patternTraceId),
                       ": ", elecMetrics)
+                # Structural layout sanity (P2 phase 0): degenerate /
+                # wrong-height / off-grid / label-missing layouts are
+                # unambiguous breakage and are excluded when gated.
+                sanityReport = checkLayout(
+                    os.path.join(outputPath, "COMPLEX"+str(patternTraceId)+".gds"),
+                    logPath=os.path.join(
+                        outputPath, "COMPLEX"+str(patternTraceId)+".Astranlog"))
+                if (not sanityReport.ok()):
+                    print("layout sanity ", "COMPLEX"+str(patternTraceId),
+                          ": ", sanityReport.asDict())
+                if (layoutSanityGate and not sanityReport.ok()):
+                    print("WARNING :", benchmarkName,
+                          " COMPLEX"+str(patternTraceId),
+                          " failed layout sanity; excluding the pattern")
+                    continue
                 if (oriUnitAstranArea-newUnitAstranArea > 0):
                     uniqueClusters = countUncoveredClusters(
                         tmpClusterSeq.patternClusters, coveredCellIds)
