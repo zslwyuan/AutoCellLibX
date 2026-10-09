@@ -31,6 +31,11 @@ class FlowConfig:
     reuseMode: bool = False
     outputSuffix: str = ""                        # "_reuse" in reuse mode
 
+    # --- advisory layout hints (P2 stage 3; AUTOCELL_HINT_MODE) ---
+    # off | offline | llm.  Default off: hints are report-only and a
+    # default run is byte-identical to one without this feature.
+    hintMode: str = "off"
+
     # --- library / PDK paths (were Astran constants) ---
     liberty: str = "../stdCelllib/gscl45nm.lib"
     spiceLib: str = "../stdCelllib/cellsAstranFriendly.sp"
@@ -49,6 +54,7 @@ class FlowConfig:
             reuseMode=reuse,
             outputSuffix="_reuse" if reuse else "",
             requireReuseEligible=reuse,
+            hintMode=os.environ.get("AUTOCELL_HINT_MODE", "off"),
         )
 
     def ratioThrFor(self, benchmarkName):

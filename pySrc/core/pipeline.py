@@ -21,6 +21,7 @@ from BLIFPatternGrowth import *
 from spice import *
 from core.external import *
 from core.evaluate import *
+from llm_hint_provider import getHintProvider
 
 
 def mkdir(pathStr):
@@ -272,6 +273,28 @@ def runPipeline(cfg, hooks=None):
                 # export the SPICE netlist of the complex of cells
                 exportSpiceNetlist(tmpClusterSeq, subckts, str(patternTraceId),
                                    outputPath)
+
+                # Advisory layout hints (P2 stage 3): an offline/LLM hint
+                # provider annotates the grown netlist before it costs an
+                # ASTRAN run.  Report-only and gated by cfg.hintMode
+                # (default "off" -> byte-identical default runs).
+                if (cfg.hintMode != "off"):
+                    hintSpPath = outputPath+'/COMPLEX'+str(patternTraceId)+'.sp'
+                    if (os.path.exists(hintSpPath)):
+                        hintProvider = getHintProvider(mode=cfg.hintMode)
+                        if (hintProvider is not None):
+                            with open(hintSpPath, 'r', errors="ignore") as spFh:
+                                hints = hintProvider.suggestHints(
+                                    "COMPLEX"+str(patternTraceId),
+                                    spFh.read())
+                            if (hints):
+                                _flowLog.info(
+                                    "layout hints COMPLEX%d: %s",
+                                    patternTraceId,
+                                    ", ".join(
+                                        "%s %s=%.2f[%s]"
+                                        % (h.kind, h.target, h.value, h.source)
+                                        for h in hints))
 
                 # if ASTRAN is available (or a host layout runner is
                 # provided), run it to get the layout and area evaluation
