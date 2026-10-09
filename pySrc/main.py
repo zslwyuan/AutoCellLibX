@@ -14,6 +14,10 @@ from electrical import loadCellElectricalMetrics, patternElectricalMetrics
 from timing_power import loadTimingPower, patternTimingPower
 from yosys_import import runYosysStat, compareWithFlowArea
 from layout_sanity import checkLayout
+from width_proxy import (WidthProxy, collectSamples,
+                         countTransistorsPerType, evaluateLOO,
+                         makeProxyBenefitEstimator)
+import glob
 
 
 def mkdir(pathStr):
@@ -105,6 +109,26 @@ def main():
                                  "../benchmark/blif/"+benchmarkName+".blif")
         print("yosys stat cross-check: ",
               compareWithFlowArea(yosysStat, designLibArea))
+
+        # Width proxy (P2 phase 1): learned from the layouts already in
+        # this repo.  Report-only by default (LOO ~16% MAPE overestimates
+        # compact shapes -- it would have vetoed COMPLEX9); opt into
+        # growth pruning via useWidthProxyForGrowth.
+        transistorCounts = countTransistorsPerType(
+            "../stdCelllib/cellsAstranFriendly.sp")
+        widthProxySamples = collectSamples(
+            sorted(glob.glob("./outputs/*/")),
+            transistorCounts, stdType2AstranArea)
+        widthProxy = None
+        if (len(widthProxySamples) >= 4):
+            widthProxy = WidthProxy().fit(widthProxySamples)
+            loo = evaluateLOO(widthProxySamples)
+            print("width proxy: n=", loo["n"], " LOO MAPE=",
+                  None if loo["mape"] is None else round(loo["mape"], 4),
+                  " R2=", loo["r2"])
+        if (useWidthProxyForGrowth and widthProxy is not None):
+            growthBenefitEstimator = makeProxyBenefitEstimator(
+                widthProxy, stdType2AstranArea, transistorCounts)
 
         clusterSeqs = sortPatternClusterSeqs(clusterSeqs)
 
@@ -249,6 +273,16 @@ def main():
                     exampleCells, cellTimingPower, cellElectricalMetrics)
                 print("timing/power ", "COMPLEX"+str(patternTraceId),
                       ": ", timingMetrics)
+                if (widthProxy is not None):
+                    proxyWidth = widthProxy.predict(
+                        len(exampleCells),
+                        sum(transistorCounts.get(
+                            c.stdCellType.typeName, 0)
+                            for c in exampleCells),
+                        oriUnitAstranArea)
+                    print("width proxy  COMPLEX"+str(patternTraceId),
+                          ": predicted=", round(proxyWidth, 3),
+                          " actual=", newUnitAstranArea)
                 # Structural layout sanity (P2 phase 0): degenerate /
                 # wrong-height / off-grid / label-missing layouts are
                 # unambiguous breakage and are excluded when gated.

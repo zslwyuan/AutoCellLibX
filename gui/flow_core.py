@@ -105,6 +105,7 @@ class FlowConfig(object):
         self.grow_beam = 2          # heads grown per round (P0-3; 1 = legacy)
         self.max_rt_density = None  # routability gate (P0-4); None = report only
         self.layout_sanity_gate = True   # structural layout gate (P2 phase 0)
+        self.use_width_proxy_for_growth = False  # P2 phase 1; report-only default
         self.do_baseline = True
         self.do_layouts = True
         self.do_phase2 = True
@@ -216,6 +217,7 @@ class FlowRunner(object):
         import timing_power
         import yosys_import
         import layout_sanity
+        import width_proxy
         self._flow = dict(Astran=Astran, BLIFPreProc=BLIFPreProc,
                           BLIFGraphUtil=BLIFGraphUtil,
                           BLIFPatternGrowth=BLIFPatternGrowth,
@@ -223,7 +225,8 @@ class FlowRunner(object):
                           benefit=benefit, routability=routability,
                           electrical=electrical, timing_power=timing_power,
                           yosys_import=yosys_import,
-                          layout_sanity=layout_sanity)
+                          layout_sanity=layout_sanity,
+                          width_proxy=width_proxy)
         return self._flow
 
     def _rel(self, abs_path):
@@ -510,6 +513,26 @@ class FlowRunner(object):
                   % flow["yosys_import"].compareWithFlowArea(
                       yosys_stat, design_lib_area))
 
+        # Width proxy (P2 phase 1, mirrors main.py): report-only default.
+        transistor_counts = flow["width_proxy"].countTransistorsPerType(
+            self._rel(self.cfg.spice_lib()))
+        wp_samples = flow["width_proxy"].collectSamples(
+            sorted(glob.glob(os.path.join(paths.PYSRC_DIR, "outputs", "*"))),
+            transistor_counts, stdType2AstranArea)
+        context["transistorCounts"] = transistor_counts
+        context["widthProxy"] = None
+        if len(wp_samples) >= 4:
+            context["widthProxy"] = flow["width_proxy"].WidthProxy().fit(
+                wp_samples)
+            self._log("宽度代理 / width proxy LOO: %s"
+                      % flow["width_proxy"].evaluateLOO(wp_samples))
+        if (self.cfg.use_width_proxy_for_growth
+                and context["widthProxy"] is not None):
+            context["growthBenefitEstimator"] = \
+                flow["width_proxy"].makeProxyBenefitEstimator(
+                    context["widthProxy"], stdType2AstranArea,
+                    transistor_counts)
+
         context["subckts"] = spice.loadSpiceSubcircuits(
             self._rel(self.cfg.spice_lib()))
 
@@ -734,6 +757,14 @@ class FlowRunner(object):
                 timing_metrics = flow["timing_power"].patternTimingPower(
                     exampleCells, ctx["cellTimingPower"],
                     ctx["cellElectricalMetrics"])
+                proxy_width = None
+                if ctx["widthProxy"] is not None:
+                    proxy_width = ctx["widthProxy"].predict(
+                        len(exampleCells),
+                        sum(ctx["transistorCounts"].get(
+                            c.stdCellType.typeName, 0)
+                            for c in exampleCells),
+                        oriUnitAstranArea)
 
                 # Structural layout sanity (P2 phase 0, mirrors main.py).
                 cell_name = "COMPLEX%d" % patternTraceId
@@ -776,6 +807,7 @@ class FlowRunner(object):
                     "routability": rt_metrics.asDict() if rt_metrics else None,
                     "electrical": elec_metrics,
                     "timing_power": timing_metrics,
+                    "width_proxy_pred": proxy_width,
                     "out_dir": out_dir,
                 })
 

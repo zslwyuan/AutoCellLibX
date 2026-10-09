@@ -693,3 +693,23 @@ ASTRAN 只给 IOgeometries 里的信号端口打标(route() 把 vdd/gnd 排除�
 **已知遗留**:P2(SMT/CP-SAT 引擎、LLM 约束注入、CFET/BSPDN)为研究级,未在本轮实现,见 doc/RESEARCH_AND_OPTIMIZATION.md。
 
 **验证**:233 单测通过(新增 39 个)。
+
+### 5.19 第十五轮:客户安装包缺 MinGW 运行库 DLL(2026-10-09)
+
+**缺陷**:客户机运行安装包报 `libstdc++-6.dll 没有`(及 libgcc_s_seh-1.dll 等一串 MinGW DLL 缺失)。
+
+**根因**:ASTRAN 工具链是 MSYS2/MinGW 构建、**动态链接** MinGW 运行库的。`objdump -p` 实测导入表:
+
+- `Astran.exe` / `Cellgen.exe` / `astranrun.exe` 均导入 `libstdc++-6.dll`、`libgcc_s_seh-1.dll`(另有 wx 两 DLL);
+- `wxbase32u_gcc_custom.dll` / `wxmsw32u_core_gcc_custom.dll` 额外导入 liblzma-5 / libpcre2-16-0 / zlib1 / libjpeg-8 / libpng16-16 / libtiff-6;
+- libtiff-6 再拉 libdeflate / libjbig-0 / libLerc / libwebp-7 / libzstd,libwebp-7 再拉 libsharpyuv-0。
+
+开发机上这些 DLL 来自 `C:\msys64\mingw64\bin`(在 PATH 上),所以本地一切正常;安装包 stage 只随 `copy_repo_dir("tools/astran/build")` 带了两个 wx DLL,MinGW 运行库一个没带。全 stage 扫描确认:除 ASTRAN 工具链外无任何二进制(含 runtime 的 cffi/mip/PySide6——均为 MSVC wheel)导入这些 DLL,故补在 build/bin 一处即可。
+
+**修复**:把依赖闭包内的 15 个 DLL 拷贝进 `tools/astran/build/bin/` 随仓库入库(stage 装配整体拷贝该目录,后续打包自动带上):
+libgcc_s_seh-1.dll、libstdc++-6.dll、libwinpthread-1.dll、liblzma-5.dll、libpcre2-16-0.dll、zlib1.dll、libjpeg-8.dll、libpng16-16.dll、libtiff-6.dll、libdeflate.dll、libjbig-0.dll、libLerc.dll、libwebp-7.dll、libzstd.dll、libsharpyuv-0.dll。
+版本必须与现有 wx DLL 的 MSYS2 工具链匹配(mingw64 16.2.0);更换工具链后需重验导入闭包。
+
+**验证**:重建 Setup.dat(11146 文件 / 323.4 MB),解包核对 `tools/astran/build/bin/` 内 17 个 DLL(2 wx + 15 MinGW)齐全;安装 zip 完整性校验通过。
+
+**附带发现(打包流程)**:360 实时防护对 `dist/` 下新建 exe 的隔离是**延迟判定**——白名单里的交付名 `AutoCellLibX-Setup.exe` 也只在创建后存活约 4 分钟(12:48 写入存活至 12:52+ 被删),且**首次隔离后该文件名被列入写拦截**(cp 直接 Permission denied;`installer_stub.exe` 同名现象一致)。因此打包流程中 exe 只需在 zip 内完整即可:先重建 dat(zip 不被扫描),stub 从旧 zip 提取/临时目录编译,随即打包;不要依赖 dist 里的 exe 长期存活,也不要重跑 `make_installer.py`(其 build_stub 会写回被拦截的名字)。

@@ -17,3 +17,10 @@ routabilityDensityGate = None
 # to on.
 layoutSanityGate = True
 
+# Width proxy for growth pruning (P2 phase 1): replace the ShrinkModel
+# estimator with the learned width proxy.  Off by default -- LOO MAPE is
+# ~16% on the current 12-sample corpus and it overestimates compact
+# shapes (would have vetoed COMPLEX9), so it is report-only until more
+# training layouts exist.
+useWidthProxyForGrowth = False
+
