@@ -139,7 +139,7 @@ PYSIDE6_KEEP_CORE = {"Qt6Core.dll", "Qt6Gui.dll", "Qt6Widgets.dll",
 CBCBOX_REMOVE_SUBDIRS = ("include", "share", "lib64", "cmake")
 
 FLOW_EXTRA_EXCLUDE = {
-    "GNNModel.py", "BLIFGNNTraining.py",   # tensorflow-based training, not the flow
+    "gnn_model.py", "blif_gnn_training.py",  # tensorflow-based training, not the flow
 }
 
 
