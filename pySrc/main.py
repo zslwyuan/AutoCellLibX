@@ -90,6 +90,10 @@ def main():
             if (len(clusterSeqs) == 0 or len(clusterSeqs[0].patternClusters) == 0):
                 break
             if (len(clusterSeqs[0].patternClusters[0].cellIdsContained) >= 11):
+                # Pop the oversized head instead of `continue`: continuing
+                # without consuming clusterSeqs[0] re-tests the same pattern
+                # every round and burns the whole topThr budget doing nothing.
+                clusterSeqs = clusterSeqs[1:]
                 continue
 
             saveArea = 0
@@ -244,8 +248,9 @@ def main():
         countedSet = set()
         recordPatternDetails = []
         detectedPatterns.reverse()
-        fileResult = open(
-            outputPath+"/bestRecord-seperate"+benchmarkName, 'w')
+        # bestRecord-seperate is opened only at the end: opening it with 'w'
+        # up front erases the previous record, and a crash mid-loop would
+        # leave an empty file (the writes below happen after the loop anyway).
         for targetPatternTrace in detectedPatterns:
             if (targetPatternTrace in countedSet):
                 continue
@@ -281,6 +286,10 @@ def main():
                 if (len(clusterSeqs) == 0 or len(clusterSeqs[0].patternClusters) == 0):
                     break
                 if (len(clusterSeqs[0].patternClusters[0].cellIdsContained) >= 11):
+                    # Pop, don't just continue: re-testing the same oversized
+                    # head would burn the whole iteration budget (see the
+                    # phase-1 loop for the same pattern).
+                    clusterSeqs = clusterSeqs[1:]
                     continue
 
                 saveArea = 0
@@ -379,6 +388,8 @@ def main():
 
         recordPatternDetails = sorted(recordPatternDetails,
                                       key=lambda x: -x[0])
+        fileResult = open(
+            outputPath+"/bestRecord-seperate"+benchmarkName, 'w')
         print("| designOverallArea | saveArea | saveRatio | patternCnt | patternSize |"
               " patternCoverage | patternName | patternCode |",  file=fileResult)
         for saveArea, saveRatio, patternCnt, patternSize, patternCoverage, patternName, patternCode in recordPatternDetails:

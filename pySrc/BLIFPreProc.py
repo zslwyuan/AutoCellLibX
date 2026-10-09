@@ -116,12 +116,19 @@ def genGraphFromLibertyAndBLIF(libFileName, blifFileName):
             idCnt += 1
             for pin in tmpCircuit.params:
                 pinInfo = pin.split("=")
+                if (len(pinInfo) != 2):
+                    raise ValueError(
+                        "malformed pin mapping %r in .subckt instance %r "
+                        "(expected PIN=net)" % (pin, name))
                 curCell.addCellPin(pinInfo[0], pinInfo[1])
             cellName2Obj[name] = curCell
             cells.append(curCell)
         else:
-            print(refType, " is not in liberty file.")
-            assert(False)
+            # An assert(False) is stripped under `python -O`; fail loudly
+            # instead of building a graph with silently dropped instances.
+            raise ValueError(
+                "cell type %r of instance %r is not in the liberty file %s"
+                % (refType, str(tmpCircuit), libFileName))
 
     for logicGate in blif.booleanfunctions:
         refType = "bool-"+str(logicGate.truthtable)
@@ -136,8 +143,9 @@ def genGraphFromLibertyAndBLIF(libFileName, blifFileName):
             cellName2Obj[name] = curCell
             cells.append(curCell)
         else:
-            print(refType, " is not in liberty file.")
-            assert(False)
+            raise ValueError(
+                "boolean-gate type %r is not in the liberty file %s"
+                % (refType, libFileName))
 
     idCnt = 0
     stdCellType2Cells = dict()

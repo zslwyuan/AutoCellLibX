@@ -3,6 +3,7 @@ import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 from itertools import count
 import numpy as np
+import warnings
 
 
 class StdCellType(object):
@@ -66,6 +67,10 @@ class DesignCell(object):
 
 
 class DesignNet(object):
+    # Class-level tally of multi-driver overwrite events (per process), so a
+    # silent data problem is visible and testable instead of buried.
+    multiDriverCount = 0
+
     def __init__(self, id, name):
         self.id = id
         self.name = name
@@ -80,6 +85,15 @@ class DesignNet(object):
             self.succPins.append(pinName)
             self.succCells.append(cell)
         else:
+            if (self.predCell is not None):
+                # Multi-driver net: historically the later driver silently
+                # overwrote predCell, corrupting edge directions without a
+                # trace.  Keep the resolution (last wins) but never quietly.
+                DesignNet.multiDriverCount += 1
+                warnings.warn(
+                    "net %r has multiple drivers (%r and %r); keeping the "
+                    "last one" % (self.name, self.predCell.name, cell.name),
+                    RuntimeWarning)
             self.predPin = pinName
             self.predCell = cell
         self.pins.append(pinName)

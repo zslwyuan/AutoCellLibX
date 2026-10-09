@@ -42,8 +42,10 @@ def loadAstranArea(GDSPath, typeName):
             if (line.find("-> Cell Size (W x H): ") >= 0):
                 return float(line.replace("-> Cell Size (W x H): ", "").split("x")[0])
 
-    assert(False)
-    return 123
+    # Never fabricate a width: an assert here is stripped under `python -O`,
+    # silently yielding the fallback value and corrupting the savings total.
+    raise RuntimeError(
+        "Cell Size line not found in ASTRAN log: " + logFileName)
 
 
 # Cell geometry written into every ASTRAN run script, calibrated to the

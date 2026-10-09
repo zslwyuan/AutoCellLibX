@@ -590,6 +590,9 @@ class FlowRunner(object):
             if len(clusterSeqs) == 0 or len(clusterSeqs[0].patternClusters) == 0:
                 break
             if len(clusterSeqs[0].patternClusters[0].cellIdsContained) >= cfg.max_cells:
+                # Pop, don't just continue: re-testing the same oversized
+                # head would burn the whole iteration budget doing nothing.
+                clusterSeqs = clusterSeqs[1:]
                 continue
 
             self._stage("mine", "running", "第 %d/%d 轮迭代 / iteration %d"
@@ -831,6 +834,8 @@ class FlowRunner(object):
                 if len(clusterSeqs) == 0 or len(clusterSeqs[0].patternClusters) == 0:
                     break
                 if len(clusterSeqs[0].patternClusters[0].cellIdsContained) >= cfg.max_cells:
+                    # Pop, don't just continue (same fix as the phase-1 loop).
+                    clusterSeqs = clusterSeqs[1:]
                     continue
 
                 saveArea = 0.0
