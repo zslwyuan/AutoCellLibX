@@ -128,9 +128,9 @@
 
 | # | 优化 | 落点 | 修哪个缺陷 |
 |---|---|---|---|
-| P0-1 | **编码规范化**：BFS 时对子节点按类型名排序（或按排序后的 (类型,引脚) 元组），消除枚举顺序敏感 | `BLIFPreProc.extractAndEncodeSubgraph_Tree`（pySrc/BLIFPreProc.py:222-235） | 同构实例分裂成多编码、频次系统性低估（校验报告 §L3）。注意：会改变所有 trace 与既有 COMPLEX 命名，需整体重生成 outputs 并做前后频次对比实验 |
+| P0-1 | **编码规范化**：BFS 时对子节点按类型名排序（或按排序后的 (类型,引脚) 元组），消除枚举顺序敏感 | `BLIFPreProc.extract_and_encode_subgraph_tree`（pySrc/BLIFPreProc.py:222-235） | 同构实例分裂成多编码、频次系统性低估（校验报告 §L3）。注意：会改变所有 trace 与既有 COMPLEX 命名，需整体重生成 outputs 并做前后频次对比实验 |
 | P0-2 | **收益重叠去重**：累计节省前对 top-N 候选的 cellIds 取并集，共享单元只计一次（或按归属分摊） | `main.py:185-188` / `gui/flow_core.py` 对应处 | 节省高估（校验报告 §L6） |
-| P0-3 | **生长宽度>1 的束搜索**：每步保留 top-2/3 邻居分支，用"预估节省 = 频次×(基线宽−估算宽)"剪枝；把 COMPLEX10 式负收益在送版图前挡掉 | `BLIFPatternGrowth.growASeqOfClusters`（:104 的 `[:1]`） | 生长宽度 1、生长不知面积（COMPLEX10 −56.05） |
+| P0-3 | **生长宽度>1 的束搜索**：每步保留 top-2/3 邻居分支，用"预估节省 = 频次×(基线宽−估算宽)"剪枝；把 COMPLEX10 式负收益在送版图前挡掉 | `BLIFPatternGrowth.grow_sequence_of_clusters`（:104 的 `[:1]`） | 生长宽度 1、生长不知面积（COMPLEX10 −56.05） |
 | P0-4 | **第二评价维度（routability 代理）**：从 .Astranlog 提取轨道占用/引脚分布，或实现 FastPass 式 pin-access 评分，与宽度一起构成准入门槛 | `Astran.loadAstranArea` 同位置扩展；评估汇总处 | 纯宽度代理（回应 Cell-Flex/Routability Booster 的批评） |
 | P0-5 | **flow_core ≡ main.py 等价测试**：固定 seed 在小基准（如 adder topThr=1）上断言两者 bestRecord 一致 | `tests/unit/` 新增 | 三份控制流副本的漂移风险 |
 | P0-6 | 顺手修已记录隐患：`Astran.py:45` 假宽度 123、`main.py:247` bestRecord 半截写、解析层 `assert(False)` 改显式异常 | 见 AUDIT_REPORT 新增发现 | — |
@@ -139,10 +139,10 @@
 
 | # | 优化 | 说明 |
 |---|---|---|
-| P1-7 | **timing/power 感知收益模型**：Liberty 解析补上 delay/leakage/电容字段（`BLIFPreProc.loadLibertyFile` 现只取 direction）；收益从"宽度差"扩展为 α·Δwidth + β·Δleakage + γ·Δ(关键路径影响)；先用静态估计，远期接 FusionCell 式代理模型 | 数据障碍已在校验报告 §L2 定位 |
+| P1-7 | **timing/power 感知收益模型**：Liberty 解析补上 delay/leakage/电容字段（`BLIFPreProc.load_liberty_file` 现只取 direction）；收益从"宽度差"扩展为 α·Δwidth + β·Δleakage + γ·Δ(关键路径影响)；先用静态估计，远期接 FusionCell 式代理模型 | 数据障碍已在校验报告 §L2 定位 |
 | P1-8 | **多 PDK 支持（工艺约束参数化）**：把 `Astran.py:58-63` 的六个几何常量收进 per-PDK 配置（rowheight/grid/supplysize/nwellpos/celltemplate + .rul/.map 路径）；为 **SKY130、GF180** 各写一份 .rul/.map（规则宽松、最接近 freePDK45 格式，作为第二 PDK 验证移植性），再攻 ASAP7；GUI 的 `pdk_editor.py` 已有雏形可复用 | 关键是把 gear ratio（CPP:M1 pitch）当一阶参数暴露（CPCell 的启示），而非只换数字 |
 | P1-9 | **端口顺序优化**：现在顺序是遍历副产品且实测影响 ±100% 宽度。低成本方案：对同一网表生成 3–5 个端口排列变体并行缓存评估（借鉴 ASP-DAC'26 双面工作的变体枚举思想）；进阶：TOPCELL 式学习生成 |
-| P1-10 | **e-graph 等价类挖掘（CellE 路线）**：作为 `heuristicLabel…+growASeqOfClusters` 的上位替代评估；先行实验：在 adder 上对比 e-graph 枚举与现有编码的候选集合差异 |
+| P1-10 | **e-graph 等价类挖掘（CellE 路线）**：作为 `heuristicLabel…+grow_sequence_of_clusters` 的上位替代评估；先行实验：在 adder 上对比 e-graph 枚举与现有编码的候选集合差异 |
 | P1-11 | **多行高评估**：>20 管复合单元尝试双倍高（ASTRAN 端只需改 rowheight 常量实验）；收益判定加入"宽度×行数"统一口径 | ICCAD'24/ASP-DAC'25 已给出评估框架 |
 | P1-12 | **挖掘覆盖率报告**：统计被 bypass 的 bool/DFF 单元与未被任何模式覆盖的逻辑占比，在 GUI 设计页显式呈现 | 目前静默丢弃（校验报告 §L2） |
 

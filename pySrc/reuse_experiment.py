@@ -22,8 +22,8 @@ import subprocess
 import sys
 import tempfile
 
-from BLIFPreProc import (genGraphFromLibertyAndBLIF,
-                         heuristicLabelSomeNodesAndGetInitialClusters)
+from BLIFPreProc import (gen_graph_from_liberty_and_blif,
+                         heuristic_label_initial_clusters)
 from BLIFGraphUtil import sortPatternClusterSeqs
 from electrical import loadCellElectricalMetrics
 from liberty_gen import loadLibertyFunctions, generateComplexLiberty
@@ -39,14 +39,14 @@ def main():
     bench = sys.argv[1] if len(sys.argv) > 1 else "adder"
     runLayout = os.environ.get("AUTOCELL_RUN_LAYOUT", "0") == "1"
 
-    G, cells, netlist, types = genGraphFromLibertyAndBLIF(
+    G, cells, netlist, types = gen_graph_from_liberty_and_blif(
         LIB, "../benchmark/blif/" + bench + ".blif")
     em = loadCellElectricalMetrics(LIB)
     tp = loadTimingPower(LIB)
     funcs = loadLibertyFunctions(LIB)
     libAreas = {t: m["area"] for t, m in em.items() if m["area"]}
 
-    seqs, _ = heuristicLabelSomeNodesAndGetInitialClusters(
+    seqs, _ = heuristic_label_initial_clusters(
         G, cells, netlist, singleOutputSeeds=True)
     seqs = sortPatternClusterSeqs(seqs)
 
@@ -87,8 +87,8 @@ def main():
         from Astran import (ASTRAN_BUILD_PATH, ASTRAN_TECHNOLOGY, GUROBI_CL,
                             runAstranForNetlist, loadAstranArea)
         # find the seed seq again and export its .sp (the flow's export)
-        from spice import exportSpiceNetlist, loadSpiceSubcircuits
-        subckts = loadSpiceSubcircuits("../stdCelllib/cellsAstranFriendly.sp")
+        from spice import exportSpiceNetlist, load_spice_subcircuits
+        subckts = load_spice_subcircuits("../stdCelllib/cellsAstranFriendly.sp")
         seed = None
         for seq in sortPatternClusterSeqs(seqs):
             if (seq.patternClusters[0].patternExtensionTrace

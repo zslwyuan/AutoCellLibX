@@ -103,7 +103,7 @@ is only in the code is effectively undocumented.
    pattern" test must compare traces — comparing a `clusterTypeId` (int)
    against those keys is always true and disables de-duplication entirely.
    Since 2026-10 the base `[...]` segment is **canonical** (children sorted
-   after the root, `canonicalPatternCode`): the same pattern can appear under
+   after the root, `canonical_pattern_code`): the same pattern can appear under
    a legacy, order-sensitive name in older `outputs/` snapshots — treat the
    two spellings as the same pattern when comparing across regenerations.
 

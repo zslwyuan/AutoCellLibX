@@ -29,7 +29,7 @@ own module namespace, flow_core calls them as module attributes):
   ``dumpedPaterns`` (trace -> id) exactly.
 * ``drawColorfulFigureForGraphWithAttributes`` (patched on ``main`` /
   ``BLIFGraphUtil``): the dumped COMPLEX id sequence.
-* ``heuristicLabelSomeNodesAndGetInitialClusters_BasedOn`` (patched on
+* ``heuristic_label_initial_clusters_based_on`` (patched on
   ``main`` / ``BLIFPreProc``): the phase-2 target trace sequence.
 """
 import hashlib
@@ -160,7 +160,7 @@ def _run_main_flow(sandbox, monkeypatch):
     phase2_targets = []
     real_draw = core.pipeline.drawColorfulFigureForGraphWithAttributes
     real_export = core.pipeline.exportSpiceNetlist
-    real_based_on =         core.pipeline.heuristicLabelSomeNodesAndGetInitialClusters_BasedOn
+    real_based_on =         core.pipeline.heuristic_label_initial_clusters_based_on
 
     def spy_draw(*args, **kwargs):
         tracker.on_draw(kwargs.get("save_to_file", ""))
@@ -183,7 +183,7 @@ def _run_main_flow(sandbox, monkeypatch):
         spy_draw)
     monkeypatch.setattr("core.pipeline.exportSpiceNetlist", spy_export)
     monkeypatch.setattr(
-        "core.pipeline.heuristicLabelSomeNodesAndGetInitialClusters_BasedOn",
+        "core.pipeline.heuristic_label_initial_clusters_based_on",
         spy_based_on)
     monkeypatch.chdir(sandbox["pysrc"])
     cfg = core.config.FlowConfig.from_env()
@@ -237,7 +237,7 @@ def _run_gui_flow(sandbox, monkeypatch):
     real_draw = BLIFGraphUtil.drawColorfulFigureForGraphWithAttributes
     real_export = spice.exportSpiceNetlist
     real_based_on = \
-        BLIFPreProc.heuristicLabelSomeNodesAndGetInitialClusters_BasedOn
+        BLIFPreProc.heuristic_label_initial_clusters_based_on
 
     def spy_draw(*args, **kwargs):
         tracker.on_draw(kwargs.get("save_to_file", ""))
@@ -259,7 +259,7 @@ def _run_gui_flow(sandbox, monkeypatch):
     monkeypatch.setattr(core.pipeline, "exportSpiceNetlist", spy_export)
     monkeypatch.setattr(
         core.pipeline,
-        "heuristicLabelSomeNodesAndGetInitialClusters_BasedOn", spy_based_on)
+        "heuristic_label_initial_clusters_based_on", spy_based_on)
 
     summary_box = {}
 

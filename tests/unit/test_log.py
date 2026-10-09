@@ -2,7 +2,7 @@
 import io
 import logging
 
-from core.log import getFlowLogger, setFlowLogLevel
+from core.log import get_flow_logger, set_flow_log_level
 
 
 def _capture(logger):
@@ -17,12 +17,12 @@ def _release(logger, handler):
 
 
 def test_logger_is_process_wide_singleton():
-    assert getFlowLogger() is getFlowLogger()
-    assert getFlowLogger().name == "autocelllibx"
+    assert get_flow_logger() is get_flow_logger()
+    assert get_flow_logger().name == "autocelllibx"
 
 
 def test_logger_emits_info():
-    logger = getFlowLogger()
+    logger = get_flow_logger()
     buf, handler = _capture(logger)
     try:
         logger.info("marker message")
@@ -32,8 +32,8 @@ def test_logger_emits_info():
 
 
 def test_set_level_filters_debug():
-    logger = getFlowLogger()
-    setFlowLogLevel(logging.WARNING)
+    logger = get_flow_logger()
+    set_flow_log_level(logging.WARNING)
     try:
         buf, handler = _capture(logger)
         try:
@@ -44,4 +44,4 @@ def test_set_level_filters_debug():
         finally:
             _release(logger, handler)
     finally:
-        setFlowLogLevel(logging.INFO)
+        set_flow_log_level(logging.INFO)

@@ -23,14 +23,14 @@ def test_substitute_whole_word():
 
 
 def test_generate_real_cluster_liberty(in_pysrc):
-    from BLIFPreProc import (genGraphFromLibertyAndBLIF,
-                             heuristicLabelSomeNodesAndGetInitialClusters)
+    from BLIFPreProc import (gen_graph_from_liberty_and_blif,
+                             heuristic_label_initial_clusters)
     from BLIFGraphUtil import sortPatternClusterSeqs
     from electrical import loadCellElectricalMetrics
     from timing_power import loadTimingPower
 
-    G, cells, netlist, types = genGraphFromLibertyAndBLIF(LIB, BLIF)
-    seqs, _ = heuristicLabelSomeNodesAndGetInitialClusters(G, cells, netlist)
+    G, cells, netlist, types = gen_graph_from_liberty_and_blif(LIB, BLIF)
+    seqs, _ = heuristic_label_initial_clusters(G, cells, netlist)
     seq = sortPatternClusterSeqs(seqs)[0]
     em = loadCellElectricalMetrics(LIB)
     tp = loadTimingPower(LIB)

@@ -17,12 +17,12 @@ sys.path.insert(0, os.getcwd())
 from Astran import loadAstranArea
 from BLIFGraphUtil import (removeEmptySeqsAndDisableClusters,
                            sortPatternClusterSeqs)
-from BLIFPatternGrowth import growASeqOfClusters_BasedOn
+from BLIFPatternGrowth import grow_sequence_of_clusters_based_on
 from BLIFPreProc import (getArea,
-                         heuristicLabelSomeNodesAndGetInitialClusters_BasedOn,
+                         heuristic_label_initial_clusters_based_on,
                          loadDataAndPreprocess)
 from GDSIIAnalysis import loadAstranGDS, loadOrignalGSCL45nmGDS
-from spice import exportSpiceNetlist, loadSpiceSubcircuits
+from spice import exportSpiceNetlist, load_spice_subcircuits
 
 benchmarkName = "adder"
 outputPath = "./outputs/" + benchmarkName + "/"
@@ -37,7 +37,7 @@ dumpedPaterns = {
 }
 detectedPatterns = list(dumpedPaterns)
 
-subckts = loadSpiceSubcircuits("../stdCelllib/cellsAstranFriendly.sp")
+subckts = load_spice_subcircuits("../stdCelllib/cellsAstranFriendly.sp")
 stdType2GSCLArea = loadOrignalGSCL45nmGDS()
 
 countedSet = set()
@@ -51,7 +51,7 @@ for targetPatternTrace in detectedPatterns:
     BLIFGraph, cells, netlist, stdCellTypesForFeature, dataset, maxLabelIndex, clusterSeqs, clusterNum = loadDataAndPreprocess(
         libFileName="../stdCelllib/gscl45nm.lib", blifFileName="../benchmark/blif/"+benchmarkName+".blif", startTime=0, bypassInitialCluster=True)
 
-    clusterSeqs, clusterNum = heuristicLabelSomeNodesAndGetInitialClusters_BasedOn(
+    clusterSeqs, clusterNum = heuristic_label_initial_clusters_based_on(
         BLIFGraph, cells, netlist, targetPatternTrace)
 
     oriArea = getArea(cells, stdType2GSCLArea)
@@ -140,7 +140,7 @@ for targetPatternTrace in detectedPatterns:
                 and len(clusterSeq.patternClusters) < cntThr):
             break
 
-        newSeqOfClusters, patternNum = growASeqOfClusters_BasedOn(
+        newSeqOfClusters, patternNum = grow_sequence_of_clusters_based_on(
             BLIFGraph, clusterSeq, clusterNum, patternNum,  paintPattern=True, targetPatternTrace=targetPatternTrace)
 
         clusterSeqs = clusterSeqs[1:]

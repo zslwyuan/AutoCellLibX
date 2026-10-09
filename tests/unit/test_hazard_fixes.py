@@ -20,14 +20,14 @@ def test_load_astran_area_parses_cell_size(tmp_path):
 
 
 def test_unknown_cell_type_raises(in_pysrc, tmp_path):
-    from BLIFPreProc import genGraphFromLibertyAndBLIF
+    from BLIFPreProc import gen_graph_from_liberty_and_blif
 
     blif = tmp_path / "bad.blif"
     blif.write_text(
         ".model top\n.inputs a b\n.outputs y\n"
         ".subckt FOOX1 A=a B=b Y=y\n.end\n")
     with pytest.raises(ValueError, match="FOOX1"):
-        genGraphFromLibertyAndBLIF("../stdCelllib/gscl45nm.lib", str(blif))
+        gen_graph_from_liberty_and_blif("../stdCelllib/gscl45nm.lib", str(blif))
 
 
 def test_multi_driver_net_warns_and_keeps_last():

@@ -15,14 +15,14 @@ import hashlib, os, sys, tempfile
 sys.path.insert(0, os.getcwd())
 from BLIFPreProc import loadDataAndPreprocess
 from BLIFGraphUtil import sortPatternClusterSeqs
-from spice import loadSpiceSubcircuits, exportSpiceNetlist
+from spice import load_spice_subcircuits, exportSpiceNetlist
 
 out = tempfile.mkdtemp()
 G, cells, netlist, types, ds, ml, seqs, cn = loadDataAndPreprocess(
     libFileName="../stdCelllib/gscl45nm.lib",
     blifFileName="../benchmark/blif/adder.blif", startTime=0)
 seqs = sortPatternClusterSeqs(seqs)
-subs = loadSpiceSubcircuits("../stdCelllib/cellsAstranFriendly.sp")
+subs = load_spice_subcircuits("../stdCelllib/cellsAstranFriendly.sp")
 exportSpiceNetlist(seqs[0], subs, 0, out)
 print(hashlib.md5(
     open(os.path.join(out, "COMPLEX0.sp"), "rb").read()).hexdigest())

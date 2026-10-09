@@ -1,6 +1,6 @@
 """Unit tests for the pattern growth algorithm (pySrc/BLIFPatternGrowth.py).
 
-Regression covered: ``growASeqOfClusters`` skipped neighbours that already
+Regression covered: ``grow_sequence_of_clusters`` skipped neighbours that already
 belonged to another cluster of the *same* pattern on the input-predecessor
 side, but not on the output-successor side.  As a result a cluster could
 absorb cells of a sibling instance (which then got disabled), silently
@@ -14,7 +14,7 @@ from BLIFGraphUtil import (
     DesignPatternClusterSeq,
     sortPatternClusterSeqs,
 )
-from BLIFPatternGrowth import growASeqOfClusters
+from BLIFPatternGrowth import grow_sequence_of_clusters
 
 LIB = "../stdCelllib/gscl45nm.lib"
 BLIF = "../benchmark/blif/adder.blif"
@@ -57,7 +57,7 @@ def test_output_side_does_not_absorb_same_pattern_cluster():
     seq.addCluster(c1)
     seq.addCluster(c2)
 
-    growASeqOfClusters(None, seq, 2, 2)
+    grow_sequence_of_clusters(None, seq, 2, 2)
 
     assert not c2.disabled, "sibling same-pattern cluster must not be disabled"
     assert y1.id not in c1.cellIdsContained
@@ -86,7 +86,7 @@ def test_input_side_does_not_absorb_same_pattern_cluster():
     seq.addCluster(c1)
     seq.addCluster(c2)
 
-    growASeqOfClusters(None, seq, 2, 2)
+    grow_sequence_of_clusters(None, seq, 2, 2)
 
     assert not c2.disabled
     assert y2.id not in c1.cellIdsContained
@@ -99,7 +99,7 @@ def test_growth_invariants_on_benchmark(in_pysrc):
         libFileName=LIB, blifFileName=BLIF, startTime=0)
     seqs = sortPatternClusterSeqs(seqs)
 
-    newSeqs, patternNum = growASeqOfClusters(
+    newSeqs, patternNum = grow_sequence_of_clusters(
         G, seqs[0], len(seqs), len(seqs))
 
     assert patternNum >= len(seqs)
@@ -152,7 +152,7 @@ def test_growth_prunes_vetoed_branch_and_takes_next():
     def veto_xor(member_types, neighbor_type, new_size, occurrences):
         return -1.0 if neighbor_type == "XOR2X1" else 100.0
 
-    resSeqs, _ = growASeqOfClusters(
+    resSeqs, _ = grow_sequence_of_clusters(
         None, seq, 1, 1, benefitEstimator=veto_xor)
     assert len(resSeqs) == 2                     # grown seq + leftover seq
     trace = resSeqs[0].patternClusters[0].patternExtensionTrace
@@ -162,7 +162,7 @@ def test_growth_prunes_vetoed_branch_and_takes_next():
 
 def test_growth_all_branches_pruned_returns_ungrown():
     seq = _seq_with_two_neighbor_classes()
-    resSeqs, _ = growASeqOfClusters(
+    resSeqs, _ = grow_sequence_of_clusters(
         None, seq, 1, 1, benefitEstimator=lambda *a: -1.0)
     assert len(resSeqs) == 1
     assert resSeqs[0] is seq
@@ -172,7 +172,7 @@ def test_growth_all_branches_pruned_returns_ungrown():
 
 def test_growth_without_estimator_keeps_legacy_top1():
     seq = _seq_with_two_neighbor_classes()
-    resSeqs, _ = growASeqOfClusters(None, seq, 1, 1)
+    resSeqs, _ = grow_sequence_of_clusters(None, seq, 1, 1)
     assert len(resSeqs) == 2
     trace = resSeqs[0].patternClusters[0].patternExtensionTrace
     assert "+XOR2X1" in trace                    # frequency-top branch
@@ -199,10 +199,10 @@ def test_growth_tolerates_beam_disabled_clusters():
     seq2.addCluster(c2)
 
     # first beam head grows and steals b1, disabling c2
-    grown1, _ = growASeqOfClusters(None, seq1, 2, 2)
+    grown1, _ = grow_sequence_of_clusters(None, seq1, 2, 2)
     assert c2.disabled
 
     # second beam head: only disabled clusters left -> no crash, no growth
-    resSeqs, _ = growASeqOfClusters(None, seq2, 2, 3)
+    resSeqs, _ = grow_sequence_of_clusters(None, seq2, 2, 3)
     assert len(resSeqs) == 1
     assert resSeqs[0].patternClusters == []

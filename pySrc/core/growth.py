@@ -103,7 +103,7 @@ def _absorbable(neighbor, clusterIds):
     return True
 
 
-def growASeqOfClusters(BLIFGraph, clusterSeq, clusterNum, patternNum, paintPattern=False, featureLen=20, benefitEstimator=None, internalizeOnly=False):
+def grow_sequence_of_clusters(BLIFGraph, clusterSeq, clusterNum, patternNum, paintPattern=False, featureLen=20, benefitEstimator=None, internalizeOnly=False):
 
     clusters = []
     cellsInClusters = set()
@@ -219,7 +219,7 @@ def growASeqOfClusters(BLIFGraph, clusterSeq, clusterNum, patternNum, paintPatte
     return resSeqs, patternNum
 
 
-def growASeqOfClusters_BasedOn(BLIFGraph, clusterSeq, clusterNum, patternNum, paintPattern=False, featureLen=20, targetPatternTrace="", benefitEstimator=None, internalizeOnly=False):
+def grow_sequence_of_clusters_based_on(BLIFGraph, clusterSeq, clusterNum, patternNum, paintPattern=False, featureLen=20, targetPatternTrace="", benefitEstimator=None, internalizeOnly=False):
 
     assert(targetPatternTrace != "")
     clusters = []

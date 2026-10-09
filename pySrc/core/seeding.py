@@ -11,11 +11,11 @@ from BLIFGraphUtil import (DesignPatternCluster,
                            DesignPatternClusterSeq,
                            sortPatternClusterSeqs)
 from globalVariables import bypassTypes
-from core.encoding import (canonicalPatternCode, escapeOutputCount,
-                           extractAndEncodeSubgraph_Tree)
+from core.encoding import (canonical_pattern_code, escape_output_count,
+                           extract_and_encode_subgraph_tree)
 
 
-def heuristicLabelSomeNodesAndGetInitialClusters(BLIFGraph, cells, netlist, singleOutputSeeds=False):
+def heuristic_label_initial_clusters(BLIFGraph, cells, netlist, singleOutputSeeds=False):
 
     treeDepth = 1
 
@@ -28,12 +28,12 @@ def heuristicLabelSomeNodesAndGetInitialClusters(BLIFGraph, cells, netlist, sing
                 break
         if (shouldBypass):
             continue
-        tree, code = extractAndEncodeSubgraph_Tree(cells, cell.id, treeDepth)
+        tree, code = extract_and_encode_subgraph_tree(cells, cell.id, treeDepth)
         if (len(tree) < 2):
             continue
-        if (singleOutputSeeds and _escapeOutputCount(cells, tree) != 1):
+        if (singleOutputSeeds and escape_output_count(cells, tree) != 1):
             continue
-        codeStr = canonicalPatternCode(code)
+        codeStr = canonical_pattern_code(code)
         if (codeStr.find("bool-") >= 0):
             continue
         if (not codeStr in pattern2RootCells.keys()):
@@ -57,11 +57,11 @@ def heuristicLabelSomeNodesAndGetInitialClusters(BLIFGraph, cells, netlist, sing
         newSeq = DesignPatternClusterSeq(tmpType[0])
         for cellId in pattern2RootCells[tmpType[0]]:
             BLIFGraph.nodes()[cellId]['nodeLabel'] = labelId
-            tree, code = extractAndEncodeSubgraph_Tree(   # color the nodes in a pattern
+            tree, code = extract_and_encode_subgraph_tree(   # color the nodes in a pattern
                 cells, cellId, treeDepth, labeledCnt)
             if (tree is None):
                 continue
-            code = canonicalPatternCode(code)
+            code = canonical_pattern_code(code)
             newCluster = DesignPatternCluster(
                 labeledCnt, code, cells, tree, labelId)
             for cellId in tree:
@@ -86,7 +86,7 @@ def heuristicLabelSomeNodesAndGetInitialClusters(BLIFGraph, cells, netlist, sing
     return resSeqs, labeledCnt
 
 
-def heuristicLabelSomeNodesAndGetInitialClusters_BasedOn(BLIFGraph, cells, netlist, targetPatternTrace, singleOutputSeeds=False):
+def heuristic_label_initial_clusters_based_on(BLIFGraph, cells, netlist, targetPatternTrace, singleOutputSeeds=False):
 
     treeDepth = 1
 
@@ -99,12 +99,12 @@ def heuristicLabelSomeNodesAndGetInitialClusters_BasedOn(BLIFGraph, cells, netli
                 break
         if (shouldBypass):
             continue
-        tree, code = extractAndEncodeSubgraph_Tree(cells, cell.id, treeDepth)
+        tree, code = extract_and_encode_subgraph_tree(cells, cell.id, treeDepth)
         if (len(tree) < 2):
             continue
-        if (singleOutputSeeds and _escapeOutputCount(cells, tree) != 1):
+        if (singleOutputSeeds and escape_output_count(cells, tree) != 1):
             continue
-        codeStr = canonicalPatternCode(code)
+        codeStr = canonical_pattern_code(code)
         if (codeStr.find("bool-") >= 0):
             continue
         if (targetPatternTrace.find(codeStr) != 0):
@@ -130,11 +130,11 @@ def heuristicLabelSomeNodesAndGetInitialClusters_BasedOn(BLIFGraph, cells, netli
         newSeq = DesignPatternClusterSeq(tmpType[0])
         for cellId in pattern2RootCells[tmpType[0]]:
             BLIFGraph.nodes()[cellId]['nodeLabel'] = labelId
-            tree, code = extractAndEncodeSubgraph_Tree(   # color the nodes in a pattern
+            tree, code = extract_and_encode_subgraph_tree(   # color the nodes in a pattern
                 cells, cellId, treeDepth, labeledCnt)
             if (tree is None):
                 continue
-            code = canonicalPatternCode(code)
+            code = canonical_pattern_code(code)
             newCluster = DesignPatternCluster(
                 labeledCnt, code, cells, tree, labelId)
             for cellId in tree:

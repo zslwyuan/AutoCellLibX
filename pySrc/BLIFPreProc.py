@@ -9,12 +9,12 @@ import os
 import blifparser.blifparser as blifparser
 from globalVariables import *
 from BLIFGraphUtil import *
-from core.seeding import (heuristicLabelSomeNodesAndGetInitialClusters,
-                          heuristicLabelSomeNodesAndGetInitialClusters_BasedOn)
-from core.encoding import (extractAndEncodeSubgraph_Tree,
-                           canonicalPatternCode, escapeOutputCount)
-from core.parse import (loadLibertyFile, loadBoolGateFromBLIF,
-                        genGraphFromLibertyAndBLIF)
+from core.seeding import (heuristic_label_initial_clusters,
+                          heuristic_label_initial_clusters_based_on)
+from core.encoding import (extract_and_encode_subgraph_tree,
+                           canonical_pattern_code, escape_output_count)
+from core.parse import (load_liberty_file, load_bool_gate_from_blif,
+                        gen_graph_from_liberty_and_blif)
 import networkx as nx
 import numpy as np
 import networkx as nx
@@ -104,18 +104,18 @@ def convertBLIFGraphIntoDataset(BLIFGraph, stdCellTypesForFeature, maxNumType=36
 
     return g_list, maxLabel+1
 def loadDataAndPreprocess(libFileName="sky130_fd_sc_hd__tt_025C_1v80.lib", blifFileName="rocket.blif", startTime=0, bypassInitialCluster=False, singleOutputSeeds=False):
-    BLIFGraph, cells, netlist, stdCellTypesForFeature = genGraphFromLibertyAndBLIF(
+    BLIFGraph, cells, netlist, stdCellTypesForFeature = gen_graph_from_liberty_and_blif(
         libFileName, blifFileName)
     endTime = time.time()
-    print("genGraphFromLibertyAndBLIF done. time esclaped: ", endTime-startTime)
+    print("gen_graph_from_liberty_and_blif done. time esclaped: ", endTime-startTime)
 
     initialClusterSeqs = None
     clusterNum = None
     if (not bypassInitialCluster):
-        initialClusterSeqs, clusterNum = heuristicLabelSomeNodesAndGetInitialClusters(
+        initialClusterSeqs, clusterNum = heuristic_label_initial_clusters(
             BLIFGraph, cells, netlist)
         endTime = time.time()
-        print("heuristicLabelSomeNodesAndGetInitialClusters done. time esclaped: ",
+        print("heuristic_label_initial_clusters done. time esclaped: ",
               endTime-startTime)
 
     dataset, maxLabelIndex = convertBLIFGraphIntoDataset(

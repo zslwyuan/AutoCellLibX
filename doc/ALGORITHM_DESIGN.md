@@ -116,7 +116,7 @@ python regenerate_cells.py COMPLEX1     # 只重生成指定单元的版图，�
 
 ### 3.1 输入解析与图建模
 
-`BLIFPreProc.genGraphFromLibertyAndBLIF` 做三件事：
+`BLIFPreProc.gen_graph_from_liberty_and_blif` 做三件事：
 
 - **解析 Liberty**（`.lib`）得到每种单元的引脚名与方向，构建 `StdCellType`；
 - **解析 BLIF** 网表，把每个 `.subckt` 实例建成一个 `DesignCell`，把每条信号线建成一个 `DesignNet`（记录它的驱动单元和负载单元）；
@@ -133,7 +133,7 @@ python regenerate_cells.py COMPLEX1     # 只重生成指定单元的版图，�
 
 频繁子图挖掘的核心难题是"判断两个子图是否同构"。AutoCellLibX 用一个**深度受限的树编码**绕开了通用图同构：
 
-`extractAndEncodeSubgraph_Tree(cells, root, depthLimit)` 以某个单元为根，沿输入**反向**做广度优先遍历（默认深度 1），把访问到的单元的**类型名按序拼接**成一个编码串。
+`extract_and_encode_subgraph_tree(cells, root, depthLimit)` 以某个单元为根，沿输入**反向**做广度优先遍历（默认深度 1），把访问到的单元的**类型名按序拼接**成一个编码串。
 
 > 例：以一个 `OR2X1` 为根，它的两个输入前驱都是 `NAND2X1`，那么这棵深度-1 的树的编码就是 `"[NAND2X1, NAND2X1, OR2X1]"`。
 
@@ -141,7 +141,7 @@ python regenerate_cells.py COMPLEX1     # 只重生成指定单元的版图，�
 
 ### 3.3 初始模式挖掘与聚类
 
-`heuristicLabelSomeNodesAndGetInitialClusters` 对每个非 bypass 单元都算一次编码，然后：
+`heuristic_label_initial_clusters` 对每个非 bypass 单元都算一次编码，然后：
 
 1. 按编码串**分组**：同编码的所有实例聚成一个 `DesignPatternCluster`，同一编码的所有簇构成一个 `DesignPatternClusterSeq`（模式序列）；
 2. 按出现**频次排序**，只保留 **Top-30** 作为初始候选；
@@ -153,7 +153,7 @@ python regenerate_cells.py COMPLEX1     # 只重生成指定单元的版图，�
 
 ### 3.4 模式生长：一次只吸收"同一类"邻居
 
-挖到初始模式后，`growASeqOfClusters` 负责把模式**长大**——这是 AutoCellLibX 相对传统 FSM 的关键改进，它巧妙地处理了"子图重叠"问题（满足技术映射约束）。
+挖到初始模式后，`grow_sequence_of_clusters` 负责把模式**长大**——这是 AutoCellLibX 相对传统 FSM 的关键改进，它巧妙地处理了"子图重叠"问题（满足技术映射约束）。
 
 **做法**：对当前模式的**所有实例**，统计它们边界上的邻居，并按"邻居类型 + 它在模式里的相对连接位置"打上一个**邻居特征码**：
 

@@ -479,7 +479,7 @@ class FlowRunner(object):
         self._stage("parse", "running", "解析 liberty + BLIF / parsing design")
         self._check_cancel()
         (BLIFGraph, cells, netlist, stdCellTypesForFeature) = \
-            BLIFPreProc.genGraphFromLibertyAndBLIF(
+            BLIFPreProc.gen_graph_from_liberty_and_blif(
                 self._rel(self.cfg.liberty()), self._rel(blif_abs))
 
         type_count = {}
@@ -507,7 +507,7 @@ class FlowRunner(object):
         self._stage("cluster", "running", "按编码聚类模式 / grouping by pattern code")
         self._check_cancel()
         clusterSeqs, clusterNum = \
-            BLIFPreProc.heuristicLabelSomeNodesAndGetInitialClusters(
+            BLIFPreProc.heuristic_label_initial_clusters(
                 BLIFGraph, cells, netlist)
         dataset, maxLabelIndex = BLIFPreProc.convertBLIFGraphIntoDataset(
             BLIFGraph, stdCellTypesForFeature, 36)
@@ -593,7 +593,7 @@ class FlowRunner(object):
                     context["widthProxy"], stdType2AstranArea,
                     transistor_counts)
 
-        context["subckts"] = spice.loadSpiceSubcircuits(
+        context["subckts"] = spice.load_spice_subcircuits(
             self._rel(self.cfg.spice_lib()))
 
         # ---- main mining loop ----------------------------------------------
@@ -911,7 +911,7 @@ def parse_design(benchmark, hooks=None, cancel_event=None, blif_path=None,
     os.chdir(paths.PYSRC_DIR)
     try:
         BLIFGraph, cells, netlist, stdCellTypesForFeature = \
-            BLIFPreProc.genGraphFromLibertyAndBLIF(
+            BLIFPreProc.gen_graph_from_liberty_and_blif(
                 _rel_to_pysrc(lib_abs), _rel_to_pysrc(blif_abs))
     finally:
         os.chdir(prev)

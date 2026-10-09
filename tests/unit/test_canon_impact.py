@@ -40,8 +40,8 @@ def test_merges_order_split_instances():
 
 
 def test_adder_report_structure(in_pysrc):
-    from BLIFPreProc import genGraphFromLibertyAndBLIF
-    _, cells, _, _ = genGraphFromLibertyAndBLIF(
+    from BLIFPreProc import gen_graph_from_liberty_and_blif
+    _, cells, _, _ = gen_graph_from_liberty_and_blif(
         "../stdCelllib/gscl45nm.lib", "../benchmark/blif/adder.blif")
     report = canonicalizationImpact(cells)
     assert report["canonicalGroups"] <= report["legacyGroups"]

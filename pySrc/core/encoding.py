@@ -1,16 +1,16 @@
 """Pattern encoding (layer: encoding).
 
-Extracted from BLIFPreProc.py: ``extractAndEncodeSubgraph_Tree`` builds
-the BFS type-name code for a root cell; ``canonicalPatternCode`` makes
+Extracted from BLIFPreProc.py: ``extract_and_encode_subgraph_tree`` builds
+the BFS type-name code for a root cell; ``canonical_pattern_code`` makes
 the identity order-invariant (children sorted after the root, AUDIT
-5.18/P0-1); ``escapeOutputCount`` counts a seed's escaping outputs
+5.18/P0-1); ``escape_output_count`` counts a seed's escaping outputs
 (synthesis-reuse mode, AUDIT 5.27).
 """
 
 from globalVariables import bypassTypes
 
 
-def extractAndEncodeSubgraph_Tree(cells, rootNode, depthLimit=2, clusterId=None):
+def extract_and_encode_subgraph_tree(cells, rootNode, depthLimit=2, clusterId=None):
     depths = [0]
     tree = [rootNode]
     encodes = [cells[rootNode].stdCellType.typeName]
@@ -46,16 +46,16 @@ def extractAndEncodeSubgraph_Tree(cells, rootNode, depthLimit=2, clusterId=None)
     return tree, encodes
 
 
-def canonicalPatternCode(code):
+def canonical_pattern_code(code):
     """Canonical pattern-code string for a raw encode list.
 
-    ``extractAndEncodeSubgraph_Tree`` appends children in input-net
+    ``extract_and_encode_subgraph_tree`` appends children in input-net
     enumeration order, so two structurally identical instances whose nets
     enumerate in different orders used to get different strings and were
     split into separate groups (frequency under-counted).  Keep the root
     first and sort the children.  This string is the pattern's identity, so
     every consumer -- initial grouping, cluster traces, and the prefix match
-    in ``heuristicLabelSomeNodesAndGetInitialClusters_BasedOn`` -- must build
+    in ``heuristic_label_initial_clusters_based_on`` -- must build
     it through this helper.  (The paired ``tree``/``code`` lists returned by
     the encoder are intentionally left in BFS order.)
     """
@@ -64,7 +64,7 @@ def canonicalPatternCode(code):
         "\'", "").replace("\\", "").replace("\"", "").replace(" ", "")
 
 
-def escapeOutputCount(cells, tree):
+def escape_output_count(cells, tree):
     """Number of escaping member output pins of a seed tree (== the
     complex cell's output pins): a member output pin whose loads are not
     all inside the tree.  Used by the single-output seed filter of the

@@ -34,7 +34,7 @@
 
 | # | 指南声明 | 结论 | 证据 |
 |---|---|---|---|
-| 7 | adder 解析得 710 节点 / 803 边 | ✅ **实跑复现** | `genGraphFromLibertyAndBLIF` 输出 `710 803`；NAND2X1 实例 192 个亦属实 |
+| 7 | adder 解析得 710 节点 / 803 边 | ✅ **实跑复现** | `gen_graph_from_liberty_and_blif` 输出 `710 803`；NAND2X1 实例 192 个亦属实 |
 | 8 | `bypassTypes=["DFF","bool"]` 阻断时序/未映射门 | ✅ | `pySrc/globalVariables.py:2`；消费点 `BLIFPreProc.py:204-207,225-229,253-260`、`BLIFPatternGrowth.py:41,62,192,213` |
 | 9 | 节点=实例、bool 门入图为 `bool-...` 虚拟类型 | ✅ | `BLIFPreProc.py:79-87,126-137,184-190` |
 

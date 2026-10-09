@@ -105,9 +105,9 @@
    - 对每个候选模式序列:若面积覆盖不足(`size×cnt < ratioThr×cells` 且 `cnt < cntThr`)则跳过;
    - 绘制模式子图 PNG、导出 SPICE 网表(`exportSpiceNetlist`)、调用 ASTRAN 生成 `COMPLEX<n>.gds`;
    - 计算面积节省 `(oriUnitArea - newUnitArea) × clusterNum`,记录最佳组合;
-   - 用 `growASeqOfClusters()` 把最频繁模式吸收邻居扩展出新模式,更新模式序列池;
+   - 用 `grow_sequence_of_clusters()` 把最频繁模式吸收邻居扩展出新模式,更新模式序列池;
    - 有改进则写入 `bestRecord-<benchmark>`,否则停止。
-6. **逐模式明细第二轮**:对检测到的每个模式(`detectedPatterns`)重新聚类(`heuristicLabelSomeNodesAndGetInitialClusters_BasedOn`),仅追踪目标模式沿 `patternExtensionTrace` 生长,输出 `bestRecord-seperate<benchmark>`,内含表格:
+6. **逐模式明细第二轮**:对检测到的每个模式(`detectedPatterns`)重新聚类(`heuristic_label_initial_clusters_based_on`),仅追踪目标模式沿 `patternExtensionTrace` 生长,输出 `bestRecord-seperate<benchmark>`,内含表格:
    `designOverallArea | saveArea | saveRatio | patternCnt | patternSize | patternCoverage | patternName | patternCode`。
 
 **关键阈值参数**:
@@ -127,12 +127,12 @@
 
 ### 3.2 `BLIFPreProc.py` — 数据预处理与初始聚类
 
-- `loadLibertyFile()`:用 `liberty.parser.parse_liberty` 解析 `.lib`,构建 `StdCellType`(引脚方向)。
-- `loadBoolGateFromBLIF()`:把 BLIF 中的布尔函数(真值表)作为 `bool-<tt>` 类型的虚拟单元加入库。
-- `genGraphFromLibertyAndBLIF()`:解析 BLIF(`blifparser`),为每个 `.subckt`/逻辑门创建 `DesignCell`,为每个网创建 `DesignNet`,构建 **networkx DiGraph**(节点=单元,边=信号流);统计各单元类型频次取 top 类型作为特征类型,其余标记 `minorType`;含 `DFF`/`bool` 的单元标记 `stopType`(不参与聚类)。
-- `extractAndEncodeSubgraph_Tree()`:以某单元为根、沿输入反向做深度受限(`depthLimit`)的树编码,编码串 = 单元类型序列。
-- `heuristicLabelSomeNodesAndGetInitialClusters()`:对每个非 bypass 单元提取深度 1 的树编码,按编码频次排序取 top 30 作为初始模式;把同编码单元簇成 `DesignPatternCluster`,同一编码的所有簇构成一个 `DesignPatternClusterSeq`;打印标注/聚类覆盖率。
-- `heuristicLabelSomeNodesAndGetInitialClusters_BasedOn()`:同上,但只保留编码串与 `targetPatternTrace` 前缀匹配的模式(用于第二轮逐模式追踪)。
+- `load_liberty_file()`:用 `liberty.parser.parse_liberty` 解析 `.lib`,构建 `StdCellType`(引脚方向)。
+- `load_bool_gate_from_blif()`:把 BLIF 中的布尔函数(真值表)作为 `bool-<tt>` 类型的虚拟单元加入库。
+- `gen_graph_from_liberty_and_blif()`:解析 BLIF(`blifparser`),为每个 `.subckt`/逻辑门创建 `DesignCell`,为每个网创建 `DesignNet`,构建 **networkx DiGraph**(节点=单元,边=信号流);统计各单元类型频次取 top 类型作为特征类型,其余标记 `minorType`;含 `DFF`/`bool` 的单元标记 `stopType`(不参与聚类)。
+- `extract_and_encode_subgraph_tree()`:以某单元为根、沿输入反向做深度受限(`depthLimit`)的树编码,编码串 = 单元类型序列。
+- `heuristic_label_initial_clusters()`:对每个非 bypass 单元提取深度 1 的树编码,按编码频次排序取 top 30 作为初始模式;把同编码单元簇成 `DesignPatternCluster`,同一编码的所有簇构成一个 `DesignPatternClusterSeq`;打印标注/聚类覆盖率。
+- `heuristic_label_initial_clusters_based_on()`:同上,但只保留编码串与 `targetPatternTrace` 前缀匹配的模式(用于第二轮逐模式追踪)。
 - `convertBLIFGraphIntoDataset()`:把图转成 GNN 训练用数据集(`S2VGraph`,节点 one-hot 特征、`edge_mat`)。**注意:已从 TensorFlow 常量改为 numpy 数组**(见 §11),`BLIFGNNTraining`/`GNNModel` 在主流程中被注释掉。
 - `getArea()`:按单元类型面积字典累加总面积。
 - `loadDataAndPreprocess()`:串联上述步骤,返回 `(BLIFGraph, cells, netlist, stdCellTypesForFeature, dataset, maxLabelIndex, clusterSeqs, clusterNum)`。
@@ -156,7 +156,7 @@
 
 ### 3.4 `BLIFPatternGrowth.py` — 模式生长算法
 
-`growASeqOfClusters(BLIFGraph, clusterSeq, ...)`,对应论文中的**模式增长/组合**环节:
+`grow_sequence_of_clusters(BLIFGraph, clusterSeq, ...)`,对应论文中的**模式增长/组合**环节:
 
 1. 遍历当前模式序列中所有簇的每个单元,收集其输入前驱与输出后继邻居;
 2. 跳过已在簇内、已访问、`stopType`、或属于同类模式簇的邻居;
@@ -164,12 +164,12 @@
 4. 按特征码出现次数排序,取 top 1 特征(示例实现只合并一种邻居);
 5. 把该特征对应的所有邻居并入其所在簇,更新 `patternExtensionTrace += "+" + neighborCode`、`clusterTypeId = patternNum`,返回新序列 + 未扩展的旧序列。
 
-`growASeqOfClusters_BasedOn()`:变体,仅当 `targetPatternTrace` 以 `当前trace+"+"+neighborF` 为前缀时才合并,用于第二轮按目标模式生长。
+`grow_sequence_of_clusters_based_on()`:变体,仅当 `targetPatternTrace` 以 `当前trace+"+"+neighborF` 为前缀时才合并,用于第二轮按目标模式生长。
 
 ### 3.5 `spice.py` — SPICE 网表处理
 
 - `SPSubcircuit`:解析一个 `.subckt` 块;`renamePrefix(prefix)` 给所有信号/晶体管加前缀(`cl<orderId>#`),`replaceInputPin()` 把单元内部输入引脚重连到前驱单元输出引脚。
-- `loadSpiceSubcircuits()`:从 `cellsAstranFriendly.sp` 加载全部子电路。
+- `load_spice_subcircuits()`:从 `cellsAstranFriendly.sp` 加载全部子电路。
 - `exportSpiceNetlist()`:把一个模式簇内所有单元的子电路拼接:加前缀 → 按网表内部连接替换引脚 → 计算接口(删除完全内部化的输出)→ 生成 `COMPLEX<n>.sp`,文件头/尾注释记录 pattern code、出现次数、单元数、示例实例。
 
 ### 3.6 `Astran.py` — ASTRAN 版图综合
@@ -216,7 +216,7 @@ adder.blif ────┘                        │
     │  top1 模式序列 → 画PNG → exportSpiceNetlist → COMPLEX<n>.sp          │
     │  → runAstranForNetlist → COMPLEX<n>.gds(+Astranlog)                  │
     │  → loadAstranArea → 面积节省计算 → 记录 bestRecord-<benchmark>       │
-    │  → growASeqOfClusters 吸收邻居 → 新模式序列入池 → 排序               │
+    │  → grow_sequence_of_clusters 吸收邻居 → 新模式序列入池 → 排序               │
     └─────────────────────────────────────────────────────────────────────┘
                                          │
                          第二轮:逐模式重新聚类(BasedOn 变体)

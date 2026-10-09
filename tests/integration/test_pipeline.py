@@ -15,19 +15,19 @@ BLIF = "../benchmark/blif/adder.blif"
 def test_mining_growth_and_export(in_pysrc, tmp_path):
     from BLIFPreProc import loadDataAndPreprocess
     from BLIFGraphUtil import sortPatternClusterSeqs
-    from BLIFPatternGrowth import growASeqOfClusters
-    from spice import loadSpiceSubcircuits, exportSpiceNetlist
+    from BLIFPatternGrowth import grow_sequence_of_clusters
+    from spice import load_spice_subcircuits, exportSpiceNetlist
 
     G, cells, netlist, types, ds, ml, seqs, cn = loadDataAndPreprocess(
         libFileName=LIB, blifFileName=BLIF, startTime=0)
     assert len(seqs) > 0, "no patterns mined"
     seqs = sortPatternClusterSeqs(seqs)
 
-    newSeqs, patternNum = growASeqOfClusters(G, seqs[0], len(seqs), len(seqs))
+    newSeqs, patternNum = grow_sequence_of_clusters(G, seqs[0], len(seqs), len(seqs))
     assert patternNum >= len(seqs)
     assert len(newSeqs) > 0
 
-    subs = loadSpiceSubcircuits("../stdCelllib/cellsAstranFriendly.sp")
+    subs = load_spice_subcircuits("../stdCelllib/cellsAstranFriendly.sp")
     exportSpiceNetlist(newSeqs[0], subs, 0, str(tmp_path))
     out = os.path.join(str(tmp_path), "COMPLEX0.sp")
     assert os.path.exists(out)

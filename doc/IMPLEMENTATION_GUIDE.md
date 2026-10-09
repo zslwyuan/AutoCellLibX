@@ -133,7 +133,7 @@ M2 Y A net_1 GND NMOS W=0.5u L=0.05u
 
 ## 第 2 层 · 解析与数据结构：把文件变成对象
 
-**代码入口**：`BLIFPreProc.genGraphFromLibertyAndBLIF`
+**代码入口**：`BLIFPreProc.gen_graph_from_liberty_and_blif`
 （配合 `BLIFGraphUtil.py` 里的三个类）。
 
 解析分三步：
@@ -148,8 +148,8 @@ M2 Y A net_1 GND NMOS W=0.5u L=0.05u
 
 ```python
 # 在 pySrc 目录下
-from BLIFPreProc import genGraphFromLibertyAndBLIF
-g, cells, netlist, types = genGraphFromLibertyAndBLIF(
+from BLIFPreProc import gen_graph_from_liberty_and_blif
+g, cells, netlist, types = gen_graph_from_liberty_and_blif(
     "../stdCelllib/gscl45nm.lib", "../benchmark/blif/adder.blif")
 print(g.number_of_nodes(), g.number_of_edges())   # 710 803
 ```
@@ -169,7 +169,7 @@ print(g.number_of_nodes(), g.number_of_edges())   # 710 803
 **问题**：找出网表里反复出现的子电路，学术上叫频繁子图挖掘（FSM），核心
 难点是判断"两个子电路是否同构"——通用解法是 NP-hard 的图同构判定。
 
-**这层的关键想法**（`BLIFPreProc.extractAndEncodeSubgraph_Tree`）：
+**这层的关键想法**（`BLIFPreProc.extract_and_encode_subgraph_tree`）：
 以某个单元为根，沿输入方向做深度为 1 的 BFS，把沿途单元的**类型名按顺序拼成
 一个字符串**。以上面 NAND2X1(NAND2X1, NAND2X1) → OR2X1 的结构为例，编码就是：
 
@@ -195,8 +195,8 @@ print(g.number_of_nodes(), g.number_of_edges())   # 710 803
 
 ## 第 4 层 · 聚类与生长：从种子到更大的模式
 
-**代码入口**：`BLIFPreProc.heuristicLabelSomeNodesAndGetInitialClusters` 与
-`BLIFPatternGrowth.growASeqOfClusters`。
+**代码入口**：`BLIFPreProc.heuristic_label_initial_clusters` 与
+`BLIFPatternGrowth.grow_sequence_of_clusters`。
 
 - **初始聚类**：把所有实例按编码分组，每组叫一个 `DesignPatternCluster`，
   同编码的所有簇构成一个 `DesignPatternClusterSeq`（一个"模式"）。按
@@ -411,7 +411,7 @@ gui/tabs/…                                             ← 8 个页面
 | # | 练习 | 验收标准 |
 |---|---|---|
 | 1 | 仓库根目录 `python -m pytest` | 194 passed；顺便读一遍 `tests/unit/` 的测试名 |
-| 2 | 写 5 行代码调用 `genGraphFromLibertyAndBLIF` 打印 adder 的节点/边数 | 710 / 803 |
+| 2 | 写 5 行代码调用 `gen_graph_from_liberty_and_blif` 打印 adder 的节点/边数 | 710 / 803 |
 | 3 | 手算编码：挑一个 OR2X1 实例，沿输入走一层，写出编码串 | 与 `heuristicLabel…` 打印的 top 模式对得上 |
 | 4 | 把 `main.py` 的 `topThr` 改成 1 跑一遍（输出目录先备份） | 理解 `bestRecord-adder` 的每一行是怎么来的 |
 | 5 | `python -m gui` → 版图页打开 COMPLEX9 | 能数出 P/N 管数、说出宽度从哪一行读出来 |

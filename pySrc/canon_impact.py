@@ -3,7 +3,7 @@
 CellE (arXiv 2026) replaces frequency mining with e-graph equality
 saturation.  A faithful e-graph is out of prototype scope, but the
 *first-order* effect of "see equivalent instances as one" is measurable
-today: it is exactly what canonicalPatternCode (P0-1) does versus the
+today: it is exactly what canonical_pattern_code (P0-1) does versus the
 legacy order-sensitive encoding.  This module quantifies that effect
 per netlist -- how many pattern groups the legacy encoding split apart
 -- which is the honest lower bound of what richer equivalence (pin
@@ -15,9 +15,9 @@ commutativity, functional equivalence) would recover on top.
 import glob
 import os
 
-from BLIFPreProc import (canonicalPatternCode,
-                         extractAndEncodeSubgraph_Tree,
-                         genGraphFromLibertyAndBLIF)
+from BLIFPreProc import (canonical_pattern_code,
+                         extract_and_encode_subgraph_tree,
+                         gen_graph_from_liberty_and_blif)
 
 
 def legacyPatternCode(code):
@@ -40,11 +40,11 @@ def canonicalizationImpact(cells, depth=1):
     for cell in cells:
         if (cell.stopType):
             continue
-        tree, code = extractAndEncodeSubgraph_Tree(cells, cell.id, depth)
+        tree, code = extract_and_encode_subgraph_tree(cells, cell.id, depth)
         if (len(tree) < 2):
             continue
         legacyKey = legacyPatternCode(code)
-        canonKey = canonicalPatternCode(code)
+        canonKey = canonical_pattern_code(code)
         if (canonKey.find("bool-") >= 0):
             continue
         legacyGroups.setdefault(legacyKey, set()).add(cell.id)
@@ -79,7 +79,7 @@ if __name__ == "__main__":
         name = os.path.splitext(os.path.basename(path))[0]
         libPath = os.path.join(blifDir, "..", "..", "stdCelllib",
                                "gscl45nm.lib")
-        _g, cells, _n, _t = genGraphFromLibertyAndBLIF(libPath, path)
+        _g, cells, _n, _t = gen_graph_from_liberty_and_blif(libPath, path)
         report = canonicalizationImpact(cells)
         print("%-24s groups %3d -> %-3d merged %2d, recovered instances %d"
               % (name, report["legacyGroups"], report["canonicalGroups"],

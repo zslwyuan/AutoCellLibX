@@ -134,13 +134,13 @@ exit
 
 发现并修复以下确凿错误(均在 `pySrc/`):
 
-### 3.1 `BLIFPreProc.extractAndEncodeSubgraph_Tree` —— 编码与节点错位
+### 3.1 `BLIFPreProc.extract_and_encode_subgraph_tree` —— 编码与节点错位
 
 - **错误**:`encodes.append(...)` 位于 `if (not predCell.id in tree)` **之外**,而 `tree.append(...)` 在之内。当同一前驱经多条 net 驱动同一下游(多输出单元如 FAX1,或菱形结构)时,`encodes` 会比 `tree` 多出重复项,导致**编码串与子图结构不对应**;结构等价的模式被编码成不同串 → **模式被错误拆分/归并**。
 - **修复**:将 `encodes.append` 移入去重分支,保证编码与树节点严格一一对应。
 - **验证**:adder 初始聚类 128 簇,`编码长度 == 簇内单元数` 的不匹配数为 **0**。
 
-### 3.2 `BLIFPatternGrowth.growASeqOfClusters` / `_BasedOn` —— 生长方向不对称
+### 3.2 `BLIFPatternGrowth.grow_sequence_of_clusters` / `_BasedOn` —— 生长方向不对称
 
 - **错误**:输入前驱方向有"跳过同类型模式邻居"的检查
   ```python
@@ -150,7 +150,7 @@ exit
 - **修复**:在两个函数的输出后继循环中补上同类型模式跳过检查,使两个方向语义对称。
 - **说明**:该修复改变模式生长路径,故结果会变化;见 §3.4 关于结果波动的说明。
 
-### 3.3 `BLIFPreProc.heuristicLabelSomeNodesAndGetInitialClusters_BasedOn` —— labelId 递增不一致
+### 3.3 `BLIFPreProc.heuristic_label_initial_clusters_based_on` —— labelId 递增不一致
 
 - **错误**:与同名函数(非 `_BasedOn`)不同,`labelId += 1` 被放在循环体末尾**无条件执行**(即使该模式的簇数为 0、序列被丢弃),导致`clusterTypeId` 出现空洞。
 - **后果**:`main.py` 第二轮以 `patternNum = len(clusterSeqs)` 作为新模式的 `clusterTypeId` 起点,而初始 `clusterTypeId` 已跳号 → **新旧模式编号可能冲突**,使生长中的"同类型模式"判断(依赖 `clusterTypeId` 比较)出错。
@@ -623,7 +623,7 @@ ASTRAN 只给 IOgeometries 里的信号端口打标(route() 把 vdd/gnd 排除�
 - 深度不刷新的真 bug:`_show_neighbourhood` 的 BFS 里 `keep |= nxt` 之后才算 `frontier = nxt - keep`,永远为空——**深度 1/2/3 实际都只展开一层**;再加上深度 QSpinBox 没有连任何刷新信号,调深度完全无效果。
 
 **修复**:
-- `pySrc/BLIFPreProc.py`:`loadLibertyFile` 增加 (路径,mtime) 键控的进程级缓存,返回浅拷贝隔离 `loadBoolGateFromBLIF` 的 bool-* 注入(避免跨基准污染)。实测:第二次解析 0.93s→0.01s。
+- `pySrc/BLIFPreProc.py`:`load_liberty_file` 增加 (路径,mtime) 键控的进程级缓存,返回浅拷贝隔离 `load_bool_gate_from_blif` 的 bool-* 注入(避免跨基准污染)。实测:第二次解析 0.93s→0.01s。
 - `gui/tabs/design.py`:
   - BFS 重写:先 `nxt -= keep` 再并入,frontier 保持"本层新发现"节点;深度 1/2/3 实测节点数 2/3/3(修复前恒为 2);
   - `depth.valueChanged` 连接 `_show_neighbourhood`,调深度立即重绘;
@@ -678,9 +678,9 @@ ASTRAN 只给 IOgeometries 里的信号端口打标(route() 把 vdd/gnd 排除�
 5. `DesignNet.addPin` 多驱动网保留 last-wins 但发出 `RuntimeWarning` 并计数(`DesignNet.multiDriverCount`)。
 
 **P0 优化(行为变化已标定)**:
-- P0-1 编码规范化(`canonicalPatternCode`,根在前、子节点排序):trace 字符串因此对既有 outputs 快照改名(如 `[XNOR2X1,XOR2X1,OAI21X1]`→`[XNOR2X1,OAI21X1,XOR2X1]`),重生成时以新名为准。**大基准实测收益显著**(`pySrc/canon_impact.py`):BoomBranchPredictor 2721→1793 组(合并 737 个虚假分裂、回收 21541 个实例)、DCache 2084→1459(13503)、GemminiLoopConv 2829→1787(14588);adder 网表顺序本来就一致,数字不变。
+- P0-1 编码规范化(`canonical_pattern_code`,根在前、子节点排序):trace 字符串因此对既有 outputs 快照改名(如 `[XNOR2X1,XOR2X1,OAI21X1]`→`[XNOR2X1,OAI21X1,XOR2X1]`),重生成时以新名为准。**大基准实测收益显著**(`pySrc/canon_impact.py`):BoomBranchPredictor 2721→1793 组(合并 737 个虚假分裂、回收 21541 个实例)、DCache 2084→1459(13503)、GemminiLoopConv 2829→1787(14588);adder 网表顺序本来就一致,数字不变。
 - P0-2 节省重叠去重(`countUncoveredClusters`):同轮候选共享的簇只计一次;bestRecord 中 clusterNum 变为去重后计数。
-- P0-3 束搜索+预估剪枝:`growASeqOfClusters` 接受 `benefitEstimator`(新增 `pySrc/benefit.py` 的 ShrinkModel,按"尺寸→收缩率"在线标定、取保守 max);`growBeamWidth=2`(globalVariables)/`cfg.grow_beam=2`(GUI)每轮生长前 2 个队首;≥10 单元的队首不再生长(其 11 单元后代在版图阶段必然被剔除)。COMPLEX10 型负收益(−56.05)在其首个观测后会被剪枝。
+- P0-3 束搜索+预估剪枝:`grow_sequence_of_clusters` 接受 `benefitEstimator`(新增 `pySrc/benefit.py` 的 ShrinkModel,按"尺寸→收缩率"在线标定、取保守 max);`growBeamWidth=2`(globalVariables)/`cfg.grow_beam=2`(GUI)每轮生长前 2 个队首;≥10 单元的队首不再生长(其 11 单元后代在版图阶段必然被剔除)。COMPLEX10 型负收益(−56.05)在其首个观测后会被剪枝。
 - P0-4 可布性第二指标(新增 `pySrc/routability.py`):从 .Astranlog 解析 `Rt. Density` 与 Pathfinder 尝试轮数,报告默认开启;硬门限 `routabilityDensityGate`/`cfg.max_rt_density` 默认 None(先测量后执法)。
 - P0-5 flow_core≡main.py 等价测试:桩 ASTRAN(按 .sp 内容哈希定宽)比较两流程 bestRecord(见 tests/unit/test_flow_parity.py)。
 
@@ -831,7 +831,7 @@ libgcc_s_seh-1.dll、libstdc++-6.dll、libwinpthread-1.dll、liblzma-5.dll、lib
 **目标**:让生成的 COMPLEX 单元能被 abc 逻辑映射复用(AUDIT 5.25 的推论:abc 只选"函数锥匹配"的单元,adder 现有 4 个单元全多输出,0 用)。实现四件套:
 
 1. **复用资格判定(pySrc/reuse.py)**:`reuseEligible(cluster)` = 单输出(仅一个逃逸成员输出脚)+ 函数 support≤4、逻辑深度≤4(深度只数"含运算符或≥2 操作数"的括号层,组合包裹不计)。组合函数复用 liberty_gen 的 `_composeFunction`。
-2. **生长偏置(internalizeOnly)**:`growASeqOfClusters(+_BasedOn)` 新增 `internalizeOnly`——只吸收"输出负载全部落在簇内"的邻居,吸收不新增逃逸输出,单输出性保持。
+2. **生长偏置(internalizeOnly)**:`grow_sequence_of_clusters(+_BasedOn)` 新增 `internalizeOnly`——只吸收"输出负载全部落在簇内"的邻居,吸收不新增逃逸输出,单输出性保持。
 3. **流程接线**:main.py/flow_core 逐候选报告 reuse 资格;`requireReuseEligible`/`cfg.require_reuse_eligible` 可选门限(默认关,打开即只收单输出简单函数模式)。
 4. **两个接口修复**(真 bug):① `_clusterInterface` 的 zip 截断改为按网名/位置配对,且"无网对象的外部输入"正确判为接口输入(修复前生成片段 inputs=0,abc 提前失败);② `_composeFunction` 成员引脚同名串扰——先做 `@@k@@pin@@` 唯一令牌化再单遍替换(修复前组合函数串入他成员的同名引脚)。
 
@@ -854,7 +854,7 @@ libgcc_s_seh-1.dll、libstdc++-6.dll、libwinpthread-1.dll、liblzma-5.dll、lib
 
 **权衡的诚实陈述**:单输出约束把 adder 的高频模式全部滤掉(61 次→最高 2 次),复用模式下这个基准几乎无挖掘空间——物理收益与可复用性在同一网表上难以兼得;复用库应面向"单输出、函数简单常见"的新挖掘目标(或接受低频),物理库保留现有多输出模式,两者并存供不同下游选择。
 
-**过程修复**:① _BasedOn 分组仍用旧无序编码(与规范化 trace 前缀匹配失配)——补 canonicalPatternCode;② 实验手写片段引脚名必须与函数/验证设计同名(否则 abc 视为无效单元);③ 等价测试 spy 补新参数。
+**过程修复**:① _BasedOn 分组仍用旧无序编码(与规范化 trace 前缀匹配失配)——补 canonical_pattern_code;② 实验手写片段引脚名必须与函数/验证设计同名(否则 abc 视为无效单元);③ 等价测试 spy 补新参数。
 
 **验证**:281 单测通过;reuse_experiment 内置 abc 证明自跳过式。
 

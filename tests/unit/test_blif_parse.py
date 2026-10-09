@@ -1,9 +1,9 @@
 """Unit tests for liberty/BLIF parsing and graph construction."""
-from BLIFPreProc import loadLibertyFile, genGraphFromLibertyAndBLIF
+from BLIFPreProc import load_liberty_file, gen_graph_from_liberty_and_blif
 
 
 def test_load_liberty_library(in_pysrc):
-    lib = loadLibertyFile("../stdCelllib/gscl45nm.lib")
+    lib = load_liberty_file("../stdCelllib/gscl45nm.lib")
     assert "NAND2X1" in lib
     assert lib["NAND2X1"].inputPins, "NAND2X1 must have input pins"
     assert lib["NAND2X1"].outputPins, "NAND2X1 must have an output pin"
@@ -13,7 +13,7 @@ def test_load_liberty_library(in_pysrc):
 
 
 def test_graph_construction_on_adder(in_pysrc):
-    G, cells, netlist, types = genGraphFromLibertyAndBLIF(
+    G, cells, netlist, types = gen_graph_from_liberty_and_blif(
         "../stdCelllib/gscl45nm.lib", "../benchmark/blif/adder.blif")
 
     assert len(cells) == 710
@@ -29,7 +29,7 @@ def test_graph_construction_on_adder(in_pysrc):
 
 
 def test_edge_direction_follows_signal_flow(in_pysrc):
-    G, cells, netlist, types = genGraphFromLibertyAndBLIF(
+    G, cells, netlist, types = gen_graph_from_liberty_and_blif(
         "../stdCelllib/gscl45nm.lib", "../benchmark/blif/adder.blif")
     # every edge (u, v) must correspond to u driving an input net of v
     for u, v in list(G.edges())[:200]:
@@ -39,7 +39,7 @@ def test_edge_direction_follows_signal_flow(in_pysrc):
 def test_bypass_types_are_marked(in_pysrc):
     from globalVariables import bypassTypes
 
-    G, cells, netlist, types = genGraphFromLibertyAndBLIF(
+    G, cells, netlist, types = gen_graph_from_liberty_and_blif(
         "../stdCelllib/gscl45nm.lib", "../benchmark/blif/adder.blif")
     for cell in cells:
         expected = any(k in cell.stdCellType.typeName for k in bypassTypes)

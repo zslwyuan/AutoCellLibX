@@ -56,7 +56,7 @@ class ShrinkModel(object):
 
 
 def makeGrowthBenefitEstimator(stdType2AstranArea, shrinkModel):
-    """Closure with the call signature growASeqOfClusters expects."""
+    """Closure with the call signature grow_sequence_of_clusters expects."""
     def estimate(memberTypeNames, neighborTypeName, newSize, occurrences):
         try:
             memberWidths = [stdType2AstranArea[t] for t in memberTypeNames]

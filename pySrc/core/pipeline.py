@@ -12,9 +12,9 @@ import os
 import time
 import glob
 import matplotlib
-from core.log import getFlowLogger
+from core.log import get_flow_logger
 
-_flowLog = getFlowLogger()
+_flowLog = get_flow_logger()
 
 from BLIFPreProc import *
 from BLIFPatternGrowth import *
@@ -106,7 +106,7 @@ def runPipeline(cfg, hooks=None):
         print("=================================================================================\n",
               benchmarkName, "\n=================================================================================\n")
         # load liberty/spice/design BLIF
-        subckts = loadSpiceSubcircuits(cfg.spiceLib)
+        subckts = load_spice_subcircuits(cfg.spiceLib)
         BLIFGraph, cells, netlist, stdCellTypesForFeature, dataset, maxLabelIndex, clusterSeqs, clusterNum = loadDataAndPreprocess(
             libFileName=cfg.liberty, blifFileName=cfg.blifDir+"/"+benchmarkName+".blif", startTime=startTime, singleOutputSeeds=reuseMode)
         oriArea = getArea(cells, stdType2GSCLArea)
@@ -482,7 +482,7 @@ def runPipeline(cfg, hooks=None):
                     # anyway; growing it here would only churn the pool
                     clusterSeqs.remove(headSeq)
                     continue
-                newSeqOfClusters, patternNum = growASeqOfClusters(
+                newSeqOfClusters, patternNum = grow_sequence_of_clusters(
                     BLIFGraph, headSeq, clusterNum, patternNum,
                     paintPattern=True, benefitEstimator=growthBenefitEstimator,
                     internalizeOnly=reuseMode)
@@ -523,10 +523,10 @@ def runPipeline(cfg, hooks=None):
             BLIFGraph, cells, netlist, stdCellTypesForFeature, dataset, maxLabelIndex, clusterSeqs, clusterNum = loadDataAndPreprocess(
                 libFileName=cfg.liberty, blifFileName=cfg.blifDir+"/"+benchmarkName+".blif", startTime=startTime, bypassInitialCluster=True)
 
-            clusterSeqs, clusterNum = heuristicLabelSomeNodesAndGetInitialClusters_BasedOn(
+            clusterSeqs, clusterNum = heuristic_label_initial_clusters_based_on(
                 BLIFGraph, cells, netlist, targetPatternTrace, singleOutputSeeds=reuseMode)
             endTime = time.time()
-            print("heuristicLabelSomeNodesAndGetInitialClusters done. time esclaped: ",
+            print("heuristic_label_initial_clusters done. time esclaped: ",
                   endTime-startTime)
 
             oriArea = getArea(cells, stdType2GSCLArea)
@@ -638,7 +638,7 @@ def runPipeline(cfg, hooks=None):
                         and len(clusterSeq.patternClusters) < cntThr):
                     break
 
-                newSeqOfClusters, patternNum = growASeqOfClusters_BasedOn(
+                newSeqOfClusters, patternNum = grow_sequence_of_clusters_based_on(
                     BLIFGraph, clusterSeq, clusterNum, patternNum, paintPattern=True, targetPatternTrace=targetPatternTrace, internalizeOnly=reuseMode)
 
                 # No netlist export here: phase 2 only computes the per-pattern

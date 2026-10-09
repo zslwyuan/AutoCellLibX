@@ -1,9 +1,9 @@
 """Shim (ARCHITECTURE): the SPICE reader (SPSubcircuit,
-loadSpiceSubcircuits) lives in core/parse; this module keeps the
+load_spice_subcircuits) lives in core/parse; this module keeps the
 netlist exporter (exportSpiceNetlist).
 """
 
-from core.parse import SPSubcircuit, loadSpiceSubcircuits
+from core.parse import SPSubcircuit, load_spice_subcircuits
 
 import sys
 import os

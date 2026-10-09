@@ -1,11 +1,11 @@
 """Unit tests for SPICE parsing/export (pySrc/spice.py)."""
 import os
 
-from spice import SPSubcircuit, loadSpiceSubcircuits, exportSpiceNetlist
+from spice import SPSubcircuit, load_spice_subcircuits, exportSpiceNetlist
 
 
 def test_load_subcircuits(in_pysrc):
-    subs = loadSpiceSubcircuits("../stdCelllib/cellsAstranFriendly.sp")
+    subs = load_spice_subcircuits("../stdCelllib/cellsAstranFriendly.sp")
     assert len(subs) > 20
     assert "AND2X1" in subs
     s = subs["AND2X1"]
@@ -50,7 +50,7 @@ def test_export_spice_netlist(in_pysrc, tmp_path):
         libFileName="../stdCelllib/gscl45nm.lib",
         blifFileName="../benchmark/blif/adder.blif", startTime=0)
     seqs = sortPatternClusterSeqs(seqs)
-    subs = loadSpiceSubcircuits("../stdCelllib/cellsAstranFriendly.sp")
+    subs = load_spice_subcircuits("../stdCelllib/cellsAstranFriendly.sp")
 
     exportSpiceNetlist(seqs[0], subs, 0, str(tmp_path))
     out = os.path.join(str(tmp_path), "COMPLEX0.sp")
@@ -75,7 +75,7 @@ def test_export_spice_netlist_only_writes_on_change(in_pysrc, tmp_path):
         libFileName="../stdCelllib/gscl45nm.lib",
         blifFileName="../benchmark/blif/adder.blif", startTime=0)
     seqs = sortPatternClusterSeqs(seqs)
-    subs = loadSpiceSubcircuits("../stdCelllib/cellsAstranFriendly.sp")
+    subs = load_spice_subcircuits("../stdCelllib/cellsAstranFriendly.sp")
 
     out = os.path.join(str(tmp_path), "COMPLEX0.sp")
     exportSpiceNetlist(seqs[0], subs, 0, str(tmp_path))

@@ -14,8 +14,8 @@ pySrc/
     pipeline.py      ← runPipeline(cfg)：完整挖掘流水线（AST 逐字从 main() 提取，
                        行为由等价测试对 GUI 移植版钉住）；含阶段一（贪心/束生长+版图+评估）
                        与阶段二（逐模式记录）
-    encoding.py      ← 编码（canonicalPatternCode/extractAndEncodeSubgraph_Tree/
-                       escapeOutputCount）
+    encoding.py      ← 编码（canonical_pattern_code/extract_and_encode_subgraph_tree/
+                       escape_output_count）
     seeding.py       ← 初始聚类（heuristicLabel.../..._BasedOn，AST 逐字提取，
                        BLIFPreProc 现为 re-export shim）
     graph.py         ← （规划）数据结构门面（BLIFGraphUtil）
@@ -57,12 +57,12 @@ gui/flow_core.py     ← 待迁移：第三份控制流副本，下一步改为�
 | main.py → 薄 CLI | 重写（22 行） | 同上 |
 | 可变全局 → FlowConfig | 新数据类，默认值=旧行为 | test_config（新增） |
 | heuristicLabel...×2 → core/seeding | AST 逐字提取，BLIFPreProc shim | test_clustering/encoding/reuse 全绿 |
-| growASeqOfClusters(+_BasedOn) → core/growth | AST 逐字提取，BLIFPatternGrowth shim | test_pattern_growth/benefit 全绿 |
+| grow_sequence_of_clusters(+_BasedOn) → core/growth | AST 逐字提取，BLIFPatternGrowth shim | test_pattern_growth/benefit 全绿 |
 
 ## 待迁移（按优先级）
 
-1. ~~core/parse~~ ✅ 已迁（2026-10-10）：loadLibertyFile/loadBoolGateFromBLIF/
-   genGraphFromLibertyAndBLIF + SPSubcircuit/loadSpiceSubcircuits（AST 逐字），
+1. ~~core/parse~~ ✅ 已迁（2026-10-10）：load_liberty_file/load_bool_gate_from_blif/
+   gen_graph_from_liberty_and_blif + SPSubcircuit/load_spice_subcircuits（AST 逐字），
    BLIFPreProc 与 spice 变 shim（编排/GNN/导出留在 shim）；
 
 2. ~~core/growth~~ ✅ 已迁（2026-10-10）；

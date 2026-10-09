@@ -104,12 +104,12 @@ def test_adder_top_patterns_are_not_eligible(in_pysrc):
     """Evidence for AUDIT 5.25: the mined patterns are all multi-output,
     which is why abc never touches them -- the reuse path needs the
     internalizeOnly growth bias or single-output seeds."""
-    from BLIFPreProc import genGraphFromLibertyAndBLIF, \
-        heuristicLabelSomeNodesAndGetInitialClusters
+    from BLIFPreProc import gen_graph_from_liberty_and_blif, \
+        heuristic_label_initial_clusters
     from BLIFGraphUtil import sortPatternClusterSeqs
-    G, cells, netlist, types = genGraphFromLibertyAndBLIF(
+    G, cells, netlist, types = gen_graph_from_liberty_and_blif(
         LIB, "../benchmark/blif/adder.blif")
-    seqs, _ = heuristicLabelSomeNodesAndGetInitialClusters(G, cells, netlist)
+    seqs, _ = heuristic_label_initial_clusters(G, cells, netlist)
     seqs = sortPatternClusterSeqs(seqs)
     funcs = loadLibertyFunctions(LIB)
     eligible = 0

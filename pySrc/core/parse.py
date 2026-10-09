@@ -1,8 +1,8 @@
 """Parsing layer (core/parse): liberty / BLIF / SPICE readers.
 
-Extracted verbatim (AST) from BLIFPreProc.py (loadLibertyFile,
-loadBoolGateFromBLIF, genGraphFromLibertyAndBLIF) and spice.py
-(SPSubcircuit, loadSpiceSubcircuits).  Orchestration helpers built on
+Extracted verbatim (AST) from BLIFPreProc.py (load_liberty_file,
+load_bool_gate_from_blif, gen_graph_from_liberty_and_blif) and spice.py
+(SPSubcircuit, load_spice_subcircuits).  Orchestration helpers built on
 top of parsing (loadDataAndPreprocess, dataset conversion, getArea)
 stay in the BLIFPreProc shim -- they are pipeline layers, not readers
 (see doc/ARCHITECTURE.md).
@@ -19,11 +19,11 @@ from BLIFGraphUtil import *
 
 _liberty_cache = {}
 
-def loadLibertyFile(fileName):
+def load_liberty_file(fileName):
     key = (os.path.abspath(fileName), os.path.getmtime(fileName))
     if key in _liberty_cache:
         # Shallow copy: callers may add bool-* gate types for their own BLIF
-        # (loadBoolGateFromBLIF), which must not leak into the shared cache.
+        # (load_bool_gate_from_blif), which must not leak into the shared cache.
         return dict(_liberty_cache[key])
 
     # Read and parse a library.
@@ -52,7 +52,7 @@ def loadLibertyFile(fileName):
     return stdCellLib
 
 
-def loadBoolGateFromBLIF(blif, stdCellLib):
+def load_bool_gate_from_blif(blif, stdCellLib):
     for boolFunc in blif.booleanfunctions:
         truthTableStr = "bool-"+str(boolFunc.truthtable)
         if (not truthTableStr in stdCellLib.keys()):
@@ -63,9 +63,9 @@ def loadBoolGateFromBLIF(blif, stdCellLib):
             stdCellLib[truthTableStr] = newStdCellType
 
 
-def genGraphFromLibertyAndBLIF(libFileName, blifFileName):
+def gen_graph_from_liberty_and_blif(libFileName, blifFileName):
 
-    stdCellLib = loadLibertyFile(libFileName)
+    stdCellLib = load_liberty_file(libFileName)
 
     # get the file path and pass it to the parser
     filepath = os.path.abspath(blifFileName)
@@ -74,7 +74,7 @@ def genGraphFromLibertyAndBLIF(libFileName, blifFileName):
     # get the object that contains the parsed data
     # from the parser
     blif = parser.blif
-    loadBoolGateFromBLIF(blif, stdCellLib)
+    load_bool_gate_from_blif(blif, stdCellLib)
 
     # get the dictionary with the number of occurrencies of each keyword
     print(blif.nkeywords, "\n")
@@ -267,7 +267,7 @@ class SPSubcircuit(object):
             print(line)
 
 
-def loadSpiceSubcircuits(filePath):
+def load_spice_subcircuits(filePath):
     spFile = open(filePath, 'r')
     lines = spFile.readlines()
 

@@ -1,6 +1,6 @@
 """Unit tests for heuristic initial clustering (pySrc/BLIFPreProc.py).
 
-Regression covered: in ``heuristicLabelSomeNodesAndGetInitialClusters_BasedOn``
+Regression covered: in ``heuristic_label_initial_clusters_based_on``
 the pattern counter ``labelId`` was incremented even for patterns whose cluster
 sequence was discarded, leaving holes in ``clusterTypeId``.  Those holes later
 collided with the new-pattern numbering used by main.py.
@@ -9,8 +9,8 @@ import pytest
 
 from BLIFPreProc import (
     loadDataAndPreprocess,
-    heuristicLabelSomeNodesAndGetInitialClusters,
-    heuristicLabelSomeNodesAndGetInitialClusters_BasedOn,
+    heuristic_label_initial_clusters,
+    heuristic_label_initial_clusters_based_on,
 )
 
 LIB = "../stdCelllib/gscl45nm.lib"
@@ -57,7 +57,7 @@ def test_pattern_ids_dense_for_based_on(in_pysrc):
     target = seqs[0].patternExtensionTrace
 
     G2, cells2, netlist2, _, _, _, _, _ = _preprocess(bypass=True)
-    seqs2, _ = heuristicLabelSomeNodesAndGetInitialClusters_BasedOn(
+    seqs2, _ = heuristic_label_initial_clusters_based_on(
         G2, cells2, netlist2, target)
 
     assert len(seqs2) > 0
@@ -70,7 +70,7 @@ def test_based_on_only_keeps_target_prefix(in_pysrc):
     target = seqs[0].patternExtensionTrace
 
     G2, cells2, netlist2, _, _, _, _, _ = _preprocess(bypass=True)
-    seqs2, _ = heuristicLabelSomeNodesAndGetInitialClusters_BasedOn(
+    seqs2, _ = heuristic_label_initial_clusters_based_on(
         G2, cells2, netlist2, target)
 
     for s in seqs2:
