@@ -211,11 +211,13 @@ class FlowRunner(object):
         import GDSIIAnalysis
         import benefit
         import routability
+        import electrical
         self._flow = dict(Astran=Astran, BLIFPreProc=BLIFPreProc,
                           BLIFGraphUtil=BLIFGraphUtil,
                           BLIFPatternGrowth=BLIFPatternGrowth,
                           spice=spice, GDSIIAnalysis=GDSIIAnalysis,
-                          benefit=benefit, routability=routability)
+                          benefit=benefit, routability=routability,
+                          electrical=electrical)
         return self._flow
 
     def _rel(self, abs_path):
@@ -482,6 +484,11 @@ class FlowRunner(object):
             flow["benefit"].makeGrowthBenefitEstimator(
                 stdType2AstranArea, context["shrinkModel"])
 
+        # Electrical context per candidate (P1-7, report-only).
+        context["cellElectricalMetrics"] = \
+            flow["electrical"].loadCellElectricalMetrics(
+                str(self.cfg.liberty()))
+
         context["subckts"] = spice.loadSpiceSubcircuits(
             self._rel(self.cfg.spice_lib()))
 
@@ -701,6 +708,9 @@ class FlowRunner(object):
                                  cfg.max_rt_density), "warn")
                     continue
 
+                elec_metrics = flow["electrical"].patternElectricalMetrics(
+                    exampleCells, ctx["cellElectricalMetrics"])
+
                 n_clusters = len(tmpClusterSeq.patternClusters)
                 counted_clusters = n_clusters
                 if oriUnitAstranArea - newUnitAstranArea > 0:
@@ -727,6 +737,7 @@ class FlowRunner(object):
                     "save_unit": oriUnitAstranArea - newUnitAstranArea,
                     "save_total": (oriUnitAstranArea - newUnitAstranArea) * counted_clusters,
                     "routability": rt_metrics.asDict() if rt_metrics else None,
+                    "electrical": elec_metrics,
                     "out_dir": out_dir,
                 })
 
