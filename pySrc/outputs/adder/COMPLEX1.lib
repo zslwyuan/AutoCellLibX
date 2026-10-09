@@ -3,33 +3,33 @@
     cell_leakage_power : 80.258200;
     /* pattern: [XNOR2X1,XOR2X1,OAI21X1] */
     /* estimated pre-layout (LUT mini-STA, no wire RC); re-characterise with SPICE for sign-off */
-    pin (cl1#A)  {
+    pin (cl1_A)  {
       direction : input;
       capacitance : 0.00539601;
     }
-    pin (cl1#B)  {
+    pin (cl1_B)  {
       direction : input;
       capacitance : 0.00566600;
     }
-    pin (cl2#A)  {
+    pin (cl2_A)  {
       direction : input;
       capacitance : 0.00274222;
     }
-    pin (cl2#B)  {
+    pin (cl2_B)  {
       direction : input;
       capacitance : 0.00283226;
     }
-    pin (cl2#C)  {
+    pin (cl2_C)  {
       direction : input;
       capacitance : 0.00200991;
     }
-    pin (cl0#Y)  {
+    pin (cl0_Y)  {
       direction : output;
       capacitance : 0;
       max_capacitance : 0;
-      function : "(!((((cl1#A)^(cl1#((!(((cl2#A)+(cl2#B)) (cl2#C)))))))^((!(((cl2#A)+(cl2#B)) (cl2#C))))))";
+      function : "(!((((cl1_A)^(cl1_B)))^((!(((cl2_A)+(cl2_B)) (cl2_C))))))";
       timing() {
-        related_pin : "cl1#A";
+        related_pin : "cl1_A";
         cell_rise(delay_template_6x6) {  /* ns; worst-arc estimate */
           index_1 ("0.1, 0.5, 1.2, 3, 4, 5");
           index_2 ("0.06, 0.24, 0.48, 0.9, 1.2, 1.8");
@@ -76,7 +76,7 @@
         }
       }
       internal_power() {
-        related_pin : "cl1#A";
+        related_pin : "cl1_A";
         rise_power(delay_template_6x6) {  /* per toggle */
           index_1 ("0.1, 0.5, 1.2, 3, 4, 5");
           index_2 ("0.06, 0.24, 0.48, 0.9, 1.2, 1.8");
@@ -101,13 +101,13 @@
         }
       }
     }
-    pin (cl2#Y)  {
+    pin (cl2_Y)  {
       direction : output;
       capacitance : 0;
       max_capacitance : 0;
-      function : "(!(((cl2#A)+(cl2#B)) (cl2#C)))";
+      function : "(!(((cl2_A)+(cl2_B)) (cl2_C)))";
       timing() {
-        related_pin : "cl1#A";
+        related_pin : "cl1_A";
         cell_rise(delay_template_6x6) {  /* ns; worst-arc estimate */
           index_1 ("0.1, 0.5, 1.2, 3, 4, 5");
           index_2 ("0.06, 0.24, 0.48, 0.9, 1.2, 1.8");
@@ -154,7 +154,7 @@
         }
       }
       internal_power() {
-        related_pin : "cl1#A";
+        related_pin : "cl1_A";
         rise_power(delay_template_6x6) {  /* per toggle */
           index_1 ("0.1, 0.5, 1.2, 3, 4, 5");
           index_2 ("0.06, 0.24, 0.48, 0.9, 1.2, 1.8");

@@ -27,8 +27,15 @@ import os
 import shutil
 import subprocess
 
+_REPO_DIR = os.path.normpath(os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), ".."))
+
 YOSYS_CANDIDATES = [
     "yosys", "yosys.exe",
+    # vendored mingw64 build (tools/yosys, abc-capable): first probe so
+    # the flow prefers a working abc over the wasm build
+    os.path.join(_REPO_DIR, "tools", "yosys", "mingw64", "bin",
+                 "yosys.exe"),
     "yowasp-yosys", "yowasp-yosys.exe",   # PyPI WebAssembly build
     r"C:\msys64\mingw64\bin\yosys.exe",
     r"C:\msys64\usr\bin\yosys.exe",

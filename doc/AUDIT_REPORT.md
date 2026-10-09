@@ -793,3 +793,17 @@ libgcc_s_seh-1.dll、libstdc++-6.dll、libwinpthread-1.dll、liblzma-5.dll、lib
 **产物**:outputs/adder/COMPLEX{0,1,9,10}.lib 已生成并随快照入库(liberty_gen 的 .sp 重建路径,无需重跑挖掘);`runYosysMappedArea`/`buildExtendedLiberty` 已就绪,abc 环境修复后即可启用重映射对照。
 
 **验证**:274 单测通过(新增 test_yosys_eval.py 5 例)。
+
+### 5.24 yosys+abc 问题解决:手动解包 vendored 构建(2026-10-09)
+
+**解决路径**(绕开 pacman 损坏与 yowasp 无 abc 两个故障):直接从 USTC 镜像下载 MSYS2 包 `mingw-w64-x86_64-yosys-0.51-2`(16.7MB),用 Python zstandard 解包到 **tools/yosys**(70MB,含 yosys.exe/yosys-abc.exe 与完整 share 树),补齐其 DLL 传递依赖(libffi/libgcc/libstdc++/libreadline+libtermcap/tcl86/zlib/libwinpthread)后**完全自包含**(无需 MSYS2 PATH)。`yosys_import.YOSYS_CANDIDATES` 把 vendored 路径列为第一探测项。
+
+**验证**:最小 AND 设计 `abc -liberty` 正常映射为 AND2X1;完整 adder 综合(基线库)得到 707 单元、映射面积 2047.09(与会计式基线精确一致)。
+
+**两个附带修复**:
+1. **扩展库语法错误**:基础库文件末尾有游离 `}`(库闭合后再一个 `}`),`rfind("}")` 插入点错误——`buildExtendedLiberty` 改为花括号深度扫描找真正的库闭合;
+2. **`#` 不是合法 liberty 标识符**:生成的 .lib 引脚 `cl1#A` 被 yosys 解析器拒绝——`libertyPinName` 统一映射为 `cl1_A`(注入安全:端口集合内一一对应),.lib 片段已重生成入库。
+
+**扩展库综合结果**:extended 724 单元、映射面积 2039.11(基线 2047.09,−0.39%)——但 **abc 明确跳过全部多输出单元**(实测日志:"Detected 8 multi-output gates";我们 4 个 COMPLEX 全为 2-3 输出),complex_used=0,差异纯属 abc 重映射噪声。**结论性证据**:生成单元无法被 abc 逻辑映射复用,收益是物理性的(扩散共享/内化互连);要让综合器直接复用,应挖单输出模式。
+
+**验证**:274 单测通过(真实 yosys 用例现跑 vendored 0.51)。

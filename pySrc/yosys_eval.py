@@ -26,14 +26,28 @@ from yosys_import import findYosys, parseStatJson
 
 
 def buildExtendedLiberty(baseLibText, fragmentTexts):
-    """Merge `cell (...) {...}` fragments into a base library text."""
-    insertAt = baseLibText.rfind("}")
-    if (insertAt < 0):
-        raise ValueError("base liberty text has no closing brace")
-    merged = (baseLibText[:insertAt]
+    """Merge `cell (...) {...}` fragments into a base library text.
+
+    The library's closing brace is found by brace-depth scan (not
+    ``rfind("}")``): gscl45nm.lib ends with a stray trailing ``}``
+    after the library block, and inserting before it would drop the
+    fragments outside the library.
+    """
+    depth = 0
+    libraryClose = -1
+    for i, ch in enumerate(baseLibText):
+        if (ch == "{"):
+            depth += 1
+        elif (ch == "}"):
+            if (depth == 1):
+                libraryClose = i          # last 1->0 transition wins
+            depth -= 1
+    if (libraryClose < 0):
+        raise ValueError("base liberty text has no top-level closing brace")
+    merged = (baseLibText[:libraryClose]
               + "\n  /* --- generated complex cells --- */\n"
               + "\n".join(fragmentTexts) + "\n"
-              + baseLibText[insertAt:])
+              + baseLibText[libraryClose:])
     return merged
 
 

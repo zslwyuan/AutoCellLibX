@@ -68,6 +68,14 @@ def _substitute(funcText, pinExpr):
     return out
 
 
+def libertyPinName(portName):
+    """Liberty-safe port name: `#` is not a valid liberty identifier
+    character (yosys rejects it), so cl<k>#<pin> becomes cl<k>_<pin>.
+    Injective for the exported port set (k and base pin names contain
+    only letters/digits)."""
+    return portName.replace("#", "_")
+
+
 def _clusterInterface(members, electricalMetrics):
     """Split member pins into interface inputs/outputs + the member DAG.
 
@@ -226,7 +234,7 @@ def generateComplexLiberty(cluserSeq, complexName, widthUm,
         members, electricalMetrics)
 
     def portNameOf(memberIdx, pinName):
-        return "cl%d#%s" % (memberIdx, pinName)
+        return libertyPinName("cl%d#%s" % (memberIdx, pinName))
 
     leakage = 0.0
     for cell in members:

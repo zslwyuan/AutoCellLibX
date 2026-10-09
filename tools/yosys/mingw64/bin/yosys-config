@@ -1,0 +1,112 @@
+#!/usr/bin/env bash
+
+help() {
+	{
+		echo ""
+		echo "Usage: $0 [--exec] [--prefix pf] args.."
+		echo "       $0 --build modname.so cppsources.."
+		echo ""
+		echo "Replacement args:"
+		echo "    --cxx         x86_64-w64-mingw32-g++"
+		echo "    --cxxflags    $( echo '-march=nocona -msahf -mtune=generic -O2 -pipe -Wp,-D_FORTIFY_SOURCE=2 -fstack-protector-strong -Wp,-D__USE_MINGW_ANSI_STDIO=1 -Wall -Wextra -ggdb -I"/mingw64/share/yosys/include" -MD -MP -D_YOSYS_ -I/mingw64/include -DYOSYS_VER=\"0.51\" -DYOSYS_MAJOR=0 -DYOSYS_MINOR=51 -DYOSYS_COMMIT=0.51 -std=c++17 -O3 -D_POSIX_SOURCE -DYOSYS_WIN32_UNIX_DIR -DYOSYS_ENABLE_READLINE -DYOSYS_ENABLE_PLUGINS  -DYOSYS_ENABLE_GLOB -DYOSYS_ENABLE_ZLIB -DYOSYS_ENABLE_TCL -DYOSYS_ENABLE_ABC -I/mingw64/include -DYOSYS_ENABLE_GHDL -DYOSYS_ENABLE_COVER' | fmt -w60 | sed ':a;N;$!ba;s/\n/ \\\n                      /g' )"
+		echo "    --linkflags   -s -L"/mingw64/lib/yosys""
+		echo "    --ldflags     (alias of --linkflags)"
+		echo "    --libs        -lstdc++ -lm -lreadline -LD:/M/msys64/mingw64/lib/../lib -lffi -lz -ltcl86 -ltclstub86 /mingw64/lib/libghdl.a /mingw64/lib/gcc/x86_64-w64-mingw32/15.2.0/adalib/libgnat.a -lyosys_exe"
+		echo "    --ldlibs      (alias of --libs)"
+		echo "    --bindir      /mingw64/bin"
+		echo "    --datdir      /mingw64/share/yosys"
+		echo ""
+		echo "All other args are passed through as they are."
+		echo ""
+		echo "Use --exec to call a command instead of generating output. Example usage:"
+		echo ""
+		echo "  $0 --exec --cxx --cxxflags --ldflags -o plugin.so -shared plugin.cc --libs"
+		echo ""
+		echo "The above command can be abbreviated as:"
+		echo ""
+		echo "  $0 --build plugin.so plugin.cc"
+		echo ""
+		echo "Use --prefix to change the prefix for the special args from '--' to"
+		echo "something else. Example:"
+		echo ""
+		echo "  $0 --prefix @ bindir: @bindir"
+		echo ""
+		echo "The args --bindir and --datdir can be directly followed by a slash and"
+		echo "additional text. Example:"
+		echo ""
+		echo "  $0 --datdir/simlib.v"
+		echo ""
+	} >&2
+	exit 1
+}
+
+if [ $# -eq 0 ]; then
+	help
+fi
+
+if [ "$1" = "--build" ]; then
+	modname="$2"; shift 2
+	set -- --exec --cxx --cxxflags --ldflags -o "$modname" -shared "$@" --libs
+fi
+
+prefix="--"
+get_prefix=false
+exec_mode=false
+declare -a tokens=()
+
+for opt; do
+	if $get_prefix; then
+		prefix="$opt"
+		get_prefix=false
+		continue
+	fi
+	case "$opt" in
+		"$prefix"cxx)
+			tokens=( "${tokens[@]}"  x86_64-w64-mingw32-g++       ) ;;
+		"$prefix"cxxflags)
+			tokens=( "${tokens[@]}"  -march=nocona -msahf -mtune=generic -O2 -pipe -Wp,-D_FORTIFY_SOURCE=2 -fstack-protector-strong -Wp,-D__USE_MINGW_ANSI_STDIO=1 -Wall -Wextra -ggdb -I"/mingw64/share/yosys/include" -MD -MP -D_YOSYS_ -I/mingw64/include -DYOSYS_VER=\"0.51\" -DYOSYS_MAJOR=0 -DYOSYS_MINOR=51 -DYOSYS_COMMIT=0.51 -std=c++17 -O3 -D_POSIX_SOURCE -DYOSYS_WIN32_UNIX_DIR -DYOSYS_ENABLE_READLINE -DYOSYS_ENABLE_PLUGINS  -DYOSYS_ENABLE_GLOB -DYOSYS_ENABLE_ZLIB -DYOSYS_ENABLE_TCL -DYOSYS_ENABLE_ABC -I/mingw64/include -DYOSYS_ENABLE_GHDL -DYOSYS_ENABLE_COVER  ) ;;
+		"$prefix"linkflags)
+			tokens=( "${tokens[@]}"  -s -L"/mingw64/lib/yosys"   ) ;;
+		"$prefix"libs)
+			tokens=( "${tokens[@]}"  -lstdc++ -lm -lreadline -LD:/M/msys64/mingw64/lib/../lib -lffi -lz -ltcl86 -ltclstub86 /mingw64/lib/libghdl.a /mingw64/lib/gcc/x86_64-w64-mingw32/15.2.0/adalib/libgnat.a -lyosys_exe    ) ;;
+		"$prefix"ldflags)
+			tokens=( "${tokens[@]}"  -s -L"/mingw64/lib/yosys"   ) ;;
+		"$prefix"ldlibs)
+			tokens=( "${tokens[@]}"  -lstdc++ -lm -lreadline -LD:/M/msys64/mingw64/lib/../lib -lffi -lz -ltcl86 -ltclstub86 /mingw64/lib/libghdl.a /mingw64/lib/gcc/x86_64-w64-mingw32/15.2.0/adalib/libgnat.a -lyosys_exe    ) ;;
+		"$prefix"bindir)
+			tokens=( "${tokens[@]}" '/mingw64/bin'   ) ;;
+		"$prefix"datdir)
+			tokens=( "${tokens[@]}" '/mingw64/share/yosys'   ) ;;
+		"$prefix"bindir/*)
+			tokens=( "${tokens[@]}" '/mingw64/bin'"${opt#${prefix}bindir}" ) ;;
+		"$prefix"datdir/*)
+			tokens=( "${tokens[@]}" '/mingw64/share/yosys'"${opt#${prefix}datdir}" ) ;;
+		--help|-\?|-h)
+			if [ ${#tokens[@]} -eq 0 ]; then
+				help
+			else
+				tokens=( "${tokens[@]}" "$opt" )
+			fi ;;
+		--exec)
+			if [ ${#tokens[@]} -eq 0 ]; then
+				exec_mode=true
+			else
+				tokens=( "${tokens[@]}" "$opt" )
+			fi ;;
+		--prefix)
+			if [ ${#tokens[@]} -eq 0 ]; then
+				get_prefix=true
+			else
+				tokens=( "${tokens[@]}" "$opt" )
+			fi ;;
+		*)
+			tokens=( "${tokens[@]}" "$opt" )
+	esac
+done
+
+if $exec_mode; then
+	exec "${tokens[@]}"
+fi
+
+echo "${tokens[@]}"
+exit 0

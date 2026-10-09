@@ -3,41 +3,41 @@
     cell_leakage_power : 55.435400;
     /* pattern: [NAND2X1,NAND2X1,OR2X1]+XNOR2X1_c0o0+OAI21X1_c2o0 */
     /* estimated pre-layout (LUT mini-STA, no wire RC); re-characterise with SPICE for sign-off */
-    pin (cl1#A)  {
+    pin (cl1_A)  {
       direction : input;
       capacitance : 0.00211057;
     }
-    pin (cl1#B)  {
+    pin (cl1_B)  {
       direction : input;
       capacitance : 0.00202749;
     }
-    pin (cl2#A)  {
+    pin (cl2_A)  {
       direction : input;
       capacitance : 0.00252527;
     }
-    pin (cl2#B)  {
+    pin (cl2_B)  {
       direction : input;
       capacitance : 0.00242378;
     }
-    pin (cl3#B)  {
+    pin (cl3_B)  {
       direction : input;
       capacitance : 0.00558933;
     }
-    pin (cl4#A)  {
+    pin (cl4_A)  {
       direction : input;
       capacitance : 0.00274222;
     }
-    pin (cl4#B)  {
+    pin (cl4_B)  {
       direction : input;
       capacitance : 0.00283226;
     }
-    pin (cl3#Y)  {
+    pin (cl3_Y)  {
       direction : output;
       capacitance : 0;
       max_capacitance : 0;
-      function : "(!(((!(((!((cl1#A) (cl1#(((cl2#A)+(cl2#(cl3#B)))))))) (((cl2#A)+(cl2#(cl3#B)))))))^(cl3#B)))";
+      function : "(!(((!(((!((cl1_A) (cl1_B)))) (((cl2_A)+(cl2_B))))))^(cl3_B)))";
       timing() {
-        related_pin : "cl1#A";
+        related_pin : "cl1_A";
         cell_rise(delay_template_6x6) {  /* ns; worst-arc estimate */
           index_1 ("0.1, 0.5, 1.2, 3, 4, 5");
           index_2 ("0.06, 0.24, 0.48, 0.9, 1.2, 1.8");
@@ -84,7 +84,7 @@
         }
       }
       internal_power() {
-        related_pin : "cl1#A";
+        related_pin : "cl1_A";
         rise_power(delay_template_6x6) {  /* per toggle */
           index_1 ("0.1, 0.5, 1.2, 3, 4, 5");
           index_2 ("0.06, 0.24, 0.48, 0.9, 1.2, 1.8");
@@ -109,13 +109,13 @@
         }
       }
     }
-    pin (cl4#Y)  {
+    pin (cl4_Y)  {
       direction : output;
       capacitance : 0;
       max_capacitance : 0;
-      function : "(!(((cl4#A)+(cl4#B)) (((cl2#A)+(cl2#B)))))";
+      function : "(!(((cl4_A)+(cl4_B)) (((cl2_A)+(cl2_B)))))";
       timing() {
-        related_pin : "cl1#A";
+        related_pin : "cl1_A";
         cell_rise(delay_template_6x6) {  /* ns; worst-arc estimate */
           index_1 ("0.1, 0.5, 1.2, 3, 4, 5");
           index_2 ("0.06, 0.24, 0.48, 0.9, 1.2, 1.8");
@@ -162,7 +162,7 @@
         }
       }
       internal_power() {
-        related_pin : "cl1#A";
+        related_pin : "cl1_A";
         rise_power(delay_template_6x6) {  /* per toggle */
           index_1 ("0.1, 0.5, 1.2, 3, 4, 5");
           index_2 ("0.06, 0.24, 0.48, 0.9, 1.2, 1.8");
