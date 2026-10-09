@@ -876,3 +876,21 @@ libgcc_s_seh-1.dll、libstdc++-6.dll、libwinpthread-1.dll、liblzma-5.dll、lib
 1. **CP-SAT 压缩后端设为默认**:`GUROBI_CL_SOLVER` 默认由 cbc 切为 cpsat(§5.20 双单元端到端证据:同预算下目标值优 2.5×、COMPLEX0 −8%);保留 CBC 显式可选与 ortools 缺失自动回退;失败语义(全零 .sol)与 option-3 恢复纪律不变。默认切换后,新生成的单元宽度将按 CP-SAT 口径(跟踪快照保持 CBC 产物直至重生成)。
 2. **宽度代理训练管线化**(width_proxy.py):新增 `saveWidthProxy`/`loadWidthProxy`(Ridge 系数 JSON 持久化,加载补 n_features_in_ 与 ndarray)/`widthProxyModelStale`(模型 mtime vs 样本 mtime)/`trainOrLoadWidthProxy`(新鲜即复用,否则重训+持久化+LOO 报告);`core/pipeline` 改经该入口(输出目录 glob + 持久化路径 outputs/width_proxy.json,已加入 .gitignore);`core/evaluate` 门面导出全套。
 3. **验证**:290 单测全绿(新增训练管线 roundtrip/复用/持久化一致 1 例);CP-SAT 后端 4 例保持;全量回归含等价测试。
+
+### 5.31 CP-SAT 默认口径下的 adder 快照重生成(2026-10-10)
+
+**动机**:§5.30 默认后端切为 CP-SAT 后,受跟踪快照仍是 CBC 产物——口径不对称。本轮重生成闭合。
+
+**基线口径验证(关键)**:11 个库单元(NAND2/OR2/XNOR2/XOR2/OAI21/AND2/AOI21/NOR2/AOI22/NAND3/INV)在 CP-SAT 下宽度与 CBC 快照**逐位一致**(changed=[])——小单元上两后端同优,基线无需重生成,面积对比口径保持连贯。
+
+**新快照(outputs/adder,全部过 layout_sanity 校验门)**:
+
+| 单元 | CBC 旧宽 | CP-SAT 新宽 | 变化 |
+|---|---|---|---|
+| COMPLEX0 | 2.28 | **2.09** | −8% |
+| COMPLEX1 | 4.37 | **3.61** | −17% |
+| COMPLEX9 | 3.61 | **3.42** | −5% |
+| COMPLEX10 | 5.89 | **4.37** | −26%,由亏转盈 |
+| COMPLEX11(新) | — | 3.80 | 新生长模式 |
+
+**收益重估**:bestRecord-adder 总节省 22.8(3.06%)→ **85.5(11.46% vs ASTRAN)**/108.3(13.81% vs GSCL)——COMPLEX10(54×4)首次入选且为正收益;宽度代理 LOO MAPE 16.4% 复现。快照整体(含 COMPLEX11 .sp/.lib/.gds 与 .png)作为一次连贯快照提交。

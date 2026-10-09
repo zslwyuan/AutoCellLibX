@@ -60,7 +60,7 @@ Mcl2#4 cl2#a_2_6# cl2#B GND GND NMOS W=0.5u L=0.05u
 Mcl2#5 cl2#Y cl2#C cl2#a_2_6# GND NMOS W=0.5u L=0.05u
 + ad=0p pd=0u as=0p ps=0u 
 .ends COMPLEX1
-* pattern code: [XNOR2X1,XOR2X1,OAI21X1]
+* pattern code: [XNOR2X1,OAI21X1,XOR2X1]
 * 54 occurrences in design 
 * each contains 3 cells
 * Example occurence:
