@@ -16,20 +16,8 @@ import matplotlib
 from BLIFPreProc import *
 from BLIFPatternGrowth import *
 from spice import *
-from Astran import *
-from GDSIIAnalysis import *
-from benefit import ShrinkModel, makeGrowthBenefitEstimator
-from routability import loadCellRoutability
-from electrical import loadCellElectricalMetrics, patternElectricalMetrics
-from timing_power import loadTimingPower, patternTimingPower
-from yosys_import import (runYosysStat, compareWithFlowArea,
-                          compareCellCounts)
-from layout_sanity import checkLayout
-from liberty_gen import generateComplexLiberty, loadLibertyFunctions
-from reuse import reuseEligible
-from width_proxy import (WidthProxy, collectSamples,
-                         countTransistorsPerType, evaluateLOO,
-                         makeProxyBenefitEstimator)
+from core.external import *
+from core.evaluate import *
 
 
 def mkdir(pathStr):

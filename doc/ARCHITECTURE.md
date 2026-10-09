@@ -19,8 +19,10 @@ pySrc/
     seeding.py       ← 初始聚类（heuristicLabel.../..._BasedOn，AST 逐字提取，
                        BLIFPreProc 现为 re-export shim）
     graph.py         ← （规划）数据结构门面（BLIFGraphUtil）
-    evaluate.py      ← （规划）评估层门面：电气/时序/可布性/复用/宽度代理/版图体检
-    external.py      ← （规划）外部工具门面：ASTRAN / yosys / GDS
+    evaluate.py      ← 评估层门面：电气/时序/可布性/复用/宽度代理/版图体检/表征/PDK
+                       （收编 electrical/timing_power/routability/reuse/width_proxy/
+                         layout_sanity/benefit/liberty_gen/pdk_config）
+    external.py      ← 外部工具门面：ASTRAN / GDSIIAnalysis / yosys / 重映射评估
   BLIFPreProc.py     ← shim：seeding 已迁 core，其余解析暂留（下一步迁 core/parse）
   BLIFPatternGrowth.py ← 生长（下一步迁 core/growth）
   ...其余单职责模块（benefit/routability/electrical/timing_power/liberty_gen/
@@ -53,7 +55,7 @@ gui/flow_core.py     ← 待迁移：第三份控制流副本，下一步改为�
    BLIFPreProc 与 spice 变 shim（编排/GNN/导出留在 shim）；
 
 2. ~~core/growth~~ ✅ 已迁（2026-10-10）；
-3. ~~gui/flow_core 消费 core.pipeline~~ ✅ 已迁（2026-10-10）：_mine/_phase2 委托
-   runPipeline，_GuiPipelineHooks 桥接事件/取消/布局器，spy 重定向；
-4. core/evaluate + core/external 门面（把已单职责的小模块收编为一层）；
+3. ~~gui/flow_core 消费 core.pipeline~~ ✅ 已迁（2026-10-10）；
+4. ~~core/evaluate + core/external 门面~~ ✅ 已迁（2026-10-10）：pipeline 改为
+   经门面取依赖，测试钉住"同一对象绑定"（test_facades）；
 5. 性能层：CP-SAT 后端默认化、宽度代理训练管线化（见 RESEARCH_AND_OPTIMIZATION）。

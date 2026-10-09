@@ -864,3 +864,9 @@ libgcc_s_seh-1.dll、libstdc++-6.dll、libwinpthread-1.dll、liblzma-5.dll、lib
 - gui/flow_core._mine/_phase2 改为委托 core.pipeline.runPipeline:_GuiPipelineHooks 桥接 GUI 事件面、取消、_generate_complex_layout 布局器(含 do_layouts 关闭时落盘宽度回退);ctx 状态经 result 捕获回填,页面继续可用。
 - 等价测试(test_flow_parity)spy 重定向到 core.pipeline(GUI 与 CLI 现为同一实现),仍钉住两出口一致。
 - 架构文档 ARCHITECTURE.md 更新;285 单测全绿。
+
+### 5.29 架构重构:core/evaluate + core/external 门面(2026-10-10)
+
+- core/evaluate.py 收编评估层:electrical/timing_power/routability/reuse/width_proxy/layout_sanity/benefit/liberty_gen/pdk_config 的公开面;core/external.py 收编工具层:ASTRAN 常量与运行面/GDSIIAnalysis/yosys_import/yosys_eval。
+- core/pipeline 的依赖导入全部改走两个门面(BLIFPreProc/BLIFPatternGrowth/spice 星号导入保留,属 parse/seed/growth/export 层);test_facades 钉住"pipeline 绑定的对象与门面导出的对象是同一份"(杜绝双实现漂移)与"门面 Qt-free"。
+- 验证:289 单测全绿(新增 4 例)。
