@@ -4,7 +4,7 @@ One import surface for every evaluation concern the pipeline uses:
 electrical metrics, LUT timing/power, routability, layout sanity,
 synthesis-reuse eligibility, the learned width proxy, the benefit
 estimator, and liberty characterisation of generated cells.  The
-implementations stay in their single-purpose modules (pySrc/ root) --
+implementations stay in their single-purpose modules (flow/ root) --
 this facade is the layer boundary so pipeline and future consumers
 never import them directly.
 """

@@ -1,4 +1,4 @@
-"""Unit tests for the pattern growth algorithm (pySrc/blif_pattern_growth.py).
+"""Unit tests for the pattern growth algorithm (flow/blif_pattern_growth.py).
 
 Regression covered: ``grow_sequence_of_clusters`` skipped neighbours that already
 belonged to another cluster of the *same* pattern on the input-predecessor
@@ -16,7 +16,7 @@ from blif_graph_util import (
 )
 from blif_pattern_growth import grow_sequence_of_clusters
 
-LIB = "../stdCelllib/gscl45nm.lib"
+LIB = "../std_celllib/gscl45nm.lib"
 BLIF = "../benchmark/blif/adder.blif"
 
 
@@ -92,7 +92,7 @@ def test_input_side_does_not_absorb_same_pattern_cluster():
     assert y2.id not in c1.cell_ids
 
 
-def test_growth_invariants_on_benchmark(in_pysrc):
+def test_growth_invariants_on_benchmark(in_flow):
     from blif_preproc import load_data_and_preprocess
 
     G, cells, netlist, types, ds, ml, seqs, cn = load_data_and_preprocess(

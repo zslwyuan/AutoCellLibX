@@ -1,5 +1,5 @@
 """Naming reform (direct rename, no aliases): the legacy camelCase names
-must not appear anywhere in pySrc/gui/tests.
+must not appear anywhere in flow/gui/tests.
 
 Exceptions that legitimately keep camelCase: Qt signal/method names (Qt
 convention), ASTRAN C++ identifiers quoted in comments, and the tokens of
@@ -65,7 +65,7 @@ LEGACY = [
 def test_no_legacy_names_in_code():
     root = pathlib.Path(__file__).resolve().parents[2]
     hits = []
-    for path in list((root / "pySrc").rglob("*.py")) \
+    for path in list((root / "flow").rglob("*.py")) \
             + list((root / "gui").rglob("*.py")) \
             + list((root / "tests").rglob("*.py")):
         if path.name in ("test_naming.py",       # the LEGACY list lives here

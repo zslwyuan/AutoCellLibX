@@ -37,7 +37,7 @@ LAYER, XY, ENDEL, STRING = 0x0D, 0x10, 0x11, 0x19
 # tech_freePDK45.rul: MINSTEP 0.0025um -> internal unit 2.5nm; the GDS writer
 # emits 2x internal coordinates, so one database unit is 1.25nm.
 DBU_UM = 0.00125
-# stream numbers follow the GSCL45 map (stdCelllib/gds2_encounter.map):
+# stream numbers follow the GSCL45 map (std_celllib/gds2_encounter.map):
 # metal1 drawing and metal1 pin are both 49; poly 9, contact 10, pr_boundary 235
 MET1, POLY, CONT, PRB, MET1_PIN = 49, 9, 10, 235, 49
 W1M1_UM, W2P1_UM, W2CT_UM = 0.065, 0.05, 0.065
@@ -49,10 +49,10 @@ REPO_DIR = os.path.dirname(os.path.dirname(os.path.dirname(
 
 
 def _gds_files():
-    out = sorted(glob.glob(os.path.join(REPO_DIR, "pySrc", "outputs", "adder",
+    out = sorted(glob.glob(os.path.join(REPO_DIR, "flow", "outputs", "adder",
                                         "COMPLEX*.gds")))
-    out += sorted(glob.glob(os.path.join(REPO_DIR, "pySrc",
-                                         "originalAstranStdCells", "*.gds")))
+    out += sorted(glob.glob(os.path.join(REPO_DIR, "flow",
+                                         "original_astran_cells", "*.gds")))
     return out
 
 
@@ -167,8 +167,8 @@ def test_drawn_cell_size_matches_the_log(path):
 @pytest.mark.parametrize("path", GDS_FILES)
 def test_every_port_including_power_is_labelled(path):
     name = os.path.splitext(os.path.basename(path))[0]
-    if os.path.basename(os.path.dirname(path)) == "originalAstranStdCells":
-        sp = os.path.join(REPO_DIR, "stdCelllib", "cellsAstranFriendly.sp")
+    if os.path.basename(os.path.dirname(path)) == "original_astran_cells":
+        sp = os.path.join(REPO_DIR, "std_celllib", "cellsAstranFriendly.sp")
     else:
         sp = os.path.splitext(path)[0] + ".sp"
     ports = _ports_from_netlist(sp, name)

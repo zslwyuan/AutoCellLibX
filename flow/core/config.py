@@ -37,9 +37,9 @@ class FlowConfig:
     hint_mode: str = "off"
 
     # --- library / PDK paths (were Astran constants) ---
-    liberty: str = "../stdCelllib/gscl45nm.lib"
-    spice_lib: str = "../stdCelllib/cellsAstranFriendly.sp"
-    lef: str = "../stdCelllib/gscl45nm.lef"
+    liberty: str = "../std_celllib/gscl45nm.lib"
+    spice_lib: str = "../std_celllib/cellsAstranFriendly.sp"
+    lef: str = "../std_celllib/gscl45nm.lef"
     blif_dir: str = "../benchmark/blif"
     astran_build_path: str = ""                     # empty = no layout runs
 

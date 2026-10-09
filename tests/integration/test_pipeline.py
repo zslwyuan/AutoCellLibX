@@ -8,11 +8,11 @@ import pytest
 
 pytestmark = pytest.mark.slow
 
-LIB = "../stdCelllib/gscl45nm.lib"
+LIB = "../std_celllib/gscl45nm.lib"
 BLIF = "../benchmark/blif/adder.blif"
 
 
-def test_mining_growth_and_export(in_pysrc, tmp_path):
+def test_mining_growth_and_export(in_flow, tmp_path):
     from blif_preproc import load_data_and_preprocess
     from blif_graph_util import sort_pattern_cluster_seqs
     from blif_pattern_growth import grow_sequence_of_clusters
@@ -27,7 +27,7 @@ def test_mining_growth_and_export(in_pysrc, tmp_path):
     assert pattern_num >= len(seqs)
     assert len(new_seqs) > 0
 
-    subs = load_spice_subcircuits("../stdCelllib/cellsAstranFriendly.sp")
+    subs = load_spice_subcircuits("../std_celllib/cellsAstranFriendly.sp")
     export_spice_netlist(new_seqs[0], subs, 0, str(tmp_path))
     out = os.path.join(str(tmp_path), "COMPLEX0.sp")
     assert os.path.exists(out)

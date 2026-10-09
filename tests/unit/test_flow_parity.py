@@ -1,4 +1,4 @@
-"""Roadmap P0-5: pin the parity of ``pySrc/main.py`` and ``gui/flow_core.py``.
+"""Roadmap P0-5: pin the parity of ``flow/main.py`` and ``gui/flow_core.py``.
 
 ``gui/flow_core.py`` is a port of ``main.py``'s mining control flow; so far
 their equivalence (thresholds, trace-keyed de-dup, 0x0-layout exclusion,
@@ -15,7 +15,7 @@ cache checks) and ``<name>.Astranlog`` carrying the
 ``-> Cell Size (W x H):`` line that ``load_astran_area`` parses.
 
 Everything happens under ``tmp_path``; the tracked artifacts in
-``pySrc/outputs/`` are never touched.  Both flows run their default
+``flow/outputs/`` are never touched.  Both flows run their default
 configuration (including beam growth, ``grow_beam_width=2``).
 
 Capture points (kept symmetric -- main.py star-imports its helpers into its
@@ -44,7 +44,7 @@ import pytest
 
 REPO_DIR = os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__))))
-STDCELLLIB_DIR = os.path.join(REPO_DIR, "stdCelllib")
+STD_CELLLIB_DIR = os.path.join(REPO_DIR, "std_celllib")
 BLIF_DIR = os.path.join(REPO_DIR, "benchmark", "blif")
 
 CELL_HEIGHT_UM = 2.47   # the row height both flows are configured for
@@ -66,7 +66,7 @@ def _fake_cell_width(spice_netlist_path, cell_name):
 def _write_fake_layout(command_dir, cell_name, width):
     os.makedirs(command_dir, exist_ok=True)
     # A minimal but *valid* GDS: the flow's layout sanity gate
-    # (pySrc/layout_sanity.py) parses the file and requires metal1-active
+    # (flow/layout_sanity.py) parses the file and requires metal1-active
     # polygons spanning the row height plus supply labels.
     import gdstk
     from layout_sanity import ASTRAN_GDS_UNITS_PER_UM
@@ -99,19 +99,19 @@ def _fake_run_astran_for_netlist(astran_path, gurobi_path, technology_path,
 # ------------------------------------------------------------------ sandbox
 def _make_sandbox(base_dir):
     """Minimal repo layout the flows' relative paths resolve against."""
-    pysrc = os.path.join(base_dir, "pySrc")
-    os.makedirs(os.path.join(pysrc, "outputs"))
-    os.makedirs(os.path.join(pysrc, "originalAstranStdCells"))
-    lib_dir = os.path.join(base_dir, "stdCelllib")
+    flow_dir = os.path.join(base_dir, "flow")
+    os.makedirs(os.path.join(flow_dir, "outputs"))
+    os.makedirs(os.path.join(flow_dir, "original_astran_cells"))
+    lib_dir = os.path.join(base_dir, "std_celllib")
     os.makedirs(lib_dir)
     for name in ("gscl45nm.lib", "cellsAstranFriendly.sp", "gscl45nm.lef"):
-        shutil.copyfile(os.path.join(STDCELLLIB_DIR, name),
+        shutil.copyfile(os.path.join(STD_CELLLIB_DIR, name),
                         os.path.join(lib_dir, name))
     blif_dir = os.path.join(base_dir, "benchmark", "blif")
     os.makedirs(blif_dir)
     shutil.copyfile(os.path.join(BLIF_DIR, "adder.blif"),
                     os.path.join(blif_dir, "adder.blif"))
-    return {"pysrc": pysrc, "lib": lib_dir, "blif": blif_dir}
+    return {"flow_dir": flow_dir, "lib": lib_dir, "blif": blif_dir}
 
 
 def _png_id(filename):
@@ -147,7 +147,7 @@ class _DumpTracker(object):
 
 # --------------------------------------------------------------- the runners
 def _run_main_flow(sandbox, monkeypatch):
-    """Run pySrc/main.py's main() in the sandbox.
+    """Run flow/main.py's main() in the sandbox.
 
     Returns (out_dir, tracker, phase2_targets): the tracker reconstructs
     main's own detected_patterns/dumped_patterns; phase2_targets is the target
@@ -185,11 +185,11 @@ def _run_main_flow(sandbox, monkeypatch):
     monkeypatch.setattr(
         "core.pipeline.heuristic_label_initial_clusters_based_on",
         spy_based_on)
-    monkeypatch.chdir(sandbox["pysrc"])
+    monkeypatch.chdir(sandbox["flow_dir"])
     cfg = core.config.FlowConfig.from_env()
     cfg.astran_build_path = "stub"          # enable the (stubbed) layout path
     core.pipeline.run_pipeline(cfg)
-    return (os.path.join(sandbox["pysrc"], "outputs", "adder"),
+    return (os.path.join(sandbox["flow_dir"], "outputs", "adder"),
             tracker, phase2_targets)
 
 
@@ -221,11 +221,11 @@ def _run_gui_flow(sandbox, monkeypatch):
     cfg.lef_file = os.path.join(sandbox["lib"], "gscl45nm.lef")
     cfg.custom_blifs = {"adder": os.path.join(sandbox["blif"], "adder.blif")}
 
-    monkeypatch.setattr(flow_core.paths, "PYSRC_DIR", sandbox["pysrc"])
+    monkeypatch.setattr(flow_core.paths, "FLOW_DIR", sandbox["flow_dir"])
     monkeypatch.setattr(flow_core.paths, "OUTPUTS_DIR",
-                        os.path.join(sandbox["pysrc"], "outputs"))
+                        os.path.join(sandbox["flow_dir"], "outputs"))
     monkeypatch.setattr(flow_core.paths, "ORIGINAL_CELLS_DIR",
-                        os.path.join(sandbox["pysrc"], "originalAstranStdCells"))
+                        os.path.join(sandbox["flow_dir"], "original_astran_cells"))
     monkeypatch.setattr(flow_core.paths, "probe_environment", lambda: [])
     monkeypatch.setattr(flow_core.FlowRunner, "astran_available",
                         lambda self: True)
@@ -268,7 +268,7 @@ def _run_gui_flow(sandbox, monkeypatch):
             summary_box["summary"] = summary
 
     flow_core.FlowRunner(cfg, _Hooks()).run()
-    return (os.path.join(sandbox["pysrc"], "outputs", "adder"),
+    return (os.path.join(sandbox["flow_dir"], "outputs", "adder"),
             summary_box.get("summary", {}), tracker, phase2_targets)
 
 

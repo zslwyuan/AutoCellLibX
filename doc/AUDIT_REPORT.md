@@ -66,7 +66,7 @@
 | 来源 | 标称高度(日志/LEF) | GDS bbox 高度 | 备注 |
 |---|---|---|---|
 | GSCL45 目标库 | LEF `SIZE x BY 2.47` | 2.67(含 ±0.1 边界) | 待集成进去的库 |
-| 上游 ASTRAN 原始单元(`originalAstranStdCells/`) | 日志 `Cell Size ... x 3.2` | 2.936 | 作为面积对比基准 |
+| 上游 ASTRAN 原始单元(`original_astran_cells/`) | 日志 `Cell Size ... x 3.2` | 2.936 | 作为面积对比基准 |
 | 本机新生成单元(`outputs/adder/COMPLEX*.gds`) | 日志 `Cell Size ... x 2.6` | 2.456 | 实际产物 |
 
 **后果**:
@@ -126,13 +126,13 @@ exit
    其中 row height 应由 GSCL45 LEF 的 `SIZE x BY 2.47` 与 ASTRAN 的 pitch 反推(需标定)。
 2. **统一层映射**:用 `set technology gdsii <layer> <value>` 把 ASTRAN 输出层号对齐 GSCL45 库,或后处理重映射。
 3. **统一面积度量**:在高度一致的前提下,用「单元宽度 × 行高」或「LEF SIZE / 日志 Cell Size」作为面积;避免用单层图形面积。
-4. 重新生成 `originalAstranStdCells/` 基准(用本机配置),消除基准与产物的配置差异。
+4. 重新生成 `original_astran_cells/` 基准(用本机配置),消除基准与产物的配置差异。
 
 ---
 
 ## 三、Pattern 提取/生长/组合算法修复(已实施)
 
-发现并修复以下确凿错误(均在 `pySrc/`):
+发现并修复以下确凿错误(均在 `flow/`):
 
 ### 3.1 `blif_preproc.extract_and_encode_subgraph_tree` —— 编码与节点错位
 
@@ -166,7 +166,7 @@ exit
 
 ### 3.5 测试体系与验证
 
-**项目合并**:ASTRAN 源码与 LP 求解器包装已 vendored 进本仓库(`tools/astran/`、`tools/gurobi_cl/`),`pySrc/astran.py` 集中定义项目内路径,项目自包含。
+**项目合并**:ASTRAN 源码与 LP 求解器包装已 vendored 进本仓库(`tools/astran/`、`tools/gurobi_cl/`),`flow/astran.py` 集中定义项目内路径,项目自包含。
 
 **测试套件**(`tests/`,pytest,分层):
 
@@ -198,7 +198,7 @@ exit
 2. **Layout 生成配置**:**不合理**。核心是**单元高度三方不一致**(目标库 2.47 / 上游基准 3.2 / 本机产物 2.6),叠加**层映射不一致**与**面积度量不当**。当前生成的复杂单元在物理上无法直接与 GSCL45 库集成;面积对比的绝对值不可靠。需显式配置 ASTRAN circuit 参数、统一层映射与面积度量。
 3. **Pattern 算法**:修复了 3 处确凿错误(编码错位、生长方向不对称、labelId 不一致)+ 4 处缺陷(特征维度越界、空序列保护、SPICE 接口换行),已通过 adder 全流程与测试套件验证。
 
-**工程化交付**:ASTRAN 与 AutoCellLibX 已合并为单一项目管理(`tools/astran`、`tools/gurobi_cl` vendored,路径集中于 `pySrc/astran.py`,`BUILDING.md` 说明构建/运行/测试);建立分层测试体系(unit 31 + integration 3,含针对上述每个 bug 的回归用例)。
+**工程化交付**:ASTRAN 与 AutoCellLibX 已合并为单一项目管理(`tools/astran`、`tools/gurobi_cl` vendored,路径集中于 `flow/astran.py`,`BUILDING.md` 说明构建/运行/测试);建立分层测试体系(unit 31 + integration 3,含针对上述每个 bug 的回归用例)。
 
 > 本次实施:第 3 部分的代码修复 + 项目合并 + 测试体系;第 1、2 部分按"分析"交付,其修复涉及 ASTRAN 源码与工艺配置,建议单独立项并重新标定。
 
@@ -235,7 +235,7 @@ exit
 |---|---|
 | 面积度量 | 三类单元(ASTRAN 基准 / ASTRAN 产物 / GSCL 库)统一为**标称宽度**作面积代理(同库行高固定 ⇒ 面积 ∝ 宽度),消除基准(3.2um)与产物(2.6um)行高不一致引入的偏差;GSCL 侧从 LEF `SIZE` 取宽度(不再用单个 GDS 层的图形面积) |
 | 工艺参数 | `.run` 脚本显式固化 `set rowheight/grid/supplysize/nwellpos/celltemplate`,不再依赖编译内置默认,配置可复现 |
-| 项目自包含 | ASTRAN 与求解器包装 vendored 至 `tools/`,路径集中于 `pySrc/astran.py` |
+| 项目自包含 | ASTRAN 与求解器包装 vendored 至 `tools/`,路径集中于 `flow/astran.py` |
 
 ### 5.4 验证
 
@@ -247,7 +247,7 @@ exit
 
 1. **与 GSCL45 行高精确对齐**:目标库行高 2.47um,本机 ASTRAN 产物 2.6um(默认 `rowheight 13 × vgrid 0.20`)。可用 `set rowheight`/`set vgrid` 标定(如 13×0.19),但会改变单元几何,需 DRC 复核,故未在本轮强制实施;
 2. **层映射统一**:ASTRAN 输出层号与 GSCL45 库不同,集成前需用 `set technology gdsii` 重映射或后处理;
-3. **基线重生成**:`originalAstranStdCells/` 仍为上游版本(H=3.2);若需与本机配置完全一致,可用 `tools/gurobi_cl` + 修复版 ASTRAN 重新生成(单次 compaction 约数十秒至 5 分钟,32 个单元约 1 小时)。
+3. **基线重生成**:`original_astran_cells/` 仍为上游版本(H=3.2);若需与本机配置完全一致,可用 `tools/gurobi_cl` + 修复版 ASTRAN 重新生成(单次 compaction 约数十秒至 5 分钟,32 个单元约 1 小时)。
 
 ### 5.6 第二轮追加修复:结果一致性(2026-09-24)
 
@@ -276,7 +276,7 @@ exit
 
 **测试新增**:`tests/unit/test_layout_cache.py`(4 例,版图缓存判定)与 `tests/unit/test_spice.py::test_export_spice_netlist_only_writes_on_change`(网表写入幂等性);合计 36 个单元测试通过。
 
-**工具新增**:`pySrc/regenerate_cells.py`(按名重生成指定单元的版图,无需重跑挖掘流水线)。
+**工具新增**:`flow/regenerate_cells.py`(按名重生成指定单元的版图,无需重跑挖掘流水线)。
 
 ### 5.7 第三轮修复:数值、行高与可复现性(2026-09-24)
 
@@ -305,9 +305,9 @@ Cexpr6794: astranExpr6794 - y186_width - inf x186_width = 0
 
 **(2) 面积比较的基准行高不匹配(已按同高重生成)**
 
-先前 `outputs/adder` 的增益是在"**基准 H=3.2 × 产物 H=2.6**"下算出的:GSCL45 LEF 的单元高度是 **2.47**(见 `stdCelllib/gscl45nm.lef` 的 `SIZE … BY 2.47`),而 `originalAstranStdCells/` 里的 ASTRAN 基准是上游**另一套** ASTRAN(日志自证 Linux + `/opt/gurobi950` + `cellsHeight=16`)以 **H=3.2** 生成的,本仓库无法复现。行高不同则"面积 ∝ 宽度"不成立,比较无意义——实测 `COMPLEX9` 因此从 +6.5% 翻成 −19.5%。
+先前 `outputs/adder` 的增益是在"**基准 H=3.2 × 产物 H=2.6**"下算出的:GSCL45 LEF 的单元高度是 **2.47**(见 `std_celllib/gscl45nm.lef` 的 `SIZE … BY 2.47`),而 `original_astran_cells/` 里的 ASTRAN 基准是上游**另一套** ASTRAN(日志自证 Linux + `/opt/gurobi950` + `cellsHeight=16`)以 **H=3.2** 生成的,本仓库无法复现。行高不同则"面积 ∝ 宽度"不成立,比较无意义——实测 `COMPLEX9` 因此从 +6.5% 翻成 −19.5%。
 
-修复:用 vendored 工具链、**同一套几何常量**重生成 `originalAstranStdCells/`(H=2.6),使基准与产物同高,整条结果可用本仓库复现。与 GSCL45 仍有 2.6 vs 2.47 的残余差异(约 5%);如需完全对齐,把 `astran.ASTRAN_VGRID` 调为 0.19(13×0.19=2.47)后重做 DRC 复核即可。
+修复:用 vendored 工具链、**同一套几何常量**重生成 `original_astran_cells/`(H=2.6),使基准与产物同高,整条结果可用本仓库复现。与 GSCL45 仍有 2.6 vs 2.47 的残余差异(约 5%);如需完全对齐,把 `astran.ASTRAN_VGRID` 调为 0.19(13×0.19=2.47)后重做 DRC 复核即可。
 
 **(3) 流水线不可复现(`PYTHONHASHSEED`)**
 
@@ -415,8 +415,8 @@ cpt.insertConstraint("ZERO", "y"+metNode+"_width" + " + " + to_string(-tmp2) + "
 `bestRecord-adder`:**节省 106.2(ASTRAN 同高基准的 13.25%;GSCL LEF 的 11.44%)**,选定单元 COMPLEX10(59 次出现,5 单元)。内部自洽:原 5 单元宽度合计 5.6,合并后 3.8,1.8 × 59 = 106.2。
 
 **未完成(已记录)**:
-- 6 单元生长图案(COMPLEX11):求解在两段预算内未终止,由 0×0 防护排除;其后的 7 单元图案(COMPLEX12)同样无法生成——CBC 在最大模型上**不遵守时间上限**(无法中断超长的根松弛求解),故这两个图案的生成不会终止,已从数据集中移除(不会进入任何记录);<s>`bestRecord-seperateadder`(phase 2 的逐图案记录)未生成</s>——已用 phase 2 的忠实回放(`pySrc/replay_separate_adder.py`)生成,与真实循环同公式、同浮点;
-- 行高仍为 2.6 vs GSCL45 的 2.47(见 §5.5/§5.7(2));`originalAstranStdCells/` 已全部按 2.6 重生成(16 个单元,含本轮的 CLKBUF1/DFFNEGX1/DFFPOSX1/MUX2X1/NOR3X1)。
+- 6 单元生长图案(COMPLEX11):求解在两段预算内未终止,由 0×0 防护排除;其后的 7 单元图案(COMPLEX12)同样无法生成——CBC 在最大模型上**不遵守时间上限**(无法中断超长的根松弛求解),故这两个图案的生成不会终止,已从数据集中移除(不会进入任何记录);<s>`bestRecord-seperateadder`(phase 2 的逐图案记录)未生成</s>——已用 phase 2 的忠实回放(`flow/replay_separate_adder.py`)生成,与真实循环同公式、同浮点;
+- 行高仍为 2.6 vs GSCL45 的 2.47(见 §5.5/§5.7(2));`original_astran_cells/` 已全部按 2.6 重生成(16 个单元,含本轮的 CLKBUF1/DFFNEGX1/DFFPOSX1/MUX2X1/NOR3X1)。
 
 ### 5.9 第五轮:补齐基线单元时的 ASTRAN 崩溃(2026-09-25)
 
@@ -502,9 +502,9 @@ ASTRAN 只给 IOgeometries 里的信号端口打标(route() 把 vdd/gnd 排除�
 
 **(1) 标定来源与改动**
 
-从 `stdCelllib` 提取的 GSCL45 约定:LEF `CoreSite SIZE 0.38 BY 2.47`、M1 pitch 0.19µm、abutment 导轨 0.13µm 高、宽度取 0.19 的倍数、`gscl45nm.lib` 标称电压 1.1V、`gds2_encounter.map` 的 stream 号(metal1=49、via=50、metal2=51、via2=61、metal3=62、via3=30、metal4=31、via4=32、metal5=33)。
+从 `std_celllib` 提取的 GSCL45 约定:LEF `CoreSite SIZE 0.38 BY 2.47`、M1 pitch 0.19µm、abutment 导轨 0.13µm 高、宽度取 0.19 的倍数、`gscl45nm.lib` 标称电压 1.1V、`gds2_encounter.map` 的 stream 号(metal1=49、via=50、metal2=51、via2=61、metal3=62、via3=30、metal4=31、via4=32、metal5=33)。
 
-- `pySrc/astran.py`:`ASTRAN_VGRID=ASTRAN_HGRID=0.19`(原 0.20)、`ASTRAN_SUPPLY_SIZE=0.26`(原 0.72;内部 `supWidth = max(supplyVSize, W1M1)/2 = 0.13` → 导轨高 0.13µm)、`ASTRAN_NWELL_POS=1.235 = H/2`(使 nwell/pwell 等高,与手工库一致;初版取过 1.0825,井高不等)。行高 = 13 × 0.19 = **2.47µm = GSCL45 site 高**。
+- `flow/astran.py`:`ASTRAN_VGRID=ASTRAN_HGRID=0.19`(原 0.20)、`ASTRAN_SUPPLY_SIZE=0.26`(原 0.72;内部 `supWidth = max(supplyVSize, W1M1)/2 = 0.13` → 导轨高 0.13µm)、`ASTRAN_NWELL_POS=1.235 = H/2`(使 nwell/pwell 等高,与手工库一致;初版取过 1.0825,井高不等)。行高 = 13 × 0.19 = **2.47µm = GSCL45 site 高**。
 - `tools/astran/build/Work/tech_freePDK45.rul`:金属/通孔层号改为 GSCL45 stream 号;`VDD 3.3 → 1.1`。
 - `tools/astran/build_astran.sh`:链接后 `strip` 二进制 —— 360 的启动启发式(HEUR/QVM…Malware.Gen)会删除刚链接的 `Astran.exe`,strip 后不再误杀(替代此前"加信任列表"的说法)。
 
@@ -568,7 +568,7 @@ ASTRAN 只给 IOgeometries 里的信号端口打标(route() 把 vdd/gnd 排除�
 
 **(2) 客户安装包** —— 无网络环境下(无 PyInstaller/Inno Setup/NSIS 可用)制作单文件自解压安装器,全部脚本在 `tools/package/`:
 
-- `make_stage.py` 装配 `dist/stage/`:流程本体(pySrc、stdCelllib、benchmark/blif 去掉 BoomBranchPredictor 与 DCache 两个 >90MB 巨型网表、tools/astran/build、tools/gurobi_cl、doc)+ 从开发机 Python 3.11 复制的**裁剪运行时**(site-packages 按 `SITE_KEEP` 保留列表,2.9GB → 970MB);
+- `make_stage.py` 装配 `dist/stage/`:流程本体(flow、std_celllib、benchmark/blif 去掉 BoomBranchPredictor 与 DCache 两个 >90MB 巨型网表、tools/astran/build、tools/gurobi_cl、doc)+ 从开发机 Python 3.11 复制的**裁剪运行时**(site-packages 按 `SITE_KEEP` 保留列表,2.9GB → 970MB);
 - PySide6 只保留 QtCore/QtGui/QtWidgets(+QtSvg),按前缀去掉 WebEngine/QML/Quick/Multimedia 等(642MB → ~240MB);**坑**:初版把 `pyside6.abi3.dll`/`icu*.dll` 等非 Qt 前缀的支持 DLL 一并删了,`import QtWidgets` 报 DLL load failed —— 过滤必须以"Qt 前缀 + 白名单"为准,支持 DLL 全留;
 - 运行时裁剪踩到的隐性依赖(按导入失败逐个补进 `SITE_KEEP`):sklearn 1.9 需要 `narwhals`,liberty-parser 需要 `sympy`+`mpmath`,python-mip 需要 `cffi`(+`pycparser`);cbcbox 只留 `cbc_dist*/bin+lib`(mip 通过 `cbc_lib_dir()` 找 `libCbc-0.dll`),实测 CBC 求解正常;
 - `launcher.c` 编译为 `AutoCellLibX.exe`(自定位目录、PATH 前置 runtime、起 `pythonw -m gui`);**坑**:MSYS2 MinGW gcc 从 Git Bash 直调无法 spawn cc1.exe,必须经 `C:\msys64\usr\bin\bash.exe -lc` 驱动;
@@ -604,7 +604,7 @@ ASTRAN 只给 IOgeometries 里的信号端口打标(route() 把 vdd/gnd 排除�
 
 **新增文件**:
 - `NOTICE`(仓库根):AutoCellLibX 版权声明(Apache 2.0 要求)+ 第三方归属摘要;
-- `THIRD_PARTY_NOTICES.md`(仓库根):逐组件清单——ASTRAN(来源/版权头/无许可文本的如实记录/修改记录/wxWidgets LGPL 动态链接)、gurobi_cl 包装(自有)+ python-mip(EPL-2.0)+ CBC(EPL-1.0)、stdCelllib(GSCL45=FreePDK45 系 Apache-2.0、sky130=Apache-2.0、gpdk45nm.m=Cadence 专有)、benchmark(EPFL 研究用、BOOM/Rocket/Gemmini BSD-3 系)、内置 Python 依赖全表(逐包许可证,并指向 runtime 内 dist-info 自带文本);
+- `THIRD_PARTY_NOTICES.md`(仓库根):逐组件清单——ASTRAN(来源/版权头/无许可文本的如实记录/修改记录/wxWidgets LGPL 动态链接)、gurobi_cl 包装(自有)+ python-mip(EPL-2.0)+ CBC(EPL-1.0)、std_celllib(GSCL45=FreePDK45 系 Apache-2.0、sky130=Apache-2.0、gpdk45nm.m=Cadence 专有)、benchmark(EPFL 研究用、BOOM/Rocket/Gemmini BSD-3 系)、内置 Python 依赖全表(逐包许可证,并指向 runtime 内 dist-info 自带文本);
 - `tools/astran/LICENSE.md`:ASTRAN 专项许可说明——如实陈述"源码无许可文本、版权归 UFRGS 作者、上游 github.com/aziesemer/astran、商业使用需联系其作者",不代替其作者授予权利;
 - `README.MD` License 章节与 `README_DELIVERY.md` 新增「许可与合规」章节引用上述文件。
 
@@ -623,7 +623,7 @@ ASTRAN 只给 IOgeometries 里的信号端口打标(route() 把 vdd/gnd 排除�
 - 深度不刷新的真 bug:`_show_neighbourhood` 的 BFS 里 `keep |= nxt` 之后才算 `frontier = nxt - keep`,永远为空——**深度 1/2/3 实际都只展开一层**;再加上深度 QSpinBox 没有连任何刷新信号,调深度完全无效果。
 
 **修复**:
-- `pySrc/blif_preproc.py`:`load_liberty_file` 增加 (路径,mtime) 键控的进程级缓存,返回浅拷贝隔离 `load_bool_gate_from_blif` 的 bool-* 注入(避免跨基准污染)。实测:第二次解析 0.93s→0.01s。
+- `flow/blif_preproc.py`:`load_liberty_file` 增加 (路径,mtime) 键控的进程级缓存,返回浅拷贝隔离 `load_bool_gate_from_blif` 的 bool-* 注入(避免跨基准污染)。实测:第二次解析 0.93s→0.01s。
 - `gui/tabs/design.py`:
   - BFS 重写:先 `nxt -= keep` 再并入,frontier 保持"本层新发现"节点;深度 1/2/3 实测节点数 2/3/3(修复前恒为 2);
   - `depth.valueChanged` 连接 `_show_neighbourhood`,调深度立即重绘;
@@ -653,11 +653,11 @@ ASTRAN 只给 IOgeometries 里的信号端口打标(route() 把 vdd/gnd 排除�
 - `AGENTS.md` option-3 条目:"COMPLEX1 needs the recovery at H=2.47"是 1.0825 旧几何残留——现行几何下 adder 四单元全部首解可行,重试一次未触发(已改为"安全网而非常态"的表述)。
 
 **代码隐患(记录在案,未改行为)**:
-1. `pySrc/astran.py:45-46`:日志缺 `Cell Size` 行时 `assert(False); return 123`——`python -O` 下 assert 被剥离会静默返回 123µm 假宽度(应改抛异常);
-2. `pySrc/main.py:247-248`:`bestRecord-seperate` 在逐模式循环之前以 `'w'` 打开,循环中途异常会留下空/半截记录;
-3. `pySrc/main.py:92`:`cellIdsContained>=11` 用 `continue` 跳过但队首未弹出,依赖后续分支弹出才不死循环(脆弱);
-4. `pySrc/blif_preproc.py:123-124`:库中找不到 `.subckt` 类型直接 `assert(False)`;`blif_graph_util.py:82-84` 多驱动网静默覆盖 `predCell`,均无告警;
-5. `pySrc/gds_analysis.py:18-21` 注释仍写"基线 H=3.2/本地 2.6"(现行 2.47),且两个 `load*GDS*` 函数名误导(实际读 LEF/日志)——文档漂移,行为正确。
+1. `flow/astran.py:45-46`:日志缺 `Cell Size` 行时 `assert(False); return 123`——`python -O` 下 assert 被剥离会静默返回 123µm 假宽度(应改抛异常);
+2. `flow/main.py:247-248`:`bestRecord-seperate` 在逐模式循环之前以 `'w'` 打开,循环中途异常会留下空/半截记录;
+3. `flow/main.py:92`:`cellIdsContained>=11` 用 `continue` 跳过但队首未弹出,依赖后续分支弹出才不死循环(脆弱);
+4. `flow/blif_preproc.py:123-124`:库中找不到 `.subckt` 类型直接 `assert(False)`;`blif_graph_util.py:82-84` 多驱动网静默覆盖 `predCell`,均无告警;
+5. `flow/gds_analysis.py:18-21` 注释仍写"基线 H=3.2/本地 2.6"(现行 2.47),且两个 `load*GDS*` 函数名误导(实际读 LEF/日志)——文档漂移,行为正确。
 
 **算法层面风险(转化为优化路线图的动机,详见 doc/RESEARCH_AND_OPTIMIZATION.md)**:
 - 编码不对子节点排序(`blif_preproc.py:222-235` 无 sort):根节点多输入类型不同时,同构实例会得到不同编码→频次系统性低估(P0-1);
@@ -678,16 +678,16 @@ ASTRAN 只给 IOgeometries 里的信号端口打标(route() 把 vdd/gnd 排除�
 5. `DesignNet.addPin` 多驱动网保留 last-wins 但发出 `RuntimeWarning` 并计数(`DesignNet.multiDriverCount`)。
 
 **P0 优化(行为变化已标定)**:
-- P0-1 编码规范化(`canonical_pattern_code`,根在前、子节点排序):trace 字符串因此对既有 outputs 快照改名(如 `[XNOR2X1,XOR2X1,OAI21X1]`→`[XNOR2X1,OAI21X1,XOR2X1]`),重生成时以新名为准。**大基准实测收益显著**(`pySrc/canon_impact.py`):BoomBranchPredictor 2721→1793 组(合并 737 个虚假分裂、回收 21541 个实例)、DCache 2084→1459(13503)、GemminiLoopConv 2829→1787(14588);adder 网表顺序本来就一致,数字不变。
+- P0-1 编码规范化(`canonical_pattern_code`,根在前、子节点排序):trace 字符串因此对既有 outputs 快照改名(如 `[XNOR2X1,XOR2X1,OAI21X1]`→`[XNOR2X1,OAI21X1,XOR2X1]`),重生成时以新名为准。**大基准实测收益显著**(`flow/canon_impact.py`):BoomBranchPredictor 2721→1793 组(合并 737 个虚假分裂、回收 21541 个实例)、DCache 2084→1459(13503)、GemminiLoopConv 2829→1787(14588);adder 网表顺序本来就一致,数字不变。
 - P0-2 节省重叠去重(`countUncoveredClusters`):同轮候选共享的簇只计一次;bestRecord 中 clusterNum 变为去重后计数。
-- P0-3 束搜索+预估剪枝:`grow_sequence_of_clusters` 接受 `benefitEstimator`(新增 `pySrc/benefit.py` 的 ShrinkModel,按"尺寸→收缩率"在线标定、取保守 max);`growBeamWidth=2`(global_variables)/`cfg.grow_beam=2`(GUI)每轮生长前 2 个队首;≥10 单元的队首不再生长(其 11 单元后代在版图阶段必然被剔除)。COMPLEX10 型负收益(−56.05)在其首个观测后会被剪枝。
-- P0-4 可布性第二指标(新增 `pySrc/routability.py`):从 .Astranlog 解析 `Rt. Density` 与 Pathfinder 尝试轮数,报告默认开启;硬门限 `routabilityDensityGate`/`cfg.max_rt_density` 默认 None(先测量后执法)。
+- P0-3 束搜索+预估剪枝:`grow_sequence_of_clusters` 接受 `benefitEstimator`(新增 `flow/benefit.py` 的 ShrinkModel,按"尺寸→收缩率"在线标定、取保守 max);`growBeamWidth=2`(global_variables)/`cfg.grow_beam=2`(GUI)每轮生长前 2 个队首;≥10 单元的队首不再生长(其 11 单元后代在版图阶段必然被剔除)。COMPLEX10 型负收益(−56.05)在其首个观测后会被剪枝。
+- P0-4 可布性第二指标(新增 `flow/routability.py`):从 .Astranlog 解析 `Rt. Density` 与 Pathfinder 尝试轮数,报告默认开启;硬门限 `routabilityDensityGate`/`cfg.max_rt_density` 默认 None(先测量后执法)。
 - P0-5 flow_core≡main.py 等价测试:桩 ASTRAN(按 .sp 内容哈希定宽)比较两流程 bestRecord(见 tests/unit/test_flow_parity.py)。
 
 **P1 优化**:
-- P1-7 电气量(新增 `pySrc/electrical.py`):解析 liberty 的 `cell_leakage_power`/引脚电容/LUT 均值延迟代理;模式级汇总含 internal_nets(合并内化的网数=动态功耗节省代理)。report-only,不改选择准则。
-- P1-8 PDK 注册表(新增 `pySrc/pdk_config.py`):freepdk45 与 astran.py 常量强一致(测试钉住);sky130(8×0.34µm)/gf180(14×0.28µm)为脚手架,.rul 未编写前 raise;`nwellPos` 恒取 H/2 防再次漂移。
-- P1-9 端口顺序变体(新增 `pySrc/portorder.py`):确定性变体集(恒等/电源在前排序/反转/种子洗牌),只重写 .subckt 头部;评估走注入式 runner。
+- P1-7 电气量(新增 `flow/electrical.py`):解析 liberty 的 `cell_leakage_power`/引脚电容/LUT 均值延迟代理;模式级汇总含 internal_nets(合并内化的网数=动态功耗节省代理)。report-only,不改选择准则。
+- P1-8 PDK 注册表(新增 `flow/pdk_config.py`):freepdk45 与 astran.py 常量强一致(测试钉住);sky130(8×0.34µm)/gf180(14×0.28µm)为脚手架,.rul 未编写前 raise;`nwellPos` 恒取 H/2 防再次漂移。
+- P1-9 端口顺序变体(新增 `flow/portorder.py`):确定性变体集(恒等/电源在前排序/反转/种子洗牌),只重写 .subckt 头部;评估走注入式 runner。
 - P1-11 多行高(`pdk_config.multiRowVariant`):行高翻倍时 nwellpos 自动 H/2;跨 profile 比较必须按 宽×高 面积(不变量 10)。
 
 **已知遗留**:P2(SMT/CP-SAT 引擎、LLM 约束注入、CFET/BSPDN)为研究级,未在本轮实现,见 doc/RESEARCH_AND_OPTIMIZATION.md。
@@ -716,11 +716,11 @@ libgcc_s_seh-1.dll、libstdc++-6.dll、libwinpthread-1.dll、liblzma-5.dll、lib
 
 ### 5.19 第十五轮:P2 研究级合入(2026-10-09)
 
-**阶段 0 版图合理性校验门(pySrc/layout_sanity.py)**:对生成 .gds 做结构检查(非退化、metal1 高度=行高、宽度网格对齐、层与电源标签齐全),标定方式与 GUI 查看器一致(16.5 units/µm、井区外扩不计入)。main.py/flow_core 默认开启剔除(`layoutSanityGate`)。真实 COMPLEX0/1/9 全部通过;等价测试桩同步升级为最小合法 GDS。
+**阶段 0 版图合理性校验门(flow/layout_sanity.py)**:对生成 .gds 做结构检查(非退化、metal1 高度=行高、宽度网格对齐、层与电源标签齐全),标定方式与 GUI 查看器一致(16.5 units/µm、井区外扩不计入)。main.py/flow_core 默认开启剔除(`layoutSanityGate`)。真实 COMPLEX0/1/9 全部通过;等价测试桩同步升级为最小合法 GDS。
 
 **yosys 重导入(用户指定优先级)**:① `electrical.py` 增 area 属性与逐引脚电容(`pin_caps`);② 新增 `timing_power.py`:解析 liberty 时序弧(cell_rise/fall、rise/fall_transition)与 internal_power LUT(delay_template_6x6:行=负载 pF、列=输入转换 ns),双线性插值(边缘钳位),并在模式 DAG 上做迷你 STA(逐网负载=被驱动引脚电容和、最坏弧级延迟、摆率传播、最长路径、翻转能量),已用库角点值验证;③ 新增 `yosys_import.py`:探测 yosys→`stat -json`→防御式解析 area/num_cells/histogram 并与流程的 lib 面积和交叉校验;本机无 yosys 时优雅降级。全部 report-only 接入 main.py 与 flow_core(pattern 事件带 timing_power)。
 
-**阶段 1 宽度代理(pySrc/width_proxy.py)**:特征(单元数、晶体管数、基线宽度和)→Ridge 回归,训练语料=仓库既有 12 个 COMPLEX 版图。真实 LOO:MAPE 16.4%、R²=0.79——粗筛可用、精度有限;对 COMPLEX9(好)过估、对 COMPLEX10(坏)方向正确,故默认 report-only,生长估计器替换由 `useWidthProxyForGrowth` 显式开启。
+**阶段 1 宽度代理(flow/width_proxy.py)**:特征(单元数、晶体管数、基线宽度和)→Ridge 回归,训练语料=仓库既有 12 个 COMPLEX 版图。真实 LOO:MAPE 16.4%、R²=0.79——粗筛可用、精度有限;对 COMPLEX9(好)过估、对 COMPLEX10(坏)方向正确,故默认 report-only,生长估计器替换由 `useWidthProxyForGrowth` 显式开启。
 
 **阶段 2 CP-SAT 压缩后端(tools/gurobi_cl/cpsat_backend.py)**:发现 ASTRAN 的压缩 LP 全整数(400 DBU/µm),CP-SAT 可精确消费(自适应缩放,整数模型 scale=1);`GUROBI_CL_SOLVER=cpsat` 启用,CBC 仍为默认;失败语义(全零 .sol)与 option-3 恢复纪律(仅证明 INFEASIBLE,超时绝不触发)与 CBC 路径一致;ortools 缺失时自动回退 CBC。对拍工具 `tools/gurobi_cl/compare_backends.py`。新增 `compare_backends.py` 与单元测试(小 LP 最优解、INFEASIBLE 检测、端到端 .sol、析取过滤)。
 
@@ -766,7 +766,7 @@ libgcc_s_seh-1.dll、libstdc++-6.dll、libwinpthread-1.dll、liblzma-5.dll、lib
 
 **问题**:ASTRAN 重生成版图后,.sp 不需要重生成(挖掘产物、ASTRAN 输入、缓存契约看 mtime);但 COMPLEX 单元**在库中没有任何 .lib 条目**——库只覆盖 31 个基础单元,下游复用(重映射/STA/交叉验证)缺 delay/power/area。
 
-**实现(pySrc/liberty_gen.py)**:对每个生成的 COMPLEX 单元输出 .lib 片段——
+**实现(flow/liberty_gen.py)**:对每个生成的 COMPLEX 单元输出 .lib 片段——
 - **area** = 版图宽度 × 行高(锚定校验:NAND2X1 LEF 0.76×2.47=1.877200 与其 lib area 精确相等);
 - **leakage** = 成员 `cell_leakage_power` 求和(管数不变);
 - **引脚电容** = 接口输入引脚即基础单元引脚,直接取基础 lib 的 pin 电容(实测 COMPLEX1 引脚值与库逐位一致);
@@ -830,7 +830,7 @@ libgcc_s_seh-1.dll、libstdc++-6.dll、libwinpthread-1.dll、liblzma-5.dll、lib
 
 **目标**:让生成的 COMPLEX 单元能被 abc 逻辑映射复用(AUDIT 5.25 的推论:abc 只选"函数锥匹配"的单元,adder 现有 4 个单元全多输出,0 用)。实现四件套:
 
-1. **复用资格判定(pySrc/reuse.py)**:`reuseEligible(cluster)` = 单输出(仅一个逃逸成员输出脚)+ 函数 support≤4、逻辑深度≤4(深度只数"含运算符或≥2 操作数"的括号层,组合包裹不计)。组合函数复用 liberty_gen 的 `_composeFunction`。
+1. **复用资格判定(flow/reuse.py)**:`reuseEligible(cluster)` = 单输出(仅一个逃逸成员输出脚)+ 函数 support≤4、逻辑深度≤4(深度只数"含运算符或≥2 操作数"的括号层,组合包裹不计)。组合函数复用 liberty_gen 的 `_composeFunction`。
 2. **生长偏置(internalizeOnly)**:`grow_sequence_of_clusters(+_BasedOn)` 新增 `internalizeOnly`——只吸收"输出负载全部落在簇内"的邻居,吸收不新增逃逸输出,单输出性保持。
 3. **流程接线**:main.py/flow_core 逐候选报告 reuse 资格;`requireReuseEligible`/`cfg.require_reuse_eligible` 可选门限(默认关,打开即只收单输出简单函数模式)。
 4. **两个接口修复**(真 bug):① `_clusterInterface` 的 zip 截断改为按网名/位置配对,且"无网对象的外部输入"正确判为接口输入(修复前生成片段 inputs=0,abc 提前失败);② `_composeFunction` 成员引脚同名串扰——先做 `@@k@@pin@@` 唯一令牌化再单遍替换(修复前组合函数串入他成员的同名引脚)。
@@ -845,7 +845,7 @@ libgcc_s_seh-1.dll、libstdc++-6.dll、libwinpthread-1.dll、liblzma-5.dll、lib
 
 **加种子过滤的原因**:首轮实验证明 adder 初始聚类 top-30 **全部多输出**——单输出约束若只在生长/验收阶段,种子本身不合格就无从谈起;必须从种子开始。
 
-**adder 对照实验结果(pySrc/reuse_experiment.py)**:
+**adder 对照实验结果(flow/reuse_experiment.py)**:
 
 | 模式 | 挖掘结果 | abc 可用性 |
 |---|---|---|
@@ -907,8 +907,8 @@ libgcc_s_seh-1.dll、libstdc++-6.dll、libwinpthread-1.dll、liblzma-5.dll、lib
 用户汇报"多 agent 完成四项工作",验收发现本仓库无对应产物(工作区干净、无新分支/ stash,RESEARCH 文档里仍是"下一步计划"条目)——结论:那批工作不在本仓库。随后按用户指示在本仓库逐项实现并测试:
 
 - **4.1 第二 PDK .rul**(tools/astran/build/Work/tech_sky130.rul、tech_gf180.rul):几何全部经主源 LEF 核对(skywater-pdk-libs-sky130_fd_sc_hd、gf180mcu_fd_sc_mcu7t5v0 的 tech/cell LEF)。**修正脚手架两处数字**:gf180 路由栅格 0.28→0.56(SITE GF018hv5v_mcu_sc7 0.56×3.92=7 轨)、供电 0.44→0.60(rails ±0.30);sky130 的 0.34/0.48 确认无误。未核实规则行继承 freePDK45 并标注 PLACEHOLDER(ASTRAN 内部规则非权威,权威是 PDK DRC deck)。pdk_config 新增 `loadTechnologyRul` 解析器(确定性),sky130/gf180 状态 scaffold→draft(opt-in 语义保留),test_pdk_config 8 例全绿(含"文件存在且可解析"钉住)。
-- **4.2 SMT 联合 folding+placement 参考实现**(pySrc/smt_cell_placer.py,P2-13 落点,8 单测):CP-SAT 建模,串联链=内节点度 2 识别,链成员同行+首尾相接(共享扩散);折叠受腿宽制造上限约束(无上限时折叠永远无收益,ceil 只会加宽);NoOverlap2D;目标 min(1000·宽度+腿数)。关键修正:单行/极性模型给 COMPLEX0 4.75µm,与 ASTRAN 2.09 差一倍——ASTRAN 每极性用两排扩散堆叠,参考模型必须同样支持两行/极性(2.47µm)。简化项如实记录(平行组共享、扩散断、行粘性未建模),宽度是理想化下限。
-- **4.3 多模态 LLM Agent 资源整合**(pySrc/llm_hint_provider.py,P2-15 落点,9 单测):Hint 协议+离线确定性提供方+OpenAI 兼容多模态提供方(文本网表+GDS 截图→JSON,任何失败降级 [] 并记日志)+内容寻址缓存(sha256)+`suggestHintsBatch` 线程池并行。env 门控 `AUTOCELL_HINT_MODE`(默认 off),core/config 加 hintMode,core/pipeline 在 SPICE 导出点挂提示日志(仅报告)。测试:离线确定性、门控、缓存命中免网络、LLM 故障降级、批量并行保序、from_env 读 hintMode。
-- **4.4 pin accessibility 度量**(pySrc/pin_accessibility.py,5 单测):按 §三 论文(ISPD'23/DAC'24/FastPass/DATE'23/ISCAS'24)的可检查结论实现 on-track(引脚中心落轨道网格)/blocked(多晶跨引脚金属)/crowd(同轨列引脚数),单元分=均值;与 GDS 查看器同一 log 校准纪律。合成 GDS 精确定住 1.0/0.5/0.9 与离轨 −0.5;COMPLEX0 实测 0.500(VCC/GND 轨 x=1.045 离格,VCC 多晶阻塞 0.00)。调试记录:loadCellGeometry 曾丢失图层信息导致"金属1自身+轮廓被判为 poly 阻塞"(A 引脚 1.0→0.5 误报),修复为保留 (layer, pts)。
+- **4.2 SMT 联合 folding+placement 参考实现**(flow/smt_cell_placer.py,P2-13 落点,8 单测):CP-SAT 建模,串联链=内节点度 2 识别,链成员同行+首尾相接(共享扩散);折叠受腿宽制造上限约束(无上限时折叠永远无收益,ceil 只会加宽);NoOverlap2D;目标 min(1000·宽度+腿数)。关键修正:单行/极性模型给 COMPLEX0 4.75µm,与 ASTRAN 2.09 差一倍——ASTRAN 每极性用两排扩散堆叠,参考模型必须同样支持两行/极性(2.47µm)。简化项如实记录(平行组共享、扩散断、行粘性未建模),宽度是理想化下限。
+- **4.3 多模态 LLM Agent 资源整合**(flow/llm_hint_provider.py,P2-15 落点,9 单测):Hint 协议+离线确定性提供方+OpenAI 兼容多模态提供方(文本网表+GDS 截图→JSON,任何失败降级 [] 并记日志)+内容寻址缓存(sha256)+`suggestHintsBatch` 线程池并行。env 门控 `AUTOCELL_HINT_MODE`(默认 off),core/config 加 hintMode,core/pipeline 在 SPICE 导出点挂提示日志(仅报告)。测试:离线确定性、门控、缓存命中免网络、LLM 故障降级、批量并行保序、from_env 读 hintMode。
+- **4.4 pin accessibility 度量**(flow/pin_accessibility.py,5 单测):按 §三 论文(ISPD'23/DAC'24/FastPass/DATE'23/ISCAS'24)的可检查结论实现 on-track(引脚中心落轨道网格)/blocked(多晶跨引脚金属)/crowd(同轨列引脚数),单元分=均值;与 GDS 查看器同一 log 校准纪律。合成 GDS 精确定住 1.0/0.5/0.9 与离轨 −0.5;COMPLEX0 实测 0.500(VCC/GND 轨 x=1.045 离格,VCC 多晶阻塞 0.00)。调试记录:loadCellGeometry 曾丢失图层信息导致"金属1自身+轮廓被判为 poly 阻塞"(A 引脚 1.0→0.5 误报),修复为保留 (layer, pts)。
 - **RESEARCH 文档膨胀事故**:5623712 的"刷新"把 doc/RESEARCH_AND_OPTIMIZATION.md 写成 28MB/32.4 万行——同一 14 行状态块重复 2.2 万次(唯一行仅 710),原 17KB 文献综述被覆盖。恢复 1ba428a 版本为基底,重写状态表(新增 SMT/LLM/pin-accessibility 行)、新增 §三(12 篇 pin accessibility 论文+整合说明)、§四(四项工作证据)、§五(更新版下一步 9 项),旧三/四/五 重编号为 六/七/八。教训:文档生成脚本必须校验输出大小/唯一行占比,写回前 diff。
 - **验证**:新增 30 单测(SMT 8 + LLM 9 + pin-accessibility 5 + pdk 4 新增/改写 + 既有 4),全量回归见提交记录。

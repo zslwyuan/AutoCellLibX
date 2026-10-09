@@ -1,4 +1,4 @@
-"""Unit tests for pySrc/yosys_eval.py."""
+"""Unit tests for flow/yosys_eval.py."""
 import pytest
 
 from yosys_eval import (build_extended_liberty, compare_mapped_area,
@@ -65,7 +65,7 @@ def test_compare_mapped_area():
     assert r["complex_instances"] == 5
 
 
-def test_abc_uses_function_matched_custom_cell(in_pysrc):
+def test_abc_uses_function_matched_custom_cell(in_flow):
     """Pins the corrected conclusion (AUDIT 5.25): abc's liberty mapping
     is cone-driven -- a single-output cell whose function matches the
     logic IS used, so complex_used=0 on adder is a cone-matching issue,
@@ -77,7 +77,7 @@ def test_abc_uses_function_matched_custom_cell(in_pysrc):
     exe = find_yosys()
     if (exe is None):
         pytest.skip("no yosys executable")
-    base = open("../stdCelllib/gscl45nm.lib").read()
+    base = open("../std_celllib/gscl45nm.lib").read()
     frag = """
   cell (C2O) {
     area : 6.0;

@@ -1,4 +1,4 @@
-"""Unit tests for pySrc/layout_sanity.py (P2 phase 0)."""
+"""Unit tests for flow/layout_sanity.py (P2 phase 0)."""
 import gdstk
 import pytest
 
@@ -76,7 +76,7 @@ def test_missing_file_fails(tmp_path):
 
 
 @pytest.mark.parametrize("cell", ["COMPLEX0", "COMPLEX1", "COMPLEX9"])
-def test_real_adder_layouts_are_sane(in_pysrc, cell):
+def test_real_adder_layouts_are_sane(in_flow, cell):
     import os
     gds = "./outputs/adder/%s.gds" % cell
     if not os.path.exists(gds):

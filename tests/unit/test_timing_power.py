@@ -1,4 +1,4 @@
-"""Unit tests for pySrc/timing_power.py (liberty LUTs + mini pattern STA)."""
+"""Unit tests for flow/timing_power.py (liberty LUTs + mini pattern STA)."""
 import pytest
 
 from timing_power import (bilinear, load_timing_power, pattern_timing_power,
@@ -6,10 +6,10 @@ from timing_power import (bilinear, load_timing_power, pattern_timing_power,
 from electrical import load_cell_electrical_metrics
 from blif_graph_util import StdCellType, DesignCell, DesignNet
 
-LIB = "../stdCelllib/gscl45nm.lib"
+LIB = "../std_celllib/gscl45nm.lib"
 
 
-def test_lut_parsing_real_lib(in_pysrc):
+def test_lut_parsing_real_lib(in_flow):
     tp = load_timing_power(LIB)
     nand = tp["NAND2X1"]
     assert set(nand["arcs"].keys()) >= {"A", "B"}
@@ -33,7 +33,7 @@ def test_bilinear_exact_interp_and_clamp():
     assert bilinear(grid1, grid2, values, 99, 1.8) == pytest.approx(6.0)
 
 
-def test_stage_delay_monotone_in_load(in_pysrc):
+def test_stage_delay_monotone_in_load(in_flow):
     nand = load_timing_power(LIB)["NAND2X1"]
     d_small, _ = stage_delay_slew(nand, 0.06, 0.06)
     d_big, _ = stage_delay_slew(nand, 5.0, 0.06)
@@ -48,7 +48,7 @@ def _cell(cid, name):
     return DesignCell(cid, "c%d" % cid, t)
 
 
-def test_pattern_sta_chain_accumulates(in_pysrc):
+def test_pattern_sta_chain_accumulates(in_flow):
     a, b = _cell(0, "NAND2X1"), _cell(1, "NAND2X1")
     net = DesignNet(0, "n0")
     net.add_pin("O0", a, False)

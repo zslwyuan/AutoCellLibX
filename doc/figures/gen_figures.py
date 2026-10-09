@@ -117,7 +117,7 @@ def f1():
     ax.add_patch(Rectangle((10.2, 0.4), 3.3, 7.2, fc="#FDF6EE", ec=E_BACK, lw=1.4, zorder=0))
     ax.add_patch(Rectangle((13.7, 0.4), 2.1, 7.2, fc="#F7FAF2", ec=E_IO, lw=1.4, zorder=0))
     txt(ax, 1.85, 7.35, "输入", 12, E_IO, bold=True)
-    txt(ax, 6.9, 7.35, "AutoCellLibX 前端（Python / pySrc）", 12, E_FRONT, bold=True)
+    txt(ax, 6.9, 7.35, "AutoCellLibX 前端（Python / flow）", 12, E_FRONT, bold=True)
     txt(ax, 11.85, 7.35, "ASTRAN 后端（C++）", 12, E_BACK, bold=True)
     txt(ax, 14.75, 7.35, "输出", 12, E_IO, bold=True)
 
@@ -125,7 +125,7 @@ def f1():
     rbox(ax, 1.85, 6.2, 2.9, 1.0, "门级网表\nbenchmark/blif/*.blif\n(Yosys 技术映射后)", C_IO, E_IO, 9.5)
     rbox(ax, 1.85, 4.9, 2.9, 0.9, "时序库\ngscl45nm.lib", C_IO, E_IO, 9.5)
     rbox(ax, 1.85, 3.7, 2.9, 0.9, "单元晶体管级网表\ncellsAstranFriendly.sp", C_IO, E_IO, 9.0)
-    rbox(ax, 1.85, 2.5, 2.9, 0.9, "原始单元 GDS/LEF\noriginalGSCL45StdCells", C_IO, E_IO, 9.0)
+    rbox(ax, 1.85, 2.5, 2.9, 0.9, "原始单元 GDS/LEF\noriginal_gscl45_cells", C_IO, E_IO, 9.0)
 
     # front-end stages (vertical loop)
     rbox(ax, 6.9, 6.3, 5.4, 0.95, "① 解析与构图  (BLIFPreProc)\nliberty+BLIF → DesignCell/DesignNet → 有向图", C_FRONT, E_FRONT, 9.5)

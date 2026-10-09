@@ -1,4 +1,4 @@
-"""Unit tests for pySrc/routability.py (P0-4)."""
+"""Unit tests for flow/routability.py (P0-4)."""
 from routability import parse_astran_log_routability, load_cell_routability
 
 
@@ -38,7 +38,7 @@ def test_missing_log_returns_none(tmp_path):
     assert load_cell_routability(str(tmp_path), "NOPE") is None
 
 
-def test_real_astran_log_parses(in_pysrc):
+def test_real_astran_log_parses(in_flow):
     m = load_cell_routability("./outputs/adder", "COMPLEX1")
     assert m is not None
     assert m.rt_density > 0

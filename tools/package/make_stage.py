@@ -3,7 +3,7 @@
 
 The deliverable is a self-contained app folder: a pruned Python 3.11 runtime
 (site-packages trimmed to what the flow + GUI actually import), the flow
-modules (pySrc), the GSCL45 PDK data (stdCelllib), the benchmark netlists
+modules (flow), the GSCL45 PDK data (std_celllib), the benchmark netlists
 (without the two >90 MB giants), the vendored ASTRAN build and the
 gurobi_cl-compatible LP solver wrapper, plus launchers and install scripts.
 
@@ -188,12 +188,12 @@ def main():
     # gui: whole package, no pycache.
     copy_repo_dir("gui")
 
-    # pySrc: flow modules + cached baselines + the shipped benchmark results.
-    py_src = os.path.join(STAGE, "pySrc")
-    os.makedirs(py_src)
-    for name in sorted(os.listdir(os.path.join(REPO, "pySrc"))):
-        s = os.path.join(REPO, "pySrc", name)
-        d = os.path.join(py_src, name)
+    # flow: flow modules + cached baselines + the shipped benchmark results.
+    flow_src = os.path.join(STAGE, "flow")
+    os.makedirs(flow_src)
+    for name in sorted(os.listdir(os.path.join(REPO, "flow"))):
+        s = os.path.join(REPO, "flow", name)
+        d = os.path.join(flow_src, name)
         if name in ("__pycache__", "ILPmodel.lp", "ILPmodel.sol",
                     "someResults.zip") or name in FLOW_EXTRA_EXCLUDE:
             continue
@@ -202,8 +202,8 @@ def main():
         else:
             shutil.copy2(s, d)
 
-    # stdCelllib: the GSCL45 PDK data (liberty, LEF, SPICE bodies, layer map).
-    copy_repo_dir("stdCelllib")
+    # std_celllib: the GSCL45 PDK data (liberty, LEF, SPICE bodies, layer map).
+    copy_repo_dir("std_celllib")
 
     # benchmarks: the interactive-size suite (drop the two ~90 MB giants).
     blif_dst = os.path.join(STAGE, "benchmark", "blif")

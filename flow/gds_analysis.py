@@ -3,7 +3,7 @@ import os
 from os import listdir
 from os.path import isfile, join
 
-GSCL_LEF = "../stdCelllib/gscl45nm.lef"
+GSCL_LEF = "../std_celllib/gscl45nm.lef"
 
 GSCL_CELL_NAMES = ["AND2X1", "AOI22X1", "CLKBUF1",  "DFFNEGX1",
                    "FAX1", "INVX2", "LATCH", "NAND3X1", "OAI21X1", "OR2X2",
@@ -17,7 +17,7 @@ GSCL_CELL_NAMES = ["AND2X1", "AOI22X1", "CLKBUF1",  "DFFNEGX1",
 # cell footprint area is proportional to its width.  Comparing widths is
 # therefore equivalent to comparing areas, and it avoids a systematic error
 # when the two sides were generated at different row heights (the ASTRAN
-# baseline in originalAstranStdCells/ was generated at H = 3.2 um, while cells
+# baseline in original_astran_cells/ was generated at H = 3.2 um, while cells
 # generated locally come out at H = 2.6 um).  Multiplying each side by its own
 # height would distort the comparison, so the nominal width is used instead.
 # ---------------------------------------------------------------------------
@@ -64,7 +64,7 @@ def load_astran_gds():
     library are all compared consistently.
     """
     width_by_type = dict()
-    gds_path = "./originalAstranStdCells/"
+    gds_path = "./original_astran_cells/"
     for f in listdir(gds_path):
         if (not f.endswith(".Astranlog")):
             continue

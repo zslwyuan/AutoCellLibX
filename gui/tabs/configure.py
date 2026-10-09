@@ -185,7 +185,7 @@ class ConfigureTab(QWidget):
 
         # ---- layout constraints: ASTRAN geometry, editable ----
         geo_card = Card("版图参数约束 / Layout constraints")
-        geo_note = faint("写入 ASTRAN .run 脚本的几何参数（默认取 pySrc/astran.py 常量）。"
+        geo_note = faint("写入 ASTRAN .run 脚本的几何参数（默认取 flow/astran.py 常量）。"
                          "行高 H = cells_height × v_grid；改行高需重新做 DRC 验证。")
         geo_card.add(geo_note)
         form = QFormLayout()
@@ -306,7 +306,7 @@ class ConfigureTab(QWidget):
     def _load_geometry(self):
         """Load the astran.py constants as the defaults for the editable fields."""
         try:
-            paths.ensure_pysrc_on_path()
+            paths.ensure_flow_on_path()
             import astran
             self._geo_defaults = {
                 "cells_height": astran.ASTRAN_CELLS_HEIGHT,
@@ -363,7 +363,7 @@ class ConfigureTab(QWidget):
     def _reset_geometry(self):
         self.ctx.state.config.geometry = None
         self._sync_geometry()
-        self.ctx.log("已恢复 ASTRAN 几何默认值 (pySrc/astran.py)", "info")
+        self.ctx.log("已恢复 ASTRAN 几何默认值 (flow/astran.py)", "info")
 
     def _spin(self, lo, hi, val, tip):
         s = QSpinBox()

@@ -2,23 +2,23 @@
 
 All paths are absolute and derived from this file's location, so the GUI works
 regardless of the current working directory.  (The flow modules themselves are
-cwd-sensitive -- they use ``../stdCelllib`` and ``./outputs`` -- so whoever
-calls them must chdir to ``pySrc``; that is done in flow_worker, never here.)
+cwd-sensitive -- they use ``../std_celllib`` and ``./outputs`` -- so whoever
+calls them must chdir to ``flow``; that is done in flow_worker, never here.)
 """
 import os
 import sys
 
 REPO_DIR = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-PYSRC_DIR = os.path.join(REPO_DIR, "pySrc")
-OUTPUTS_DIR = os.path.join(PYSRC_DIR, "outputs")
-ORIGINAL_CELLS_DIR = os.path.join(PYSRC_DIR, "originalAstranStdCells")
+FLOW_DIR = os.path.join(REPO_DIR, "flow")
+OUTPUTS_DIR = os.path.join(FLOW_DIR, "outputs")
+ORIGINAL_CELLS_DIR = os.path.join(FLOW_DIR, "original_astran_cells")
 BENCHMARK_DIR = os.path.join(REPO_DIR, "benchmark", "blif")
-STDCELLLIB_DIR = os.path.join(REPO_DIR, "stdCelllib")
+STD_CELLLIB_DIR = os.path.join(REPO_DIR, "std_celllib")
 
-LIBERTY_FILE = os.path.join(STDCELLLIB_DIR, "gscl45nm.lib")
-LEF_FILE = os.path.join(STDCELLLIB_DIR, "gscl45nm.lef")
-SPICE_LIB_FILE = os.path.join(STDCELLLIB_DIR, "cellsAstranFriendly.sp")
-LAYER_MAP_FILE = os.path.join(STDCELLLIB_DIR, "gds2_encounter.map")
+LIBERTY_FILE = os.path.join(STD_CELLLIB_DIR, "gscl45nm.lib")
+LEF_FILE = os.path.join(STD_CELLLIB_DIR, "gscl45nm.lef")
+SPICE_LIB_FILE = os.path.join(STD_CELLLIB_DIR, "cellsAstranFriendly.sp")
+LAYER_MAP_FILE = os.path.join(STD_CELLLIB_DIR, "gds2_encounter.map")
 
 ASTRAN_BUILD_DIR = os.path.join(REPO_DIR, "tools", "astran", "build")
 ASTRAN_BINARY = os.path.join(ASTRAN_BUILD_DIR, "bin", "Astran.exe")
@@ -49,10 +49,10 @@ def list_benchmarks():
     return out
 
 
-def ensure_pysrc_on_path():
+def ensure_flow_on_path():
     """Make the flow modules importable as top-level modules."""
-    if PYSRC_DIR not in sys.path:
-        sys.path.insert(0, PYSRC_DIR)
+    if FLOW_DIR not in sys.path:
+        sys.path.insert(0, FLOW_DIR)
 
 
 class EnvCheck(object):
@@ -134,7 +134,7 @@ def probe_environment():
                       if f.endswith(".Astranlog")])
     checks.append(EnvCheck(
         "baseline", "ASTRAN baseline cells generated", n_base > 0,
-        "%d cell layouts in originalAstranStdCells/" % n_base,
+        "%d cell layouts in original_astran_cells/" % n_base,
         "The area comparison needs an ASTRAN baseline at the same row height "
         "as the generated cells; the first run generates the missing ones.",
         required=False))

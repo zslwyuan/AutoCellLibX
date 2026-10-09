@@ -77,7 +77,7 @@ if __name__ == "__main__":
                            "..", "benchmark", "blif")
     for path in sorted(glob.glob(os.path.join(blif_dir, "*.blif"))):
         name = os.path.splitext(os.path.basename(path))[0]
-        lib_path = os.path.join(blif_dir, "..", "..", "stdCelllib",
+        lib_path = os.path.join(blif_dir, "..", "..", "std_celllib",
                                "gscl45nm.lib")
         _g, cells, _n, _t = gen_graph_from_liberty_and_blif(lib_path, path)
         report = canonicalization_impact(cells)

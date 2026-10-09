@@ -1,4 +1,4 @@
-"""Unit tests for pySrc/core/config.py (FlowConfig)."""
+"""Unit tests for flow/core/config.py (FlowConfig)."""
 import pytest
 
 from core.config import FlowConfig

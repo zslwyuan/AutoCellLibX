@@ -1,4 +1,4 @@
-"""Unit tests for the ASTRAN layout cache decision (pySrc/astran.py)."""
+"""Unit tests for the ASTRAN layout cache decision (flow/astran.py)."""
 import os
 import time
 

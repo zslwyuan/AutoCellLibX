@@ -11,7 +11,7 @@
 
 | 项 | 内容 | 验证 |
 |---|---|---|
-| 版图合理性校验器 `pySrc/layout_sanity.py` | 对生成的 .gds 做结构性检查：非退化（W,H>0）、bbox 高度≈行高（±5%）、宽度是网格整数倍、含 active/poly/metal1 层、含 VDD/GND 标签；配 `.sp` 端口数对照 | 合成 GDS 夹具 + 真实 `outputs/adder/*.gds` 全过 |
+| 版图合理性校验器 `flow/layout_sanity.py` | 对生成的 .gds 做结构性检查：非退化（W,H>0）、bbox 高度≈行高（±5%）、宽度是网格整数倍、含 active/poly/metal1 层、含 VDD/GND 标签；配 `.sp` 端口数对照 | 合成 GDS 夹具 + 真实 `outputs/adder/*.gds` 全过 |
 
 **为什么最优先**：替换任何引擎后，第一个问题就是"新引擎的版图对不对"。
 没有这道闸门，SMT/CP-SAT 替换无法验收。
@@ -20,7 +20,7 @@
 
 | 项 | 内容 | 验证 |
 |---|---|---|
-| `pySrc/width_proxy.py` | 用既有 `outputs/*`（.sp+.Astranlog 对）建数据集：特征=管数/端口数/单元数/基线宽度和/模式尺寸，标签=生成宽度；sklearn 回归；LOO 交叉验证报告 MAPE/R²；作为 benefit 估计器的可选增强（先 report-only） | 数据集构建测试 + 模型 sanity（预测>0、单调性） |
+| `flow/width_proxy.py` | 用既有 `outputs/*`（.sp+.Astranlog 对）建数据集：特征=管数/端口数/单元数/基线宽度和/模式尺寸，标签=生成宽度；sklearn 回归；LOO 交叉验证报告 MAPE/R²；作为 benefit 估计器的可选增强（先 report-only） | 数据集构建测试 + 模型 sanity（预测>0、单调性） |
 
 **实测结果**：12 样本 LOO MAPE 16.4%、R²=0.79——粗筛可用。对 COMPLEX10
 （负收益）方向正确（预测 5.42 > 基线 4.94），但对 COMPLEX9 过估
@@ -39,7 +39,7 @@
 |---|---|---|
 | `tools/gurobi_cl/cpsat_backend.py` | 复用适配层自解析 LP（不变量 3），改喂 OR-Tools CP-SAT；关键发现：**ASTRAN 的压缩 LP 全整数**（400 DBU/µm），CP-SAT 精确消费无需近似；`GUROBI_CL_SOLVER=cpsat` 启用，CBC 仍为默认；失败语义（全零 .sol）与 option-3 恢复纪律（仅证明 INFEASIBLE）与 CBC 一致；ortools 缺失自动回退 | 小 LP 最优解/INFEASIBLE/端到端 .sol 测试 + `compare_backends.py` 真实模型对拍（结果见 git 历史） |
 
-**真实对拍**（`pySrc/ILPmodel.lp`：11,554 约束 / 2,740 二进制 / 6,447 变量，
+**真实对拍**（`flow/ILPmodel.lp`：11,554 约束 / 2,740 二进制 / 6,447 变量，
 各 120s）：CBC objective 2,724,960（OPTIMAL）、width 532 DBU；CP-SAT
 objective 2,722,000（FEASIBLE，**−0.11%**）、width 532 DBU——版图宽度一致，
 目标值略优。过程中修复两处移植缺陷：inf 系数未随 CBC 解析器丢弃（后端改为

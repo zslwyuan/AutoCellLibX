@@ -15,7 +15,7 @@ import sys
 
 def main():
     # Make `python gui/app.py` work too: put the repo root on sys.path so the
-    # `gui` package and the pySrc flow import the same way as `python -m gui`.
+    # `gui` package and the flow flow import the same way as `python -m gui`.
     repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     if repo not in sys.path:
         sys.path.insert(0, repo)

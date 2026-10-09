@@ -1,4 +1,4 @@
-"""Unit tests for pySrc/canon_impact.py (P1-10 prototype)."""
+"""Unit tests for flow/canon_impact.py (P1-10 prototype)."""
 from blif_graph_util import StdCellType, DesignCell, DesignNet
 from canon_impact import canonicalization_impact
 
@@ -39,10 +39,10 @@ def test_merges_order_split_instances():
     assert report["recovered_instances"] == 1  # 2-instance group vs biggest 1
 
 
-def test_adder_report_structure(in_pysrc):
+def test_adder_report_structure(in_flow):
     from blif_preproc import gen_graph_from_liberty_and_blif
     _, cells, _, _ = gen_graph_from_liberty_and_blif(
-        "../stdCelllib/gscl45nm.lib", "../benchmark/blif/adder.blif")
+        "../std_celllib/gscl45nm.lib", "../benchmark/blif/adder.blif")
     report = canonicalization_impact(cells)
     assert report["canonical_groups"] <= report["legacy_groups"]
     assert report["coded_cells"] > 0

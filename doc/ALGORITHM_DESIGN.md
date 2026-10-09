@@ -22,7 +22,7 @@
 
 | 组件 | 角色 | 位置 | 语言 |
 |---|---|---|---|
-| **AutoCellLibX 前端** | 读网表 → 挖模式 → 生长 → 评估 → 导出复杂单元网表 | `pySrc/` | Python |
+| **AutoCellLibX 前端** | 读网表 → 挖模式 → 生长 → 评估 → 导出复杂单元网表 | `flow/` | Python |
 | **ASTRAN 后端** | 把一个单元的晶体管网表综合成晶体管级版图（GDS） | `tools/astran/` | C++ |
 | **LP 求解器适配层** | 把 ASTRAN 的压缩模型交给开源求解器 CBC | `tools/gurobi_cl/` | Python |
 
@@ -83,7 +83,7 @@
 
 ```
 AutoCellLibX/
-├── pySrc/                    # 前端算法（Python）
+├── flow/                    # 前端算法（Python）
 │   ├── main.py               #   主流水线：挖掘→生长→评估→导出 的编排
 │   ├── blif_preproc.py        #   解析 liberty/BLIF、构图、初始聚类
 │   ├── blif_pattern_growth.py  #   模式生长算法
@@ -94,14 +94,14 @@ AutoCellLibX/
 ├── tools/
 │   ├── astran/               # 后端版图综合（vendored C++ 源码 + build/bin/Astran）
 │   └── gurobi_cl/            # LP 求解器适配层（gurobi_cl.cmd → gurobi_cl.py → CBC）
-├── stdCelllib/               # PDK 与单元库（gscl45nm.lib/.lef、cellsAstranFriendly.sp）
+├── std_celllib/               # PDK 与单元库（gscl45nm.lib/.lef、cellsAstranFriendly.sp）
 └── benchmark/blif/           # 技术映射后的门级网表（24 个基准）
 ```
 
 ### 2.3 运行入口
 
 ```bash
-cd pySrc
+cd flow
 python main.py                          # 跑完整流水线（当前配置 benchmark=["adder"]）
 python regenerate_cells.py COMPLEX1     # 只重生成指定单元的版图，不重跑挖掘
 ```
@@ -239,7 +239,7 @@ $$\text{saveArea} = \sum_{\text{选中模式 } i}\Big(\underbrace{\sum_{c\in\tex
 这是本仓库最重要的不变量（AGENTS.md 第 1、10 条）：
 
 - **面积 ∝ 宽度**。同一标准单元库的行高是固定的，所以比较"宽度"就等价于比较"面积"。三个面积来源——ASTRAN 基线、ASTRAN 生成的复杂单元、GSCL 库——**都返回宽度**（分别从 `.Astranlog` 的 `Cell Size (W x H)` 和 LEF 的 `SIZE` 读取）。
-- **比较必须同高**。宽度只有在行高一致时才是合法代理。早期曾把"H=3.2 µm 的基线"和"H=2.6 µm 的产物"直接比较，导致一个候选的增益从 **+6.5% 翻转成 −19.5%**。现在基线（`originalAstranStdCells/`）和产物都用**同一套几何常量**（`astran.py:54-59`）重新生成，保证同高。
+- **比较必须同高**。宽度只有在行高一致时才是合法代理。早期曾把"H=3.2 µm 的基线"和"H=2.6 µm 的产物"直接比较，导致一个候选的增益从 **+6.5% 翻转成 −19.5%**。现在基线（`original_astran_cells/`）和产物都用**同一套几何常量**（`astran.py:54-59`）重新生成，保证同高。
 
 ### 3.8 确定性设计
 
@@ -527,14 +527,14 @@ ASTRAN 原生调用的是商业求解器 **Gurobi** 的命令行 `gurobi_cl`。�
 
 | 文件 | 一句话职责 |
 |---|---|
-| `pySrc/main.py` | 主循环：挖掘→生长→评估→导出的编排 |
-| `pySrc/blif_preproc.py` | 解析 liberty/BLIF、构图、树编码、初始聚类 |
-| `pySrc/blif_pattern_growth.py` | 模式生长（吸收邻居） |
-| `pySrc/blif_graph_util.py` | 数据结构 + 模式子图可视化 |
-| `pySrc/spice.py` | 复杂单元 SPICE 网表拼装 |
-| `pySrc/astran.py` | ASTRAN 调用 + 几何常量 + 宽度读取 + 缓存判定 |
-| `pySrc/gds_analysis.py` | 基线/库单元宽度读取 |
-| `pySrc/regenerate_cells.py` | 按名重生成指定单元版图（不重跑挖掘） |
+| `flow/main.py` | 主循环：挖掘→生长→评估→导出的编排 |
+| `flow/blif_preproc.py` | 解析 liberty/BLIF、构图、树编码、初始聚类 |
+| `flow/blif_pattern_growth.py` | 模式生长（吸收邻居） |
+| `flow/blif_graph_util.py` | 数据结构 + 模式子图可视化 |
+| `flow/spice.py` | 复杂单元 SPICE 网表拼装 |
+| `flow/astran.py` | ASTRAN 调用 + 几何常量 + 宽度读取 + 缓存判定 |
+| `flow/gds_analysis.py` | 基线/库单元宽度读取 |
+| `flow/regenerate_cells.py` | 按名重生成指定单元版图（不重跑挖掘） |
 | `tools/astran/src/autocell2.cpp` | ASTRAN autoflow 主流程（fold/place/route/compact） |
 | `tools/astran/src/compaction.cpp` | ILP/LP 模型写出与求解器调用 |
 | `tools/gurobi_cl/gurobi_cl.py` | LP 解析 + python-mip/CBC 求解 + .sol 写出 |

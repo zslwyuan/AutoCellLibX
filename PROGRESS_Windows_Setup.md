@@ -42,7 +42,7 @@
 2. 目标函数重复项（y16min/y24min 出现两次）写前合并（求和系数）。
 3. （包装脚本内）LP 文件缺 CPLEX `End` 关键字，补上后再求解（否则 CBC 段错误）。
 
-### 1.4 AutoCellLibX 代码适配（`D:\AutoCellLibX\pySrc\`）
+### 1.4 AutoCellLibX 代码适配（`D:\AutoCellLibX\flow\`）
 | 文件 | 改动 |
 |---|---|
 | `astran.py` | 求解器路径常量 `GUROBI_CL=D:/aclx-tools/gurobi_cl.cmd`；`cellgen autoflow nTrack`→`cellgen autoflow`（原命令多参数会被 ASTRAN 判为非法命令跳过）；PATH 前置 `C:\msys64\mingw64\bin`（wx DLL）；单次尝试 |
@@ -65,7 +65,7 @@
 - **ASTRAN 从源码重建成功**（360 误报清除后）：CodeBlocks 工程 `nbproject/Makefile-Release.mk`
   经 mingw32-make 编译，0 错误，产物 `build/bin/Astran`（5.1MB，无扩展名，正好匹配 `astran.py` 调用路径）。
   工具链路径问题用自定义 `D:\astran\Astran\bin\wx-config` shim 解决（见 §3）。
-- **adder 冒烟全流程通过**（约 15 分钟），产物在 `pySrc/outputs/adder/`：
+- **adder 冒烟全流程通过**（约 15 分钟），产物在 `flow/outputs/adder/`：
   - `COMPLEX0/1/9.{sp,gds,Astranlog,run,png}` + `GDSIILTable.txt`
   - `bestRecord-adder`：COMPLEX0（61簇×[NAND2X1,NAND2X1,OR2X1]）+ COMPLEX1（54簇×[XNOR2X1,XOR2X1,OAI21X1]）
     相对 ASTRAN 面积省 **9.53%**，相对 GSCL 面积省 **15.26%**
@@ -101,8 +101,8 @@ MSYSTEM=MINGW64 /c/msys64/usr/bin/bash.exe -lc 'export PATH=/mingw64/bin:$PATH; 
   cd /d/astran/Astran/src && \
   g++ *.cpp $(wx-config --cppflags --libs) -std=c++14 -O3 -o ../build/bin/Astran.exe'
 
-# 跑主流程（cwd = D:\AutoCellLibX\pySrc）
-cd /d/AutoCellLibX/pySrc
+# 跑主流程（cwd = D:\AutoCellLibX\flow）
+cd /d/AutoCellLibX/flow
 C:/Users/Administrator/AppData/Local/Programs/Python/Python311/python.exe main.py
 ```
 

@@ -125,7 +125,7 @@ pip install -r requirements.txt
 pip install PySide6
 python -m gui            # desktop GUI (PySide6)
 # or the command-line flow:
-cd pySrc && python main.py
+cd flow && python main.py
 ```
 
 ASTRAN is vendored — build it once with `bash tools/astran/build_astran.sh`
@@ -133,7 +133,7 @@ ASTRAN is vendored — build it once with `bash tools/astran/build_astran.sh`
 
 ## Some Extracted Patterns and Generated Layouts
 
-Some related resultant files are provided in "pySrc/outputs" and below is an example layout.
+Some related resultant files are provided in "flow/outputs" and below is an example layout.
 <p align="center">
 <img src="doc/experimentalResult.png" alt="Experimental Result" title="Experimental Result" width="800" /> 
 </p>
@@ -155,15 +155,15 @@ Some related resultant files are provided in "pySrc/outputs" and below is an exa
 
 Below is a hierarchy tree of this project. For the module-level details,
 please refer to the documents above and trace the implementation — the flow
-lives in `pySrc/` (see `doc/PROJECT_ANALYSIS.md`), the desktop GUI in
+lives in `flow/` (see `doc/PROJECT_ANALYSIS.md`), the desktop GUI in
 `gui/` (see `gui/README.md`).
 
 ```
 ├── benchmark       // benchmark designs (BLIF netlists + synthesis scripts)
 ├── doc             // documentation: algorithm design, analysis, audit reports, figures
 ├── gui             // PySide6 desktop GUI (Qt-free core + widgets + tabs)
-├── pySrc           // AutoCellLibX Python flow (pattern mining, growth, layout flow)
-├── stdCelllib      // FreePDK45 (GSCL45) PDK and standard cell libraries
+├── flow           // AutoCellLibX Python flow (pattern mining, growth, layout flow)
+├── std_celllib      // FreePDK45 (GSCL45) PDK and standard cell libraries
 ├── tests           // pytest test suite (unit + integration)
 ├── tools           // vendored ASTRAN sources + gurobi_cl-compatible LP solver
 │   └── package     // self-contained Windows installer toolchain

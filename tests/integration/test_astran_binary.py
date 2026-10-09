@@ -20,13 +20,13 @@ def test_astran_tool_paths_resolve():
     assert os.path.exists(GUROBI_CL), GUROBI_CL
 
 
-def test_astran_runs_invx1_smoke(in_pysrc, tmp_path):
+def test_astran_runs_invx1_smoke(in_flow, tmp_path):
     import gdstk
 
     from astran import (ASTRAN_BUILD_PATH, ASTRAN_TECHNOLOGY, GUROBI_CL,
                         run_astran_for_netlist)
 
-    netlist = os.path.abspath("../stdCelllib/cellsAstranFriendly.sp")
+    netlist = os.path.abspath("../std_celllib/cellsAstranFriendly.sp")
     outdir = str(tmp_path)
 
     run_astran_for_netlist(astran_path=ASTRAN_BUILD_PATH, gurobi_path=GUROBI_CL,
@@ -54,14 +54,14 @@ def test_astran_runs_invx1_smoke(in_pysrc, tmp_path):
     assert bb[1][0] > bb[0][0] and bb[1][1] > bb[0][1]
 
 
-def test_astran_runs_nor3x1_gap_ordering_smoke(in_pysrc, tmp_path):
+def test_astran_runs_nor3x1_gap_ordering_smoke(in_flow, tmp_path):
     """NOR3X1 has unequal P/N counts (6 P, 3 N), which pads the transistor
     ordering with link == -1 GAP slots and produces single-transistor series
     legs; both used to read trans[-1] in seriesFolding/route() and crash."""
     from astran import (ASTRAN_BUILD_PATH, ASTRAN_TECHNOLOGY, GUROBI_CL,
                         run_astran_for_netlist)
 
-    netlist = os.path.abspath("../stdCelllib/cellsAstranFriendly.sp")
+    netlist = os.path.abspath("../std_celllib/cellsAstranFriendly.sp")
     outdir = str(tmp_path)
 
     run_astran_for_netlist(astran_path=ASTRAN_BUILD_PATH, gurobi_path=GUROBI_CL,

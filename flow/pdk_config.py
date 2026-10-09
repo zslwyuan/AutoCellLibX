@@ -65,7 +65,7 @@ _PDK_REGISTRY = {
         technology_rul=os.path.join(
             _REPO_DIR, "tools", "astran", "build", "Work",
             "tech_freePDK45.rul"),
-        gds_map=os.path.join(_REPO_DIR, "stdCelllib", "gds2_encounter.map"),
+        gds_map=os.path.join(_REPO_DIR, "std_celllib", "gds2_encounter.map"),
         status="validated",
         notes="GSCL45: row = 13 x 0.19 = 2.47um = CoreSite height; "
               "M1-pitch grid; abutment supply rails 2 x 0.13um."),

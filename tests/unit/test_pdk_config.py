@@ -1,4 +1,4 @@
-"""Unit tests for pySrc/pdk_config.py (P1-8)."""
+"""Unit tests for flow/pdk_config.py (P1-8)."""
 import os
 
 import pytest

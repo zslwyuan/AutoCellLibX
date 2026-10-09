@@ -1,7 +1,7 @@
 # 分层校验报告：方案与代码实现的正确性、合理性
 
 > **校验对象**：[IMPLEMENTATION_GUIDE.md](IMPLEMENTATION_GUIDE.md) 九层模型 vs
-> 仓库实际实现（`pySrc/`、`tools/`、`gui/`、`tests/`、`outputs/`）。
+> 仓库实际实现（`flow/`、`tools/`、`gui/`、`tests/`、`outputs/`）。
 > **校验方法**：逐条对照指南声明与代码（file:line 取证），关键数字实跑验证，
 > 并运行完整单元测试（`python -m pytest` → **194 passed, 4 deselected**，
 > 与指南"194 个测试"一致）。
@@ -24,9 +24,9 @@
 | # | 指南声明 | 结论 | 证据 |
 |---|---|---|---|
 | 1 | adder.blif 由 `.subckt`/`.names` 组成 | ✅ | 707 行 `.subckt` + 3 行 `.names`；但 3 行实为 `$false/$true/$undef` 常量门，指南示例 `.names g_27 g_31` 是示意非原文 |
-| 2 | Liberty 只被用来取引脚方向 | ✅ | `pySrc/blif_preproc.py:59-73`、`pySrc/blif_graph_util.py:18-23`；lib 中 759 行 timing/power 全部未读 |
-| 3 | NAND2X1 为 W=0.205u 的 4 管结构 | ❌ **W=0.5u**，且引脚序为 `VCC Y GND A B` | `stdCelllib/cellsAstranFriendly.sp:590-598`（已修订指南） |
-| 4 | LEF 每单元一行 SIZE；NAND2X1=1.14×2.47 | ❌ **NAND2X1=0.76×2.47**（1.14 是 AND2X1）；行高 2.47 全库一致 ✅ | `stdCelllib/gscl45nm.lef:2132-2136, 411-414`（已修订指南） |
+| 2 | Liberty 只被用来取引脚方向 | ✅ | `flow/blif_preproc.py:59-73`、`flow/blif_graph_util.py:18-23`；lib 中 759 行 timing/power 全部未读 |
+| 3 | NAND2X1 为 W=0.205u 的 4 管结构 | ❌ **W=0.5u**，且引脚序为 `VCC Y GND A B` | `std_celllib/cellsAstranFriendly.sp:590-598`（已修订指南） |
+| 4 | LEF 每单元一行 SIZE；NAND2X1=1.14×2.47 | ❌ **NAND2X1=0.76×2.47**（1.14 是 AND2X1）；行高 2.47 全库一致 ✅ | `std_celllib/gscl45nm.lef:2132-2136, 411-414`（已修订指南） |
 | 5 | .rul/.map 格式与前缀语义（S/E/W） | ✅ | `tech_freePDK45.rul:8` 等抽查成立；另有指南未提的 R=电阻类规则（`:21/:39`） |
 | 6 | GDS UNITS 不可信，按日志标定 | ✅ | `gui/gds_model.py:3-11,22,187-189`；含"well bbox 致 19% 膨胀"的注释（`:165-167`） |
 
@@ -35,7 +35,7 @@
 | # | 指南声明 | 结论 | 证据 |
 |---|---|---|---|
 | 7 | adder 解析得 710 节点 / 803 边 | ✅ **实跑复现** | `gen_graph_from_liberty_and_blif` 输出 `710 803`；NAND2X1 实例 192 个亦属实 |
-| 8 | `bypassTypes=["DFF","bool"]` 阻断时序/未映射门 | ✅ | `pySrc/global_variables.py:2`；消费点 `blif_preproc.py:204-207,225-229,253-260`、`blif_pattern_growth.py:41,62,192,213` |
+| 8 | `bypassTypes=["DFF","bool"]` 阻断时序/未映射门 | ✅ | `flow/global_variables.py:2`；消费点 `blif_preproc.py:204-207,225-229,253-260`、`blif_pattern_growth.py:41,62,192,213` |
 | 9 | 节点=实例、bool 门入图为 `bool-...` 虚拟类型 | ✅ | `blif_preproc.py:79-87,126-137,184-190` |
 
 **⚠️ 解析鲁棒性**（正确输入下无影响，畸形输入不防御）：
@@ -83,8 +83,8 @@ vs `[XOR2X1,OR2X1,NAND2X1]`），同构实例会得到不同编码 → **系统�
 
 | # | 指南声明 | 结论 | 证据 |
 |---|---|---|---|
-| 17 | 四步：前缀隔离/内部重连/端口内化/确定性写盘 | ✅ 全部属实 | `pySrc/spice.py:109-113,116-122,136-144,128-132`；VCC/GND 不前缀（`:33-35`） |
-| 18 | COMPLEX1.sp 头部逐字一致 | ✅ | `pySrc/outputs/adder/COMPLEX1.sp:1-2,63-64`（54 occurrences） |
+| 17 | 四步：前缀隔离/内部重连/端口内化/确定性写盘 | ✅ 全部属实 | `flow/spice.py:109-113,116-122,136-144,128-132`；VCC/GND 不前缀（`:33-35`） |
+| 18 | COMPLEX1.sp 头部逐字一致 | ✅ | `flow/outputs/adder/COMPLEX1.sp:1-2,63-64`（54 occurrences） |
 | 19 | PYTHONHASHSEED 确定性有测试钉住 | ✅ | `tests/unit/test_determinism.py:41-43`（seed∈{0,1,7} 三次 md5 相同）；"内容不变不写盘"由 `spice.py:165-172` + `test_spice.py:65` 锁定 |
 | 20 | W/L 原样透传，折叠留给 ASTRAN | ✅ | `spice.py:150-151` 仅文本拼接 |
 
@@ -94,7 +94,7 @@ vs `[XOR2X1,OR2X1,NAND2X1]`），同构实例会得到不同编码 → **系统�
 |---|---|---|---|
 | 21 | 三个面积来源统一返回宽度 | ✅ | `astran.py:31-46`（find "Cell Size (W x H)"）、`gds_analysis.py:43-49,59-75`（LEF/日志取宽） |
 | 22 | 0×0 版图剔除 | ✅ 三道防线 | `main.py:154-158,180-181,318-322` |
-| 23 | 基线与产物同为 2.47µm 行高 | ✅ | `originalAstranStdCells/NAND2X1.Astranlog`（0.76×2.47）与产物同由 `runAstranForNetlist` 生成 |
+| 23 | 基线与产物同为 2.47µm 行高 | ✅ | `original_astran_cells/NAND2X1.Astranlog`（0.76×2.47）与产物同由 `runAstranForNetlist` 生成 |
 | 24 | 节省公式 = 出现次数×(基线宽度−新宽度) | ✅ | `main.py:176-193`；分母为全设计基线宽度和（`main.py:72`） |
 
 **⚠️ 代码隐患（已记入 AUDIT_REPORT）**：

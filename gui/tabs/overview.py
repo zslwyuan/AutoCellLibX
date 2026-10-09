@@ -77,7 +77,7 @@ class OverviewTab(QWidget):
         tiles = QHBoxLayout()
         tiles.setSpacing(10)
         self.tile_benchmarks = StatTile("基准", "--", "benchmark/blif/")
-        self.tile_baseline = StatTile("基线单元", "--", "originalAstranStdCells/")
+        self.tile_baseline = StatTile("基线单元", "--", "original_astran_cells/")
         self.tile_outputs = StatTile("已有结果", "--", "outputs/*/")
         self.tile_best = StatTile("最佳节省", "--", "bestRecord-adder")
         for t in (self.tile_benchmarks, self.tile_baseline,
@@ -140,7 +140,7 @@ class OverviewTab(QWidget):
         body.addWidget(hline())
         body.addWidget(faint(
             "提示：版图与结果使用与命令行相同的文件契约（COMPLEX*.sp/gds、bestRecord-*），"
-            "可与 pySrc/main.py 互相复用。此界面不会破坏任何工程不变量。"))
+            "可与 flow/main.py 互相复用。此界面不会破坏任何工程不变量。"))
 
         self.refresh()
 

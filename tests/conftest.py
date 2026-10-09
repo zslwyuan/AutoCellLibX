@@ -1,8 +1,8 @@
 """Shared pytest fixtures for the AutoCellLibX test suite.
 
-The pySrc modules use paths relative to the pySrc directory (e.g.
-``../stdCelllib/...``), so tests that call them must run with ``cwd=pySrc``.
-Use the ``in_pysrc`` fixture for that.
+The flow modules use paths relative to the flow directory (e.g.
+``../std_celllib/...``), so tests that call them must run with ``cwd=flow``.
+Use the ``in_flow`` fixture for that.
 """
 import os
 import sys
@@ -10,15 +10,15 @@ import sys
 import pytest
 
 REPO_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PYSRC_DIR = os.path.join(REPO_DIR, "pySrc")
+FLOW_DIR = os.path.join(REPO_DIR, "flow")
 
 # Make the flow importable as top-level modules (blif_preproc, spice, ...).
-if PYSRC_DIR not in sys.path:
-    sys.path.insert(0, PYSRC_DIR)
+if FLOW_DIR not in sys.path:
+    sys.path.insert(0, FLOW_DIR)
 
 BENCHMARK_BLIF_DIR = os.path.join(REPO_DIR, "benchmark", "blif")
-LIBERTY_FILE = os.path.join(REPO_DIR, "stdCelllib", "gscl45nm.lib")
-SPICE_LIB_FILE = os.path.join(REPO_DIR, "stdCelllib", "cellsAstranFriendly.sp")
+LIBERTY_FILE = os.path.join(REPO_DIR, "std_celllib", "gscl45nm.lib")
+SPICE_LIB_FILE = os.path.join(REPO_DIR, "std_celllib", "cellsAstranFriendly.sp")
 
 
 @pytest.fixture(scope="session")
@@ -27,12 +27,12 @@ def repo_dir():
 
 
 @pytest.fixture(scope="session")
-def pysrc_dir():
-    return PYSRC_DIR
+def flow_dir():
+    return FLOW_DIR
 
 
 @pytest.fixture()
-def in_pysrc(monkeypatch):
-    """Run the test body with cwd = pySrc (required by path-relative modules)."""
-    monkeypatch.chdir(PYSRC_DIR)
-    return PYSRC_DIR
+def in_flow(monkeypatch):
+    """Run the test body with cwd = flow (required by path-relative modules)."""
+    monkeypatch.chdir(FLOW_DIR)
+    return FLOW_DIR

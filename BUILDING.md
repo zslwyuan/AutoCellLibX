@@ -6,7 +6,7 @@ ASTRAN sources and the test suite are managed as a single project.
 
 ```
 AutoCellLibX/
-├── pySrc/                 # AutoCellLibX Python flow (pattern mining, growth, flow)
+├── flow/                 # AutoCellLibX Python flow (pattern mining, growth, flow)
 ├── tests/                 # test suite (unit + integration)
 ├── tools/
 │   ├── astran/            # vendored ASTRAN sources + build rules + tech files
@@ -18,7 +18,7 @@ AutoCellLibX/
 │   │   └── build_astran.sh#   build script -> build/bin/Astran
 │   └── gurobi_cl/         # vendored gurobi_cl-compatible wrapper (python-mip + CBC)
 ├── benchmark/             # BLIF netlists + synthesis scripts
-├── stdCelllib/            # FreePDK45 (GSCL45) library, LEF/LIB/SPICE
+├── std_celllib/            # FreePDK45 (GSCL45) library, LEF/LIB/SPICE
 ├── doc/                   # analysis + audit reports
 └── requirements.txt
 ```
@@ -45,17 +45,17 @@ is on `PATH`.
 
 ## 3. Run the flow
 
-The Python flow resolves all tool paths relative to `pySrc/`, so it works from
+The Python flow resolves all tool paths relative to `flow/`, so it works from
 any directory:
 
 ```bash
-cd pySrc
+cd flow
 python main.py
 ```
 
-- `pySrc/astran.py` defines the project-internal paths
+- `flow/astran.py` defines the project-internal paths
   (`ASTRAN_BUILD_PATH`, `ASTRAN_TECHNOLOGY`, `GUROBI_CL`) from the repo root.
-- `pySrc/main.py` selects the benchmark(s) to run (`benchmarks = ["adder"]` by
+- `flow/main.py` selects the benchmark(s) to run (`benchmarks = ["adder"]` by
   default).
 - The LP solver used by ASTRAN is `tools/gurobi_cl/gurobi_cl.cmd`
   (python-mip + COIN-OR CBC), injected via ASTRAN's `set lpsolve` command.
@@ -119,7 +119,7 @@ Test layout:
 ## 5. Toolchain notes (Windows)
 
 - Runtime wxWidgets DLLs are staged into `tools/astran/build/bin/` by the build
-  script; `pySrc/astran.py` additionally prepends `C:\msys64\mingw64\bin`.
+  script; `flow/astran.py` additionally prepends `C:\msys64\mingw64\bin`.
 - If 360 Total Security flags the freshly built `Astran.exe`
   (`HEUR/QVM...Malware.Gen`, caused by its `_popen` usage), add
   `tools/astran/build/bin` to its trust list — this is a known false positive.
@@ -137,7 +137,7 @@ python tools/package/make_installer.py
 The pipeline is:
 
 1. `make_stage.py` assembles `dist/stage/` — a portable app folder: the flow
-   (`pySrc`, `stdCelllib`, `benchmark/blif` without the two >90 MB giants),
+   (`flow`, `std_celllib`, `benchmark/blif` without the two >90 MB giants),
    the vendored ASTRAN build and `tools/gurobi_cl`, plus a **pruned Python
    3.11 runtime** copied from the dev install (site-packages reduced to the
    packages the flow actually imports; PySide6 trimmed to QtCore/QtGui/
@@ -159,7 +159,7 @@ Verification before handing out a build (all must pass):
 
 ```bash
 cd dist/stage
-./runtime/python.exe -c "import sys; sys.path[:0] = ['.', 'pySrc']; \
+./runtime/python.exe -c "import sys; sys.path[:0] = ['.', 'flow']; \
     import matplotlib; matplotlib.use('Agg'); \
     import astran, blif_preproc, blif_pattern_growth, spice, gds_analysis; \
     from gui import paths; \

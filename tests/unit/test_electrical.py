@@ -1,10 +1,10 @@
-"""Unit tests for pySrc/electrical.py (P1-7)."""
+"""Unit tests for flow/electrical.py (P1-7)."""
 from electrical import load_cell_electrical_metrics, pattern_electrical_metrics
 from blif_graph_util import StdCellType, DesignCell, DesignNet
 
 
-def test_real_liberty_metrics(in_pysrc):
-    m = load_cell_electrical_metrics("../stdCelllib/gscl45nm.lib")
+def test_real_liberty_metrics(in_flow):
+    m = load_cell_electrical_metrics("../std_celllib/gscl45nm.lib")
     assert len(m) > 25
     nand = m["NAND2X1"]
     assert nand["leakage"] > 0
@@ -15,10 +15,10 @@ def test_real_liberty_metrics(in_pysrc):
     assert inv["input_cap"] < nand["input_cap"]
 
 
-def test_parse_cache_returns_copy(in_pysrc):
-    a = load_cell_electrical_metrics("../stdCelllib/gscl45nm.lib")
+def test_parse_cache_returns_copy(in_flow):
+    a = load_cell_electrical_metrics("../std_celllib/gscl45nm.lib")
     a["NAND2X1"]["leakage"] = -1
-    b = load_cell_electrical_metrics("../stdCelllib/gscl45nm.lib")
+    b = load_cell_electrical_metrics("../std_celllib/gscl45nm.lib")
     assert b["NAND2X1"]["leakage"] > 0
 
 

@@ -467,7 +467,7 @@ def load_baseline_widths(directory):
     """Nominal width of each ASTRAN baseline cell, from its .Astranlog.
 
     Same metric the flow's gds_analysis.load_astran_gds returns, but read from
-    an absolute directory so the GUI main thread does not need cwd = pySrc.
+    an absolute directory so the GUI main thread does not need cwd = flow.
     """
     widths = {}
     if not os.path.isdir(directory):

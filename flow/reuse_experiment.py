@@ -32,7 +32,7 @@ from timing_power import load_timing_power
 from yosys_eval import build_extended_liberty
 from yosys_import import find_yosys
 
-LIB = "../stdCelllib/gscl45nm.lib"
+LIB = "../std_celllib/gscl45nm.lib"
 
 
 def main():
@@ -88,7 +88,7 @@ def main():
                             run_astran_for_netlist, load_astran_area)
         # find the seed seq again and export its .sp (the flow's export)
         from spice import export_spice_netlist, load_spice_subcircuits
-        subckts = load_spice_subcircuits("../stdCelllib/cellsAstranFriendly.sp")
+        subckts = load_spice_subcircuits("../std_celllib/cellsAstranFriendly.sp")
         seed = None
         for seq in sort_pattern_cluster_seqs(seqs):
             if (seq.pattern_clusters[0].pattern_extension_trace

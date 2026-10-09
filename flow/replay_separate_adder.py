@@ -37,7 +37,7 @@ dumped_patterns = {
 }
 detected_patterns = list(dumped_patterns)
 
-subckts = load_spice_subcircuits("../stdCelllib/cellsAstranFriendly.sp")
+subckts = load_spice_subcircuits("../std_celllib/cellsAstranFriendly.sp")
 gscl_area_by_type = load_original_gscl45_gds()
 
 counted_set = set()
@@ -49,7 +49,7 @@ for target_pattern_trace in detected_patterns:
         continue
 
     blif_graph, cells, netlist, std_cell_types_for_feature, dataset, max_label_index, cluster_seqs, cluster_num = load_data_and_preprocess(
-        lib_file_name="../stdCelllib/gscl45nm.lib", blif_file_name="../benchmark/blif/"+benchmark_name+".blif", start_time=0, bypass_initial_cluster=True)
+        lib_file_name="../std_celllib/gscl45nm.lib", blif_file_name="../benchmark/blif/"+benchmark_name+".blif", start_time=0, bypass_initial_cluster=True)
 
     cluster_seqs, cluster_num = heuristic_label_initial_clusters_based_on(
         blif_graph, cells, netlist, target_pattern_trace)

@@ -25,7 +25,7 @@ def main():
                         help="directory holding the .sp/.gds files")
     parser.add_argument("--netlist", default=None,
                         help="shared netlist for every cell (default: "
-                             "<dir>/<cell>.sp); originalAstranStdCells selects "
+                             "<dir>/<cell>.sp); original_astran_cells selects "
                              "cells by name from one shared library file")
     args = parser.parse_args()
 

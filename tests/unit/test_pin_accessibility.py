@@ -1,4 +1,4 @@
-"""Unit tests for pySrc/pin_accessibility.py."""
+"""Unit tests for flow/pin_accessibility.py."""
 import gdstk
 import pytest
 
@@ -75,7 +75,7 @@ def test_offgrid_pin_loses_half_point(tmp_path):
     assert rep2.pins[0]["score"] == pytest.approx(0.5)
 
 
-def test_real_complex0_smoke(in_pysrc):
+def test_real_complex0_smoke(in_flow):
     rep = cell_pin_accessibility("outputs/adder/COMPLEX0.gds",
                                "outputs/adder/COMPLEX0.Astranlog",
                                grid_um=0.19)

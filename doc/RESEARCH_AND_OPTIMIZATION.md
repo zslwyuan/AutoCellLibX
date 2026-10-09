@@ -148,7 +148,7 @@
 
 | # | 优化 | 落点 | 修哪个缺陷 |
 |---|---|---|---|
-| P0-1 | **编码规范化**：BFS 时对子节点按类型名排序（或按排序后的 (类型,引脚) 元组），消除枚举顺序敏感 | `blif_preproc.extract_and_encode_subgraph_tree`（pySrc/blif_preproc.py:222-235） | 同构实例分裂成多编码、频次系统性低估（校验报告 §L3）。注意：会改变所有 trace 与既有 COMPLEX 命名，需整体重生成 outputs 并做前后频次对比实验 |
+| P0-1 | **编码规范化**：BFS 时对子节点按类型名排序（或按排序后的 (类型,引脚) 元组），消除枚举顺序敏感 | `blif_preproc.extract_and_encode_subgraph_tree`（flow/blif_preproc.py:222-235） | 同构实例分裂成多编码、频次系统性低估（校验报告 §L3）。注意：会改变所有 trace 与既有 COMPLEX 命名，需整体重生成 outputs 并做前后频次对比实验 |
 | P0-2 | **收益重叠去重**：累计节省前对 top-N 候选的 cellIds 取并集，共享单元只计一次（或按归属分摊） | `main.py:185-188` / `gui/flow_core.py` 对应处 | 节省高估（校验报告 §L6） |
 | P0-3 | **生长宽度>1 的束搜索**：每步保留 top-2/3 邻居分支，用"预估节省 = 频次×(基线宽−估算宽)"剪枝；把 COMPLEX10 式负收益在送版图前挡掉 | `blif_pattern_growth.grow_sequence_of_clusters`（:104 的 `[:1]`） | 生长宽度 1、生长不知面积（COMPLEX10 −56.05） |
 | P0-4 | **第二评价维度（routability 代理）**：从 .Astranlog 提取轨道占用/引脚分布，或实现 FastPass 式 pin-access 评分，与宽度一起构成准入门槛 | `Astran.loadAstranArea` 同位置扩展；评估汇总处 | 纯宽度代理（回应 Cell-Flex/Routability Booster 的批评） |
@@ -230,7 +230,7 @@
    单元内轨道路由 = MaxSAT + 学习约束，支持多行高。→ 单元内路由作为
    SAT 问题 + 学习约束，是多行高场景的规模化路径。
 
-**整合落地**（`pySrc/pin_accessibility.py`，5 个单测钉住）：对生成的 GDS
+**整合落地**（`flow/pin_accessibility.py`，5 个单测钉住）：对生成的 GDS
 按上列 1/3/6/8/11 的可检查结论实现三项结构度量——**on-track**（引脚中心
 落在轨道网格）、**blocked**（多晶栅跨过引脚金属，堵死通孔落点）、**crowd**
 （同轨列其他引脚数）。实测 COMPLEX0 = 0.500：VCC/GND 供电轨 x=1.045µm
@@ -257,7 +257,7 @@ met1 w/s 0.230/0.230、rails 0.60。**修正了脚手架两处数字**：gf180 �
 
 ### 4.2 SMT 联合 folding+placement 参考实现（P2-13 落点）
 
-`pySrc/smt_cell_placer.py`（8 单测）：CP-SAT 联合求解折叠与摆放，两行/
+`flow/smt_cell_placer.py`（8 单测）：CP-SAT 联合求解折叠与摆放，两行/
 极性（对应 ASTRAN 双排扩散堆叠）、串联链共享扩散（内节点度 2 识别）、
 腿宽制造上限 `maxLegUm`（否则折叠永远无收益）、NoOverlap2D、目标
 `min(1000·宽度 + 腿数)`。实测 COMPLEX0（14 管）：单行模型 4.75µm →
@@ -267,7 +267,7 @@ ASTRAN 布线/扩散共享的余量，正是"给 ASTRAN 打分"的意义。简�
 
 ### 4.3 多模态 LLM Agent 资源整合（P2-15 落点）
 
-`pySrc/llm_hint_provider.py`（9 单测）：`Hint` 协议（fold_max/row_order/
+`flow/llm_hint_provider.py`（9 单测）：`Hint` 协议（fold_max/row_order/
 track_grid/keepaway）+ 离线规则提供方（确定性，符合 AGENTS.md 不变量 9）
 + OpenAI 兼容多模态提供方（文本网表 + GDS 截图 → JSON 提示，任何失败
 降级为空并记日志）+ 内容寻址缓存 + `suggestHintsBatch` 并行批处理
@@ -277,7 +277,7 @@ SPICE 导出点挂提示日志（仅报告、不改行为）。
 
 ### 4.4 pin accessibility 度量（§三的落地）
 
-`pySrc/pin_accessibility.py`（5 单测）：on-track/blocked/crowd 三项结构
+`flow/pin_accessibility.py`（5 单测）：on-track/blocked/crowd 三项结构
 度量 + 单元总分（均值）；与 GDS 查看器同一套 log 校准纪律（ASTRAN 的
 UNITS 记录是假的）。合成 GDS 精确定住 1.0/0.5/0.9 分值与离轨 −0.5 分；
 COMPLEX0 实测 0.500（见 §三）。CLI：`python pin_accessibility.py --gds

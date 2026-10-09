@@ -1,4 +1,4 @@
-"""Regression tests for subgraph encoding (pySrc/blif_preproc.py).
+"""Regression tests for subgraph encoding (flow/blif_preproc.py).
 
 Bug fixed: ``extract_and_encode_subgraph_tree`` appended an entry to ``encodes``
 even when the predecessor was already in ``tree``.  For multi-output cells
@@ -43,11 +43,11 @@ def test_multi_output_driver_is_encoded_once():
     assert len(tree) == len(code)
 
 
-def test_encoding_pairs_one_to_one_on_benchmark(in_pysrc):
+def test_encoding_pairs_one_to_one_on_benchmark(in_flow):
     from blif_preproc import gen_graph_from_liberty_and_blif
 
     G, cells, netlist, types = gen_graph_from_liberty_and_blif(
-        "../stdCelllib/gscl45nm.lib", "../benchmark/blif/adder.blif")
+        "../std_celllib/gscl45nm.lib", "../benchmark/blif/adder.blif")
 
     checked = 0
     for cell in cells[:300]:
@@ -58,11 +58,11 @@ def test_encoding_pairs_one_to_one_on_benchmark(in_pysrc):
     assert checked > 0
 
 
-def test_tree_nodes_are_unique(in_pysrc):
+def test_tree_nodes_are_unique(in_flow):
     from blif_preproc import gen_graph_from_liberty_and_blif
 
     G, cells, netlist, types = gen_graph_from_liberty_and_blif(
-        "../stdCelllib/gscl45nm.lib", "../benchmark/blif/adder.blif")
+        "../std_celllib/gscl45nm.lib", "../benchmark/blif/adder.blif")
     for cell in cells[:200]:
         tree, _ = extract_and_encode_subgraph_tree(cells, cell.id, depth_limit=2)
         assert len(tree) == len(set(tree))
@@ -103,14 +103,14 @@ def test_canonical_code_is_net_order_invariant():
     assert canonical_pattern_code(code_a) == canonical_pattern_code(code_b)
 
 
-def test_benchmark_codes_are_canonical(in_pysrc):
+def test_benchmark_codes_are_canonical(in_flow):
     """Every initial-cluster trace on the benchmark must be in canonical
     form (children after the root are sorted)."""
     from blif_preproc import (gen_graph_from_liberty_and_blif,
                              heuristic_label_initial_clusters)
 
     G, cells, netlist, types = gen_graph_from_liberty_and_blif(
-        "../stdCelllib/gscl45nm.lib", "../benchmark/blif/adder.blif")
+        "../std_celllib/gscl45nm.lib", "../benchmark/blif/adder.blif")
     cluster_seqs, _ = heuristic_label_initial_clusters(
         G, cells, netlist)
     assert cluster_seqs, "expected at least one initial cluster"

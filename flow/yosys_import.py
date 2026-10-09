@@ -12,7 +12,7 @@ sandbox, and real yosys accepts the same invocation) and parses the
 report defensively (key presence and string/number coercion are
 tolerated; a schema drift in a new Yosys version degrades to missing
 metrics, not crashes).  Yosys itself does no STA: delay and power come
-from the liberty LUTs via pySrc/timing_power.py -- this module
+from the liberty LUTs via flow/timing_power.py -- this module
 additionally cross-checks our lib-derived area sums and cell-type
 counts against the numbers Yosys reports, so a disagreement is visible
 instead of silent.

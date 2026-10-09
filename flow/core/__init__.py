@@ -1,7 +1,7 @@
 """core: layered, modular core of the AutoCellLibX flow.
 
 Layers (bottom-up):
-  core.graph / pySrc.blif_graph_util   -- netlist data structures
+  core.graph / flow.blif_graph_util   -- netlist data structures
   core.encoding / core.seeding       -- pattern encoding and initial
                                         clustering (split out of blif_preproc)
   core.growth                        -- pattern growth (split out of

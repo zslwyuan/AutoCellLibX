@@ -61,7 +61,7 @@
 ## 第 1 层 · 数据格式：一切从认识文件开始
 
 **为什么自下而上从文件开始**：三个角色靠文件解耦，所以文件格式就是系统的
-"物理层"。这层的代码在 `pySrc/` 里都很薄，但每一个字段都有用途。
+"物理层"。这层的代码在 `flow/` 里都很薄，但每一个字段都有用途。
 
 ### 1.1 BLIF——门级网表
 
@@ -80,7 +80,7 @@
 
 ### 1.2 Liberty（.lib）——单元的引脚字典
 
-`stdCelllib/gscl45nm.lib` 里每个单元声明自己的引脚方向：
+`std_celllib/gscl45nm.lib` 里每个单元声明自己的引脚方向：
 
 ```
 cell (NAND2X1) {
@@ -94,7 +94,7 @@ cell (NAND2X1) {
 
 ### 1.3 SPICE——晶体管级实现
 
-`stdCelllib/cellsAstranFriendly.sp` 里每个单元是若干晶体管：
+`std_celllib/cellsAstranFriendly.sp` 里每个单元是若干晶体管：
 
 ```
 .subckt NAND2X1 VCC Y GND A B
@@ -109,7 +109,7 @@ M2 Y A net_1 GND NMOS W=0.5u L=0.05u
 
 ### 1.4 LEF——单元的版图摘要
 
-`stdCelllib/gscl45nm.lef` 每个单元一行尺寸：`SIZE 0.76 BY 2.47`（NAND2X1）。
+`std_celllib/gscl45nm.lef` 每个单元一行尺寸：`SIZE 0.76 BY 2.47`（NAND2X1）。
 面积对比只从这里拿"标称宽度"（第 6 层）。
 
 ### 1.5 GDSII——版图几何
@@ -121,7 +121,7 @@ M2 Y A net_1 GND NMOS W=0.5u L=0.05u
 
 - `tools/astran/build/Work/tech_freePDK45.rul`：ASTRAN 的设计规则，一行一条，
   如 `S1P1P1 0.075`（poly 与 poly 的最小间距 0.075 µm——S=间距/E=包含/W=宽度）。
-- `stdCelllib/gds2_encounter.map`：层名 ↔ GDSII 层号的对照，如
+- `std_celllib/gds2_encounter.map`：层名 ↔ GDSII 层号的对照，如
   `metal1 NET 49 0`。
 
 **这层的坑**：GDS 文件里自带的 UNITS 记录是不可信的（ASTRAN 写错了），
@@ -147,10 +147,10 @@ M2 Y A net_1 GND NMOS W=0.5u L=0.05u
 跑一下就能看到真实规模：
 
 ```python
-# 在 pySrc 目录下
+# 在 flow 目录下
 from blif_preproc import gen_graph_from_liberty_and_blif
 g, cells, netlist, types = gen_graph_from_liberty_and_blif(
-    "../stdCelllib/gscl45nm.lib", "../benchmark/blif/adder.blif")
+    "../std_celllib/gscl45nm.lib", "../benchmark/blif/adder.blif")
 print(g.number_of_nodes(), g.number_of_edges())   # 710 803
 ```
 
@@ -224,7 +224,7 @@ print(g.number_of_nodes(), g.number_of_edges())   # 710 803
 **两个指南原本没说的真相**（校验发现）：
 1. 生长过去**不知道面积**，停止靠事后回看——链条末端 COMPLEX10 实际是负收益
    （`bestRecord-seperateadder`：−56.05）。现已加入**预估剪枝**（P0-3，
-   `pySrc/benefit.py`）：用运行内在线标定的"尺寸→收缩率"模型，在送 ASTRAN
+   `flow/benefit.py`）：用运行内在线标定的"尺寸→收缩率"模型，在送 ASTRAN
    之前就否决预测为负收益的分支；生长也从"每轮只长 top-1"放宽为**束搜索**
    （每轮长前 2 个队首，`growBeamWidth`）。
 2. "一个实例只属于一个单元"的 enforcement 是**破坏式**的：想吸收的邻居已被
@@ -280,9 +280,9 @@ Mcl0#0 VCC cl1#Y cl0#a_2_6# VCC PMOS W=1u L=0.05u
 功"——宽度 ≤ 0 的模式必须从收益统计中剔除，否则会报告假节省。
 
 **宽度之外的第二、第三指标**（2026-10 新增）：宽度仍是最优准则，但每个
-候选现在还会报告——①**可布性**（`pySrc/routability.py` 从 .Astranlog 解析
+候选现在还会报告——①**可布性**（`flow/routability.py` 从 .Astranlog 解析
 路由器自己的 `Rt. Density` 拥塞值与 Pathfinder 拆线轮数；窄但布不通的单元
-会在详细布线阶段把收益吐回去）；②**电气量**（`pySrc/electrical.py`：漏电
+会在详细布线阶段把收益吐回去）；②**电气量**（`flow/electrical.py`：漏电
 和、输入电容、延迟代理、以及**内化网数**——合并把组内互连从外部世界抹掉，
 这是宽度永远看不见的动态功耗节省）。两者默认只报告、可配置成硬门限。
 
@@ -351,7 +351,7 @@ ILP 压缩的直观理解：把每个图形的左右上下坐标当成变量，�
 
 ## 第 8 层 · 集成：把各层粘成一条可靠的流水线
 
-**代码入口**：`pySrc/main.py` 的 `main()`（约 390 行，是全系统的"总装车间"）。
+**代码入口**：`flow/main.py` 的 `main()`（约 390 行，是全系统的"总装车间"）。
 
 主循环是**贪心**的：每轮把当前最优的几个候选送去生成版图、算总节省；超过
 历史最佳就记入 `bestRecord-<bench>`，否则停止（收益递减即收手）；同时把
@@ -430,5 +430,5 @@ gui/tabs/…                                             ← 8 个页面
 
 ---
 
-*本文与代码同步维护：引用的函数名都能在 `pySrc/`、`gui/` 里直接搜索到。
+*本文与代码同步维护：引用的函数名都能在 `flow/`、`gui/` 里直接搜索到。
 数据规模与宽度等数字以仓库当前 `outputs/` 为准（工具链更新会重生成）。*

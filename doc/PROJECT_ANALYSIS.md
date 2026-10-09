@@ -27,7 +27,7 @@
 ├── .git/                      # git 仓库
 ├── .gitignore                 # 忽略 __pycache__/ 与 astran
 ├── .vscode/
-│   ├── launch.json            # VS Code 调试配置(运行 pySrc/main.py)
+│   ├── launch.json            # VS Code 调试配置(运行 flow/main.py)
 │   └── settings.json
 ├── LICENSE                    # Apache License
 ├── README.MD                  # 项目说明(论文、特性、调用图)
@@ -47,7 +47,7 @@
 │   ├── motivation.png         # 动机图(标准单元合并示例)
 │   ├── pattern.png            # 模式挖掘示意图
 │   └── PROJECT_ANALYSIS.md    # 本文档
-├── pySrc/                     # Python 主代码
+├── flow/                     # Python 主代码
 │   ├── main.py                # 入口:完整流水线
 │   ├── blif_preproc.py         # BLIF/liberty 解析、构图、启发式初始聚类、数据集转换
 │   ├── blif_graph_util.py       # 数据结构(StdCellType/DesignCell/DesignNet/PatternCluster...) + 画图
@@ -61,19 +61,19 @@
 │   ├── result_analysis.py      # 结果汇总脚本(生成 results/result.csv)
 │   ├── result_analysis_count_tops.py # 按 top 模式汇总结果的变体
 │   ├── clean.sh / README / requirements.txt
-│   ├── originalAstranStdCells/ # 原始单元经 ASTRAN 生成的 .gds/.run/.Astranlog
-│   ├── originalGSCL45StdCells/ # FreePDK45 GSCL 库原始 .gds(31 个单元)
+│   ├── original_astran_cells/ # 原始单元经 ASTRAN 生成的 .gds/.run/.Astranlog
+│   ├── original_gscl45_cells/ # FreePDK45 GSCL 库原始 .gds(31 个单元)
 │   └── outputs/               # 每个 benchmark 的输出目录
 │       ├── someResults.zip    # 论文相关结果打包
 │       └── adder/             # 当前运行实例的输出(见 §9)
-├── stdCelllib/                # PDK 与标准单元库数据
+├── std_celllib/                # PDK 与标准单元库数据
 │   ├── cellsAstranFriendly.sp # ASTRAN 友好的单元 SPICE 网表(24 个单元)
 │   ├── gscl45nm.lib           # GSCL45 liberty 时序库(输入文件)
 │   ├── gscl45nm.lef / .tlf / .db / gds2_encounter.map / gpdk45nm.m
 │   ├── gscl45nmVfiles.zip
 │   └── sky130_fd_sc_hd__tt_025C_1v80.lib  # SkyWater 130nm 库(备用,约 13MB)
 ├── tests/                     # pytest 测试体系(unit + integration)
-│   ├── conftest.py            # 共享 fixture(cwd=pySrc、路径常量)
+│   ├── conftest.py            # 共享 fixture(cwd=flow、路径常量)
 │   ├── unit/                  # 7 个单元测试文件(31 用例)
 │   └── integration/           # ASTRAN 冒烟 + 挖掘→生长→导出(slow)
 ├── tools/                     # 项目内 vendored 工具(与主项目合并管理)
@@ -87,11 +87,11 @@
 └── pytest.ini                 # pytest 配置(默认跳过 slow 用例)
 ```
 
-> 说明:ASTRAN 与求解器包装已 vendored 进本仓库(`tools/`),Python 代码、ASTRAN 源码、测试作为**单一项目管理**。工具路径统一由 `pySrc/astran.py` 从仓库根解析(`ASTRAN_BUILD_PATH`/`ASTRAN_TECHNOLOGY`/`GUROBI_CL`)。
+> 说明:ASTRAN 与求解器包装已 vendored 进本仓库(`tools/`),Python 代码、ASTRAN 源码、测试作为**单一项目管理**。工具路径统一由 `flow/astran.py` 从仓库根解析(`ASTRAN_BUILD_PATH`/`ASTRAN_TECHNOLOGY`/`GUROBI_CL`)。
 
 ---
 
-## 3. 核心模块详细分析(pySrc)
+## 3. 核心模块详细分析(flow)
 
 ### 3.1 `main.py` — 主流水线入口
 
@@ -99,7 +99,7 @@
 
 1. **环境设置**:`CUDA_VISIBLE_DEVICES=-1`(禁用 GPU);配置 `ASTRANBuildPath = "D:/astran/Astran/build"`。
 2. **加载原始单元面积**:`loadOrignalGSCL45nmGDS()` 读取 GSCL45 GDS 面积;`loadAstranGDS()` 读取 ASTRAN 重生成的原始单元面积。
-3. **加载数据**:`loadDataAndPreprocess()` 解析 `stdCelllib/gscl45nm.lib` + `benchmark/blif/<name>.blif`,构建门级图、启发式初始聚类、生成 GNN 数据集。
+3. **加载数据**:`loadDataAndPreprocess()` 解析 `std_celllib/gscl45nm.lib` + `benchmark/blif/<name>.blif`,构建门级图、启发式初始聚类、生成 GNN 数据集。
 4. **为缺失 GDS 的原始单元调用 ASTRAN**(路径存在时)。
 5. **模式迭代扩展循环**(`topThr=5` 轮 × 每轮检查前 `topThr` 个模式序列):
    - 对每个候选模式序列:若面积覆盖不足(`size×cnt < ratioThr×cells` 且 `cnt < cntThr`)则跳过;
@@ -123,7 +123,7 @@
 - `technologyPath = ASTRAN_TECHNOLOGY` = `<repo>/tools/astran/build/Work/tech_freePDK45.rul`;
 - 求解器 `GUROBI_CL` = `<repo>/tools/gurobi_cl/gurobi_cl.cmd`(python-mip + CBC,替代 Gurobi `gurobi_cl`);
 - benchmark 列表当前只启用 `["adder"]`。
-- 上述常量均定义于 `pySrc/astran.py`,由仓库根解析,与 cwd 无关。
+- 上述常量均定义于 `flow/astran.py`,由仓库根解析,与 cwd 无关。
 
 ### 3.2 `blif_preproc.py` — 数据预处理与初始聚类
 
@@ -180,8 +180,8 @@
 
 ### 3.7 `gds_analysis.py` — GDS 面积解析
 
-- `loadOrignalGSCL45nmGDS()`:遍历 31 个 GSCL45 单元名,用 `gdstk.read_gds` 读取 `originalGSCL45StdCells/<name>.gds`,计算第 6 层(金属?)面积。
-- `loadAstranGDS()`:从 `originalAstranStdCells/` 所有 `.gds` 对应的 `.Astranlog` 读取面积(复用宽×0.8×3.2 换算)。
+- `loadOrignalGSCL45nmGDS()`:遍历 31 个 GSCL45 单元名,用 `gdstk.read_gds` 读取 `original_gscl45_cells/<name>.gds`,计算第 6 层(金属?)面积。
+- `loadAstranGDS()`:从 `original_astran_cells/` 所有 `.gds` 对应的 `.Astranlog` 读取面积(复用宽×0.8×3.2 换算)。
 - **本地修改**:从 `gdspy` 迁移到 `gdstk`(API: `read_gds`/`cell.area(((6,0),))`)。
 
 ### 3.8 `global_variables.py`
@@ -208,8 +208,8 @@ gscl45nm.lib ──┐
                ├─> blif_preproc ──> BLIFGraph(有向图)+cells+nets ──> 初始模式簇(深度1树编码)
 adder.blif ────┘                        │
                                          ▼
-          originalGSCL45StdCells/*.gds ─> loadOrignalGSCL45nmGDS() ─> stdType2GSCLArea
-          originalAstranStdCells/*.gds ─> loadAstranGDS() ──────────> stdType2AstranArea
+          original_gscl45_cells/*.gds ─> loadOrignalGSCL45nmGDS() ─> stdType2GSCLArea
+          original_astran_cells/*.gds ─> loadAstranGDS() ──────────> stdType2AstranArea
                                          │
     ┌────────────────────────────────────▼────────────────────────────────┐
     │ 迭代(topThr轮):                                                    │
@@ -226,7 +226,7 @@ adder.blif ────┘                        │
 
 ---
 
-## 5. 标准单元库与 PDK 数据(stdCelllib)
+## 5. 标准单元库与 PDK 数据(std_celllib)
 
 | 文件 | 说明 |
 |---|---|
@@ -237,7 +237,7 @@ adder.blif ────┘                        │
 | `gpdk45nm.m` | FreePDK45 工艺文件 |
 | `sky130_fd_sc_hd__tt_025C_1v80.lib` | SkyWater 130nm 库(13MB,备用,对应 TODO 中 ASAP7 类似扩展方向) |
 
-**原始 GDS**:`pySrc/originalGSCL45StdCells/` 含 31 个单元 GDS;`pySrc/originalAstranStdCells/` 含这些单元经 ASTRAN 生成的 GDS(部分单元只有 log,如 AND2X2、INVX2 等无 .gds)。
+**原始 GDS**:`flow/original_gscl45_cells/` 含 31 个单元 GDS;`flow/original_astran_cells/` 含这些单元经 ASTRAN 生成的 GDS(部分单元只有 log,如 AND2X2、INVX2 等无 .gds)。
 
 ---
 
@@ -265,7 +265,7 @@ adder.blif ────┘                        │
 
 ## 8. 输出产物(outputs)
 
-每个 benchmark 输出到 `pySrc/outputs/<name>/`:
+每个 benchmark 输出到 `flow/outputs/<name>/`:
 - `COMPLEX<n>.png` — 模式子图可视化;
 - `COMPLEX<n>.sp` — 合并后的复杂单元 SPICE 网表(含 pattern code 注释);
 - `COMPLEX<n>.gds` + `.Astranlog` + `.run` — ASTRAN 版图与日志;
@@ -274,7 +274,7 @@ adder.blif ────┘                        │
 
 ---
 
-## 9. 当前运行状态(pySrc/outputs/adder)
+## 9. 当前运行状态(flow/outputs/adder)
 
 **已完成一次完整闭环运行(2026-09-24 16:20,约 15 分钟)**,产物齐全:
 
@@ -300,15 +300,15 @@ adder.blif ────┘                        │
 
 ## 11. 未提交修改(git diff 摘要)
 
-工作区相对 HEAD 有 5 个文件修改,`pySrc/outputs/adder/` 未跟踪:
+工作区相对 HEAD 有 5 个文件修改,`flow/outputs/adder/` 未跟踪:
 
 | 文件 | 修改内容 |
 |---|---|
-| `pySrc/astran.py` | 引入 MinGW PATH;用开源 `gurobi_cl.cmd` 包装替代 Gurobi;`cellgen autoflow` 去掉 nTrack 多轨道循环(单次执行);`gdspy`/`os.path` 统一化 |
-| `pySrc/blif_preproc.py` | 移除 `tensorflow` 依赖:`edge_mat`/`node_features` 由 `tf.constant` 改为 numpy 数组;删除无用 import |
-| `pySrc/blif_graph_util.py` | 画图布局:graphviz 失败时回退 `spring_layout`(不强制依赖 pygraphviz) |
-| `pySrc/gds_analysis.py` | `gdspy` → `gdstk` 迁移 |
-| `pySrc/main.py` | ASTRAN 路径改为本地 `D:/astran/...`;benchmark 列表改为仅 `adder`;使用 `GUROBI_CL` 常量 |
+| `flow/astran.py` | 引入 MinGW PATH;用开源 `gurobi_cl.cmd` 包装替代 Gurobi;`cellgen autoflow` 去掉 nTrack 多轨道循环(单次执行);`gdspy`/`os.path` 统一化 |
+| `flow/blif_preproc.py` | 移除 `tensorflow` 依赖:`edge_mat`/`node_features` 由 `tf.constant` 改为 numpy 数组;删除无用 import |
+| `flow/blif_graph_util.py` | 画图布局:graphviz 失败时回退 `spring_layout`(不强制依赖 pygraphviz) |
+| `flow/gds_analysis.py` | `gdspy` → `gdstk` 迁移 |
+| `flow/main.py` | ASTRAN 路径改为本地 `D:/astran/...`;benchmark 列表改为仅 `adder`;使用 `GUROBI_CL` 常量 |
 
 **解读**:这些改动把上游(面向 Linux + Gurobi 商业许可)的实现适配到了**本地 Windows 环境**,同时解耦了 TensorFlow 依赖,使核心挖掘/聚类/版图流程可在无 GPU、无 Gurobi 许可的情况下运行。
 
@@ -330,7 +330,7 @@ adder.blif ────┘                        │
 ```bash
 pip install -r requirements.txt   # 安装 Python 依赖
 # 确认 ASTRAN 安装于 D:/astran/Astran/build 且 gurobi_cl.cmd 可用
-cd pySrc
+cd flow
 python main.py                    # 运行 adder 流水线(当前配置)
 python result_analysis.py          # 汇总 outputs/*/bestRecord* → results/
 ```

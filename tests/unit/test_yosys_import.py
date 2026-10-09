@@ -1,4 +1,4 @@
-"""Unit tests for pySrc/yosys_import.py."""
+"""Unit tests for flow/yosys_import.py."""
 import pytest
 
 from yosys_import import (compare_cell_counts, compare_with_flow_area, find_yosys,
@@ -54,10 +54,10 @@ def test_run_stat_graceful_without_yosys():
     assert "reason" in r
 
 
-def test_run_stat_real_yosys_if_available(in_pysrc):
+def test_run_stat_real_yosys_if_available(in_flow):
     if (find_yosys() is None):
         pytest.skip("no yosys executable")
-    r = run_yosys_stat("../stdCelllib/gscl45nm.lib",
+    r = run_yosys_stat("../std_celllib/gscl45nm.lib",
                      "../benchmark/blif/adder.blif")
     assert r["ok"] is True
     assert r["num_cells"] == 707

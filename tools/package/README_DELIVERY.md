@@ -77,12 +77,12 @@ AutoCellLibX\
 ├── AutoCellLibX.exe          启动器（桌面快捷方式指向它）
 ├── AutoCellLibX-Console.cmd  控制台启动（排障用，显示全部日志）
 ├── runtime\                  内置 Python 3.11 运行时（裁剪版）
-├── pySrc\                    流程核心：解析/挖掘/生长/SPICE/GDS 分析
+├── flow\                    流程核心：解析/挖掘/生长/SPICE/GDS 分析
 │   ├── outputs\<基准>\       运行结果：COMPLEX*.sp/.gds/.Astranlog、
 │   │                         bestRecord-*（附带的演示结果）
-│   ├── originalAstranStdCells\   ASTRAN 基线单元缓存
-│   └── originalGSCL45StdCells\   GSCL45 原始库单元数据
-├── stdCelllib\               GSCL45 工艺数据（.lib/.lef/.sp/图层映射）
+│   ├── original_astran_cells\   ASTRAN 基线单元缓存
+│   └── original_gscl45_cells\   GSCL45 原始库单元数据
+├── std_celllib\               GSCL45 工艺数据（.lib/.lef/.sp/图层映射）
 ├── benchmark\blif\           演示网表（BLIF）
 ├── tools\astran\build\       ASTRAN 版图合成器 + 工艺规则
 ├── tools\gurobi_cl\          LP 求解器封装（python-mip + CBC）
@@ -99,7 +99,7 @@ AutoCellLibX\
   最终的节省数字不包含它。
 - **“large design” 警告？** 超过 8 MB 的网表在桌面交互中可能很慢，
   建议只运行中小规模网表；大网表请用命令行版本。
-- **想恢复出厂演示结果？** 删除 `pySrc\outputs\` 下对应目录后重新运行。
+- **想恢复出厂演示结果？** 删除 `flow\outputs\` 下对应目录后重新运行。
 
 ## 八、数字口径（务必阅读）
 
@@ -109,7 +109,7 @@ AutoCellLibX\
   下进行；跨工具版本的数字不可直接比较。
 - “节省”= 原始单元并排宽度和 − 合并后宽度，乘以出现次数。
 - 本工具不修改您的原始网表与库文件，所有产物都写入
-  `pySrc\outputs\<基准>\`。
+  `flow\outputs\<基准>\`。
 
 ## 九、许可与合规（请阅读）
 

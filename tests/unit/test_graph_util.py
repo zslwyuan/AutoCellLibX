@@ -1,4 +1,4 @@
-"""Unit tests for pySrc/blif_graph_util.py: data structures and helpers."""
+"""Unit tests for flow/blif_graph_util.py: data structures and helpers."""
 from blif_graph_util import (
     StdCellType,
     DesignCell,

@@ -1,4 +1,4 @@
-"""Unit tests for pySrc/benefit.py (growth benefit estimation, P0-3)."""
+"""Unit tests for flow/benefit.py (growth benefit estimation, P0-3)."""
 import pytest
 
 from benefit import ShrinkModel, make_growth_benefit_estimator

@@ -1,6 +1,6 @@
 """The AutoCellLibX pipeline as a configurable, observable, cancellable run.
 
-This is a faithful port of ``pySrc/main.py``'s control flow with three
+This is a faithful port of ``flow/main.py``'s control flow with three
 additions the GUI needs: progress callbacks, cooperative cancellation, and a
 few knobs (which stages to run, a cap on ASTRAN launches).  The algorithm
 itself -- thresholds, the trace-keyed de-duplication, the "exclude a pattern
@@ -67,7 +67,7 @@ def _popen_astran(run_path, log_fh, **kwargs):
         if sys.platform == "win32":
             kwargs["creationflags"] = (subprocess.CREATE_NEW_PROCESS_GROUP |
                                        subprocess.CREATE_NO_WINDOW)
-        return subprocess.Popen(cmd, cwd=paths.PYSRC_DIR, stdout=log_fh,
+        return subprocess.Popen(cmd, cwd=paths.FLOW_DIR, stdout=log_fh,
                                 stderr=subprocess.STDOUT, **kwargs)
     except (PermissionError, FileNotFoundError, OSError) as exc:
         raise AstranLaunchError(
@@ -95,7 +95,7 @@ class FlowConfig(object):
         self.technology_file = None     # .rul (ASTRAN design rules)
         self.lef_file = None            # .lef (nominal cell widths for area)
         self.layer_map_file = None      # Cadence layer map (stream -> name)
-        # ASTRAN geometry overrides; None keeps pySrc/astran.py constants.
+        # ASTRAN geometry overrides; None keeps flow/astran.py constants.
         # Keys: cells_height, h_grid, v_grid, supply_size, nwell_pos, cell_template.
         self.geometry = None
         self.top_thr = 5            # main.py: top_thr
@@ -241,14 +241,14 @@ class FlowRunner(object):
             self._done_stages.append(key)
 
     def _import_flow(self):
-        """Import the pySrc modules (matplotlib forced to a headless backend).
+        """Import the flow modules (matplotlib forced to a headless backend).
 
         matplotlib.pyplot is used by the flow's pattern drawings; forcing Agg
         keeps those off any GUI event loop and out of the Qt backend's way.
         """
         if self._flow is not None:
             return self._flow
-        paths.ensure_pysrc_on_path()
+        paths.ensure_flow_on_path()
         import matplotlib
         matplotlib.use("Agg", force=True)
         import astran
@@ -279,8 +279,8 @@ class FlowRunner(object):
         return self._flow
 
     def _rel(self, abs_path):
-        """Path as the flow expects it: relative to pySrc, './'-prefixed."""
-        rel = os.path.relpath(abs_path, paths.PYSRC_DIR)
+        """Path as the flow expects it: relative to flow, './'-prefixed."""
+        rel = os.path.relpath(abs_path, paths.FLOW_DIR)
         return "./" + rel.replace("\\", "/")
 
     def _blif_path(self, name):
@@ -388,10 +388,10 @@ class FlowRunner(object):
         t0 = time.time()
         prev_cwd = os.getcwd()
         try:
-            # The flow modules reach for ../stdCelllib and ./outputs, so they
-            # only work with cwd = pySrc.  Everything the GUI itself touches is
+            # The flow modules reach for ../std_celllib and ./outputs, so they
+            # only work with cwd = flow.  Everything the GUI itself touches is
             # an absolute path (see paths.py), so this is safe.
-            os.chdir(paths.PYSRC_DIR)
+            os.chdir(paths.FLOW_DIR)
             self._run_all(t0)
         finally:
             os.chdir(prev_cwd)
@@ -577,7 +577,7 @@ class FlowRunner(object):
         transistor_counts = flow["width_proxy"].count_transistors_per_type(
             self._rel(self.cfg.spice_lib()))
         wp_samples = flow["width_proxy"].collect_samples(
-            sorted(glob.glob(os.path.join(paths.PYSRC_DIR, "outputs", "*"))),
+            sorted(glob.glob(os.path.join(paths.FLOW_DIR, "outputs", "*"))),
             transistor_counts, astran_area_by_type)
         context["transistor_counts"] = transistor_counts
         context["width_proxy"] = None
@@ -616,7 +616,7 @@ class FlowRunner(object):
         """Whether the cached baseline cells match the configured geometry.
 
         A custom ASTRAN technology file, or geometry values that differ from
-        the pySrc/astran.py constants, invalidate every cached baseline cell:
+        the flow/astran.py constants, invalidate every cached baseline cell:
         the area comparison needs the baseline and the generated cells at the
         same row height (AGENTS.md invariant 10).
         """
@@ -823,14 +823,14 @@ def regenerate_cell(benchmark, cell, shared_netlist=False, hooks=None,
                     spice_lib=None):
     """Rebuild one cell's layout without re-running the mining pipeline.
 
-    Same job as ``pySrc/regenerate_cells.py``; used by the Layouts tab.  A
+    Same job as ``flow/regenerate_cells.py``; used by the Layouts tab.  A
     ``.gds`` is moved aside first (``.gds.bak``) so a failed run cannot leave a
     stale layout claiming to be current.  ``geometry``/``technology_path``/
     ``spice_lib`` override the ASTRAN defaults (the Configure tab's PDK
     settings).
     """
     hooks = hooks or Hooks()
-    paths.ensure_pysrc_on_path()
+    paths.ensure_flow_on_path()
     import matplotlib
     matplotlib.use("Agg", force=True)
     import astran
@@ -848,7 +848,7 @@ def regenerate_cell(benchmark, cell, shared_netlist=False, hooks=None,
 
     script = astran.build_astran_commands(
         astran.GUROBI_CL, technology_path or astran.ASTRAN_TECHNOLOGY,
-        _rel_to_pysrc(netlist), name, _rel_to_pysrc(out_dir),
+        _rel_to_flow_dir(netlist), name, _rel_to_flow_dir(out_dir),
         geometry=geometry)
     run_path = os.path.join(out_dir, name + ".run")
     with open(run_path, "w") as fh:
@@ -880,8 +880,8 @@ def regenerate_cell(benchmark, cell, shared_netlist=False, hooks=None,
     return log
 
 
-def _rel_to_pysrc(p):
-    return "./" + os.path.relpath(p, paths.PYSRC_DIR).replace("\\", "/")
+def _rel_to_flow_dir(p):
+    return "./" + os.path.relpath(p, paths.FLOW_DIR).replace("\\", "/")
 
 
 def parse_design(benchmark, hooks=None, cancel_event=None, blif_path=None,
@@ -896,7 +896,7 @@ def parse_design(benchmark, hooks=None, cancel_event=None, blif_path=None,
     Returns the design info dict (also emitted to hooks).
     """
     hooks = hooks or Hooks()
-    paths.ensure_pysrc_on_path()
+    paths.ensure_flow_on_path()
     import matplotlib
     matplotlib.use("Agg", force=True)
     import blif_preproc
@@ -908,11 +908,11 @@ def parse_design(benchmark, hooks=None, cancel_event=None, blif_path=None,
 
     hooks.log("解析设计 / parsing design graph: %s" % benchmark, "accent")
     prev = os.getcwd()
-    os.chdir(paths.PYSRC_DIR)
+    os.chdir(paths.FLOW_DIR)
     try:
         blif_graph, cells, netlist, std_cell_types_for_feature = \
             blif_preproc.gen_graph_from_liberty_and_blif(
-                _rel_to_pysrc(lib_abs), _rel_to_pysrc(blif_abs))
+                _rel_to_flow_dir(lib_abs), _rel_to_flow_dir(blif_abs))
     finally:
         os.chdir(prev)
 

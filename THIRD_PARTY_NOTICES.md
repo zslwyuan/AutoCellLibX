@@ -33,7 +33,7 @@ of being assumed.
 | python-mip | Eclipse Public License 2.0 (text bundled in the installer runtime at `runtime/Lib/site-packages/mip-2.0.0.dist-info/licenses/LICENSE`). |
 | COIN-OR CBC (via `cbcbox`) | Eclipse Public License 1.0 (the COIN-OR Cbc solver binary `cbc.exe` and its DLLs are shipped under `runtime/.../cbcbox/`). |
 
-## 3. Standard-cell / PDK data (`stdCelllib/`)
+## 3. Standard-cell / PDK data (`std_celllib/`)
 
 | Component | Origin | License |
 |---|---|---|

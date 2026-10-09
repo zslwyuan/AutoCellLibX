@@ -120,12 +120,12 @@ def run_pipeline(cfg, hooks=None):
             for orig_std_cell_type in std_cell_types_for_feature:
                 if (orig_std_cell_type.find("bool") >= 0):
                     continue
-                if (os.path.exists('./originalAstranStdCells/'+orig_std_cell_type+'.gds')):
+                if (os.path.exists('./original_astran_cells/'+orig_std_cell_type+'.gds')):
                     continue
                 run_astran_for_netlist(astran_path=astran_build_path, gurobi_path=GUROBI_CL,
                                     technology_path=ASTRAN_TECHNOLOGY,
                                     spice_netlist_path=cfg.spice_lib,
-                                    complex_name=orig_std_cell_type, command_dir='./originalAstranStdCells/')
+                                    complex_name=orig_std_cell_type, command_dir='./original_astran_cells/')
         astran_area_by_type = load_astran_gds()
         astran_area = get_area(cells, astran_area_by_type)
         _flowLog.info("astran_area=%.2f", astran_area)

@@ -1,4 +1,4 @@
-"""Unit tests for heuristic initial clustering (pySrc/blif_preproc.py).
+"""Unit tests for heuristic initial clustering (flow/blif_preproc.py).
 
 Regression covered: in ``heuristic_label_initial_clusters_based_on``
 the pattern counter ``label_id`` was incremented even for patterns whose cluster
@@ -13,7 +13,7 @@ from blif_preproc import (
     heuristic_label_initial_clusters_based_on,
 )
 
-LIB = "../stdCelllib/gscl45nm.lib"
+LIB = "../std_celllib/gscl45nm.lib"
 BLIF = "../benchmark/blif/adder.blif"
 
 
@@ -29,7 +29,7 @@ def _preprocess(bypass=False):
         bypass_initial_cluster=bypass)
 
 
-def test_initial_clustering_structure(in_pysrc):
+def test_initial_clustering_structure(in_flow):
     G, cells, netlist, types, ds, ml, seqs, cn = _preprocess()
     assert len(seqs) > 0
     for s in seqs:
@@ -45,13 +45,13 @@ def test_initial_clustering_structure(in_pysrc):
             assert len(cl.cell_ids) >= 2
 
 
-def test_pattern_ids_dense_for_initial_clustering(in_pysrc):
+def test_pattern_ids_dense_for_initial_clustering(in_flow):
     G, cells, netlist, types, ds, ml, seqs, cn = _preprocess()
     ids = sorted(set(cl.cluster_type_id for s in seqs for cl in s.pattern_clusters))
     assert ids == list(range(len(seqs)))
 
 
-def test_pattern_ids_dense_for_based_on(in_pysrc):
+def test_pattern_ids_dense_for_based_on(in_flow):
     """Regression: _BasedOn must not leave holes in cluster_type_id."""
     G, cells, netlist, types, ds, ml, seqs, cn = _preprocess()
     target = seqs[0].pattern_extension_trace
@@ -65,7 +65,7 @@ def test_pattern_ids_dense_for_based_on(in_pysrc):
     assert ids == list(range(len(seqs2))), (ids, len(seqs2))
 
 
-def test_based_on_only_keeps_target_prefix(in_pysrc):
+def test_based_on_only_keeps_target_prefix(in_flow):
     G, cells, netlist, types, ds, ml, seqs, cn = _preprocess()
     target = seqs[0].pattern_extension_trace
 

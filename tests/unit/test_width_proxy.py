@@ -1,4 +1,4 @@
-"""Unit tests for pySrc/width_proxy.py (P2 phase 1)."""
+"""Unit tests for flow/width_proxy.py (P2 phase 1)."""
 import pytest
 
 from width_proxy import (WidthProxy, collect_samples,
@@ -6,8 +6,8 @@ from width_proxy import (WidthProxy, collect_samples,
                          make_proxy_benefit_estimator, parse_trace_types)
 
 
-def test_count_transistors_per_type(in_pysrc):
-    counts = count_transistors_per_type("../stdCelllib/cellsAstranFriendly.sp")
+def test_count_transistors_per_type(in_flow):
+    counts = count_transistors_per_type("../std_celllib/cellsAstranFriendly.sp")
     assert counts["NAND2X1"] == 4
     assert counts["INVX1"] == 2
     assert all(v > 0 for v in counts.values())
@@ -21,12 +21,12 @@ def test_parse_trace_types():
         ["NAND2X1", "NAND2X1", "OR2X1", "XNOR2X1", "OAI21X1"]
 
 
-def test_collect_samples_on_real_outputs(in_pysrc):
+def test_collect_samples_on_real_outputs(in_flow):
     import os
     if not os.path.exists("./outputs/adder/COMPLEX1.sp"):
         pytest.skip("outputs snapshot not present")
     from gds_analysis import load_astran_gds
-    counts = count_transistors_per_type("../stdCelllib/cellsAstranFriendly.sp")
+    counts = count_transistors_per_type("../std_celllib/cellsAstranFriendly.sp")
     widths = load_astran_gds()
     samples = collect_samples(
         ["./outputs/adder", "./outputs/ctrl", "./outputs/max",
@@ -56,12 +56,12 @@ def test_proxy_fits_linear_relation():
     assert proxy.predict(2, 8, 2.0) > proxy.predict(2, 8, 1.0)
 
 
-def test_loo_evaluation_runs_on_real_data(in_pysrc):
+def test_loo_evaluation_runs_on_real_data(in_flow):
     import os
     if not os.path.exists("./outputs/adder/COMPLEX1.sp"):
         pytest.skip("outputs snapshot not present")
     from gds_analysis import load_astran_gds
-    counts = count_transistors_per_type("../stdCelllib/cellsAstranFriendly.sp")
+    counts = count_transistors_per_type("../std_celllib/cellsAstranFriendly.sp")
     widths = load_astran_gds()
     samples = collect_samples(
         ["./outputs/adder", "./outputs/ctrl", "./outputs/max",
@@ -95,13 +95,13 @@ def test_proxy_estimator_vetoes_wide_prediction():
     assert est3(["NAND2X1"], "UNKNOWN", 2, 10) == float("inf")
 
 
-def test_training_pipeline_roundtrip(tmp_path, in_pysrc):
+def test_training_pipeline_roundtrip(tmp_path, in_flow):
     import os
     if not os.path.exists("./outputs/adder/COMPLEX1.sp"):
         pytest.skip("outputs snapshot not present")
     from gds_analysis import load_astran_gds
     from width_proxy import (train_or_load_width_proxy, load_width_proxy)
-    counts = count_transistors_per_type("../stdCelllib/cellsAstranFriendly.sp")
+    counts = count_transistors_per_type("../std_celllib/cellsAstranFriendly.sp")
     widths = load_astran_gds()
     out_dirs = ["./outputs/adder", "./outputs/ctrl", "./outputs/max",
                "./outputs/multiplier"]

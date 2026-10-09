@@ -16,7 +16,7 @@ PATTERN_CODE_RE = re.compile(r"^\* pattern code: (.*)$", re.M)
 
 
 def _outdir(repo_dir):
-    return os.path.join(repo_dir, "pySrc", "outputs", "adder")
+    return os.path.join(repo_dir, "flow", "outputs", "adder")
 
 
 def _complex_netlists(repo_dir):

@@ -1,14 +1,14 @@
-"""Unit tests for pySrc/liberty_gen.py (COMPLEX cell .lib generation)."""
+"""Unit tests for flow/liberty_gen.py (COMPLEX cell .lib generation)."""
 import pytest
 
 from liberty_gen import (DEFAULT_LOADS, DEFAULT_SLEWS, _substitute,
                          generate_complex_liberty, load_liberty_functions)
 
-LIB = "../stdCelllib/gscl45nm.lib"
+LIB = "../std_celllib/gscl45nm.lib"
 BLIF = "../benchmark/blif/adder.blif"
 
 
-def test_load_liberty_functions(in_pysrc):
+def test_load_liberty_functions(in_flow):
     funcs = load_liberty_functions(LIB)
     assert ("NAND2X1", "Y") in funcs
     assert funcs[("NAND2X1", "Y")] == "(!(A B))"
@@ -22,7 +22,7 @@ def test_substitute_whole_word():
     assert _substitute("(!(AB A))", {"A": "x"}) == "(!(AB (x)))"
 
 
-def test_generate_real_cluster_liberty(in_pysrc):
+def test_generate_real_cluster_liberty(in_flow):
     from blif_preproc import (gen_graph_from_liberty_and_blif,
                              heuristic_label_initial_clusters)
     from blif_graph_util import sort_pattern_cluster_seqs

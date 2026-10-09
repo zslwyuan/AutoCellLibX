@@ -1,4 +1,4 @@
-"""Unit tests for pySrc/llm_hint_provider.py (P2 stage 3)."""
+"""Unit tests for flow/llm_hint_provider.py (P2 stage 3)."""
 import pytest
 
 from llm_hint_provider import (Hint, OfflineHintProvider, OpenAiHintProvider,

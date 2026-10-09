@@ -23,7 +23,7 @@
 **任何进入产物(尤其进入缓存键)的遍历顺序都必须被固定。**
 
 ### 5. 不要相信无法复现的"基准数据"
-`originalAstranStdCells/` 由**另一套** ASTRAN(日志自证:Linux + `/opt/gurobi950` + `cellsHeight=16`)产出,本仓库造不出来。要么用 vendored 工具链重建,要么明确标注其来源与不可复现性。
+`original_astran_cells/` 由**另一套** ASTRAN(日志自证:Linux + `/opt/gurobi950` + `cellsHeight=16`)产出,本仓库造不出来。要么用 vendored 工具链重建,要么明确标注其来源与不可复现性。
 **基准数据的可复现性,和它是否正确一样重要。**
 
 ### 6. 输入里的数值垃圾要按语义处理,而不是"糊"过去

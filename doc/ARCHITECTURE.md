@@ -6,7 +6,7 @@
 ## 分层结构
 
 ```
-pySrc/
+flow/
   main.py            ← 薄 CLI：构建 FlowConfig → 调 runPipeline（原 587 行单体内联已抽离）
   core/              ← 新分层核心（本架构的主体）
     config.py        ← FlowConfig 数据类：全部可调参数集中（取代 global_variables 可变全局

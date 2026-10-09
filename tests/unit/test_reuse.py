@@ -1,10 +1,10 @@
-"""Unit tests for pySrc/reuse.py (synthesis-reuse eligibility)."""
+"""Unit tests for flow/reuse.py (synthesis-reuse eligibility)."""
 from blif_graph_util import StdCellType, DesignCell, DesignNet, \
     DesignPatternCluster, DesignPatternClusterSeq
 from reuse import function_complexity, interface_output_count, reuse_eligible
 from liberty_gen import load_liberty_functions
 
-LIB = "../stdCelllib/gscl45nm.lib"
+LIB = "../std_celllib/gscl45nm.lib"
 
 
 def _cell(cid, name):
@@ -55,7 +55,7 @@ def _single_output_cluster():
 
 def load_electrical_metrics():
     from electrical import load_cell_electrical_metrics
-    return load_cell_electrical_metrics("../stdCelllib/gscl45nm.lib")
+    return load_cell_electrical_metrics("../std_celllib/gscl45nm.lib")
 
 
 def test_function_complexity():
@@ -66,10 +66,10 @@ def test_function_complexity():
     assert function_complexity(None) is None
 
 
-def test_single_output_cluster_is_eligible(in_pysrc):
+def test_single_output_cluster_is_eligible(in_flow):
     seq = _single_output_cluster()
     members = seq.pattern_clusters[0].cells
-    funcs = load_liberty_functions("../stdCelllib/gscl45nm.lib")
+    funcs = load_liberty_functions("../std_celllib/gscl45nm.lib")
     assert interface_output_count(members) == 1
     r = reuse_eligible(members, funcs)
     assert r["eligible"] is True, r
@@ -77,7 +77,7 @@ def test_single_output_cluster_is_eligible(in_pysrc):
     assert function_complexity(f)[0] == 4
 
 
-def test_multi_output_cluster_is_not_eligible(in_pysrc):
+def test_multi_output_cluster_is_not_eligible(in_flow):
     """An outside load on a member output makes it escape -> 2 outputs."""
     n1, n2, o = _cell(0, "NAND2X1"), _cell(1, "NAND2X1"), _cell(2, "OR2X1")
     ext = _cell(3, "INVX1")
@@ -94,13 +94,13 @@ def test_multi_output_cluster_is_not_eligible(in_pysrc):
     cluster = DesignPatternCluster(0, "[NAND2X1,NAND2X1,OR2X1]",
                                    cells, [0, 1, 2], 0)
     r = reuse_eligible(cluster.cells,
-                      load_liberty_functions("../stdCelllib/gscl45nm.lib"))
+                      load_liberty_functions("../std_celllib/gscl45nm.lib"))
     assert r["outputs"] == 2
     assert r["eligible"] is False
     assert "outputs=2" in r["reason"]
 
 
-def test_adder_top_patterns_are_not_eligible(in_pysrc):
+def test_adder_top_patterns_are_not_eligible(in_flow):
     """Evidence for AUDIT 5.25: the mined patterns are all multi-output,
     which is why abc never touches them -- the reuse path needs the
     internalize_only growth bias or single-output seeds."""
@@ -121,7 +121,7 @@ def test_adder_top_patterns_are_not_eligible(in_pysrc):
     assert eligible == 0
 
 
-def test_end_to_end_abc_uses_generated_single_output_complex(in_pysrc):
+def test_end_to_end_abc_uses_generated_single_output_complex(in_flow):
     """The full reuse path: a single-output complex cluster -> .lib
     fragment -> abc picks it up on a design with the matching function.
     Self-skips without the vendored abc-capable yosys."""
@@ -137,11 +137,11 @@ def test_end_to_end_abc_uses_generated_single_output_complex(in_pysrc):
         pytest.skip("no yosys executable")
     seq = _single_output_cluster()
     em = load_electrical_metrics()
-    tp = load_timing_power("../stdCelllib/gscl45nm.lib")
-    funcs = load_liberty_functions("../stdCelllib/gscl45nm.lib")
+    tp = load_timing_power("../std_celllib/gscl45nm.lib")
+    funcs = load_liberty_functions("../std_celllib/gscl45nm.lib")
     frag, _report = generate_complex_liberty(
         seq, "COMPLEX_SO", 2.0, tp, em, funcs)
-    base = open("../stdCelllib/gscl45nm.lib").read()
+    base = open("../std_celllib/gscl45nm.lib").read()
     ext = build_extended_liberty(base, [frag])
     with tempfile.NamedTemporaryFile("w", suffix=".lib",
                                      delete=False) as f:

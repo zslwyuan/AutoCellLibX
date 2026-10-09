@@ -1,4 +1,4 @@
-"""Unit tests for pySrc/smt_cell_placer.py (P2 stage 4 reference impl)."""
+"""Unit tests for flow/smt_cell_placer.py (P2 stage 4 reference impl)."""
 import pytest
 
 from smt_cell_placer import (DEFAULT_GRID_UM, astran_width_from_log,

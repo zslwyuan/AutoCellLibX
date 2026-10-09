@@ -1,4 +1,4 @@
-"""Unit tests for the ASTRAN run-script builder (pySrc/astran.py)."""
+"""Unit tests for the ASTRAN run-script builder (flow/astran.py)."""
 import astran
 from astran import (ASTRAN_CELLS_HEIGHT, ASTRAN_CELL_TEMPLATE,
                     ASTRAN_SUPPLY_SIZE, ASTRAN_VGRID, build_astran_commands)

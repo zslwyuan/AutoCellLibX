@@ -11,7 +11,7 @@ sub-circuits** from a design's netlist, merging each such pattern into a new
 "complex" cell, and laying that cell out transistor-level. It is built around
 three pieces:
 
-- `pySrc/` — the Python flow: BLIF/liberty parsing, subgraph encoding,
+- `flow/` — the Python flow: BLIF/liberty parsing, subgraph encoding,
   clustering, pattern growth, SPICE export, area evaluation.
 - `tools/astran/` — **ASTRAN**, the transistor-level standard-cell layout
   synthesizer (vendored C++ source, UFRGS). Also vendored, not a submodule.
@@ -130,7 +130,7 @@ is only in the code is effectively undocumented.
    `tests/unit/test_determinism.py` enforces it.
 
 10. **An area comparison requires a matched row height.** Width is an area proxy
-    only at a fixed height, so the ASTRAN baseline (`pySrc/originalAstranStdCells`)
+    only at a fixed height, so the ASTRAN baseline (`flow/original_astran_cells`)
     and the generated complexes must both go through `runAstranForNetlist` with
     the same geometry constants. Comparing 3.2 µm baselines against 2.6 µm
     complexes once flipped a candidate from +6.5 % to −19.5 %.
@@ -227,7 +227,7 @@ is only in the code is effectively undocumented.
   `tools/astran/bin/wx-config`, a shim that reports the MSYS2 wxWidgets 3.2
   flags directly.
 - **Layer/stream numbers now follow the GSCL45 stream map** (metal1=49,
-  via=50, …) — see `stdCelllib/gds2_encounter.map` and the calibrated layer
+  via=50, …) — see `std_celllib/gds2_encounter.map` and the calibrated layer
   map in `tools/astran/build/Work/tech_freePDK45.rul`. Generated GDS can be
   merged with the library without remapping; base layers (active 1, poly 9,
   contact 10, wells) keep the Cadence-style numbering used across the repo.
@@ -245,24 +245,24 @@ python -m pytest -m slow
 bash tools/astran/build_astran.sh
 
 # run the whole flow
-cd pySrc && python main.py
+cd flow && python main.py
 
 # run the desktop GUI (PySide6)
 python -m gui
 
 # regenerate one cell's layout without re-running mining
-cd pySrc && python regenerate_cells.py --dir outputs/adder COMPLEX1
+cd flow && python regenerate_cells.py --dir outputs/adder COMPLEX1
 ```
 
 ## Conventions
 
-- **Tests run with cwd = `pySrc`.** The flow modules use paths like
-  `../stdCelllib/...`, so tests that exercise them must use the `in_pysrc`
+- **Tests run with cwd = `flow`.** The flow modules use paths like
+  `../std_celllib/...`, so tests that exercise them must use the `in_flow`
   fixture. Put fast tests in `tests/unit/`, anything needing ASTRAN or long
   runtimes in `tests/integration/` under `@pytest.mark.slow`.
 - Prefer a regression test over no test when a fix is cheap to pin down; the
   cache and netlist-export contracts above exist because tests caught them.
-- Keep tool paths centralised in `pySrc/astran.py`; do not hard-code absolute
+- Keep tool paths centralised in `flow/astran.py`; do not hard-code absolute
   paths in new code.
 - Commit messages: state the defect and the evidence, not just the edit. If a
   change alters generated cells, say how the width moved.

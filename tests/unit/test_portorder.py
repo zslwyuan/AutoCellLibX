@@ -1,4 +1,4 @@
-"""Unit tests for pySrc/portorder.py (P1-9)."""
+"""Unit tests for flow/portorder.py (P1-9)."""
 import os
 
 from portorder import (generate_port_orders, parse_subckt_header,
@@ -52,7 +52,7 @@ def test_write_variants_rewrites_header_only(tmp_path):
     assert open(paths[0]).read() == SP
 
 
-def test_real_complex1_parses(in_pysrc):
+def test_real_complex1_parses(in_flow):
     path = "./outputs/adder/COMPLEX1.sp"
     if not os.path.exists(path):
         import pytest
