@@ -600,6 +600,9 @@ class FlowRunner(object):
             saveArea = 0.0
             saveGSCLArea = 0.0
             complexSelection = []
+            # Cells already claimed by a candidate counted this round (see
+            # main.py): overlapping clusters are counted once.
+            coveredCellIds = set()
             for j in range(0, cfg.top_thr):
                 self._check_cancel()
                 if j >= len(clusterSeqs):
@@ -667,25 +670,30 @@ class FlowRunner(object):
                     continue
 
                 n_clusters = len(tmpClusterSeq.patternClusters)
+                counted_clusters = n_clusters
                 if oriUnitAstranArea - newUnitAstranArea > 0:
+                    counted_clusters = flow["BLIFGraphUtil"].countUncoveredClusters(
+                        tmpClusterSeq.patternClusters, coveredCellIds)
+                    if counted_clusters == 0:
+                        continue
                     complexSelection.append((
-                        "COMPLEX%d" % patternTraceId, n_clusters,
+                        "COMPLEX%d" % patternTraceId, counted_clusters,
                         len(tmpClusterSeq.patternClusters[0].cellIdsContained),
                         tmpClusterSeq.patternExtensionTrace))
-                    saveArea += (oriUnitAstranArea - newUnitAstranArea) * n_clusters
-                    saveGSCLArea += (oriUnitGSCLArea - newUnitAstranArea) * n_clusters
+                    saveArea += (oriUnitAstranArea - newUnitAstranArea) * counted_clusters
+                    saveGSCLArea += (oriUnitGSCLArea - newUnitAstranArea) * counted_clusters
 
                 hooks.pattern({
                     "name": "COMPLEX%d" % patternTraceId,
                     "id": patternTraceId,
                     "trace": tmpClusterSeq.patternExtensionTrace,
-                    "clusters": n_clusters,
+                    "clusters": counted_clusters,
                     "size": len(tmpClusterSeq.patternClusters[0].cellIdsContained),
                     "coverage": coverage,
                     "width_um": newUnitAstranArea,
                     "orig_width_um": oriUnitAstranArea,
                     "save_unit": oriUnitAstranArea - newUnitAstranArea,
-                    "save_total": (oriUnitAstranArea - newUnitAstranArea) * n_clusters,
+                    "save_total": (oriUnitAstranArea - newUnitAstranArea) * counted_clusters,
                     "out_dir": out_dir,
                 })
 

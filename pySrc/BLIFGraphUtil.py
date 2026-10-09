@@ -144,6 +144,24 @@ def removeEmptySeqsAndDisableClusters(seqs):
     return newClusterSeqs
 
 
+def countUncoveredClusters(patternClusters, coveredCellIds):
+    """Count clusters disjoint from ``coveredCellIds``, marking them covered.
+
+    Candidates evaluated in the same round can claim overlapping design
+    cells, but a cell cannot be instantiated inside two different complex
+    cells -- a cluster that overlaps an already-counted candidate must not
+    be counted again.  The old summation counted every cluster of every
+    candidate, double-counting the overlap and over-reporting the savings.
+    """
+    unique = 0
+    for cluster in patternClusters:
+        if any(cid in coveredCellIds for cid in cluster.cellIdsContained):
+            continue
+        unique += 1
+        coveredCellIds.update(cluster.cellIdsContained)
+    return unique
+
+
 def sortPatternClusterSeqs(seqs):
     newClusterSeqsCnts = []
     newClusterSeqsSize = []

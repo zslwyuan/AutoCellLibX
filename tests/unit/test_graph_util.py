@@ -114,3 +114,37 @@ class TestPruningAndSorting:
         out = sortPatternClusterSeqs([small_cov, big_cov])
         assert out[0] is big_cov
         assert out[1] is small_cov
+
+
+class TestCountUncoveredClusters:
+    """Savings de-dup (roadmap P0-2): clusters overlapping cells already
+    claimed by an earlier candidate in the same round must not be counted
+    again."""
+
+    def test_disjoint_clusters_all_counted(self):
+        from BLIFGraphUtil import countUncoveredClusters
+        cells = _mk_cells(6)
+        clusters = [DesignPatternCluster(i, "[A]", cells, [2 * i, 2 * i + 1], 0)
+                    for i in range(3)]
+        covered = set()
+        assert countUncoveredClusters(clusters, covered) == 3
+        assert covered == {0, 1, 2, 3, 4, 5}
+
+    def test_overlapping_cluster_skipped_once(self):
+        from BLIFGraphUtil import countUncoveredClusters
+        cells = _mk_cells(6)
+        covered = set()
+        first = [DesignPatternCluster(0, "[A]", cells, [0, 1], 0)]
+        second = [DesignPatternCluster(1, "[B]", cells, [1, 2], 0),
+                  DesignPatternCluster(2, "[B]", cells, [3, 4], 0)]
+        assert countUncoveredClusters(first, covered) == 1
+        # cluster 1 overlaps cell 1 -> skipped; cluster 2 is clean -> counted
+        assert countUncoveredClusters(second, covered) == 1
+        assert covered == {0, 1, 3, 4}
+
+    def test_fully_covered_candidate_counts_zero(self):
+        from BLIFGraphUtil import countUncoveredClusters
+        cells = _mk_cells(4)
+        clusters = [DesignPatternCluster(0, "[A]", cells, [0, 1], 0)]
+        covered = {0, 1}
+        assert countUncoveredClusters(clusters, covered) == 0

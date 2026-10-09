@@ -99,6 +99,11 @@ def main():
             saveArea = 0
             saveGSCLArea = 0
             complexSelection = []
+            # Cells already claimed by a candidate counted this round: a
+            # design cell cannot be instantiated inside two different
+            # complex cells, so overlapping clusters are counted once
+            # (countUncoveredClusters), not once per candidate.
+            coveredCellIds = set()
             for j in range(0, topThr):
                 if (j >= len(clusterSeqs)):
                     break
@@ -184,12 +189,16 @@ def main():
                 if (newUnitAstranArea <= 0):   # a cached 0 x 0 layout counts nothing
                     continue
                 if (oriUnitAstranArea-newUnitAstranArea > 0):
-                    complexSelection.append(("COMPLEX"+str(patternTraceId), len(
-                        tmpClusterSeq.patternClusters), len(tmpClusterSeq.patternClusters[0].cellIdsContained), tmpClusterSeq.patternExtensionTrace))
+                    uniqueClusters = countUncoveredClusters(
+                        tmpClusterSeq.patternClusters, coveredCellIds)
+                    if (uniqueClusters == 0):
+                        continue
+                    complexSelection.append(("COMPLEX"+str(patternTraceId), uniqueClusters, len(
+                        tmpClusterSeq.patternClusters[0].cellIdsContained), tmpClusterSeq.patternExtensionTrace))
                     saveArea += (oriUnitAstranArea-newUnitAstranArea) * \
-                        len(tmpClusterSeq.patternClusters)
+                        uniqueClusters
                     saveGSCLArea += (oriUnitGSCLArea-newUnitAstranArea) * \
-                        len(tmpClusterSeq.patternClusters)
+                        uniqueClusters
 
             if (benchmarkFailure):
                 break
