@@ -65,8 +65,24 @@ def _fake_cell_width(spice_netlist_path, cell_name):
 
 def _write_fake_layout(command_dir, cell_name, width):
     os.makedirs(command_dir, exist_ok=True)
-    with open(os.path.join(command_dir, cell_name + ".gds"), "wb") as fh:
-        fh.write(b"FAKEGDS")
+    # A minimal but *valid* GDS: the flow's layout sanity gate
+    # (pySrc/layout_sanity.py) parses the file and requires metal1-active
+    # polygons spanning the row height plus supply labels.
+    import gdstk
+    from layout_sanity import ASTRAN_GDS_UNITS_PER_UM
+    lib = gdstk.Library("FAKE")
+    cell = lib.new_cell(cell_name)
+    unit = ASTRAN_GDS_UNITS_PER_UM
+    cell.add(gdstk.rectangle((0.1 * unit, 0.1 * unit),
+                             (0.2 * unit, 0.2 * unit), layer=1))
+    cell.add(gdstk.rectangle((0.3 * unit, 0.3 * unit),
+                             (0.4 * unit, 0.4 * unit), layer=9))
+    cell.add(gdstk.rectangle((0, 0), (width * unit, CELL_HEIGHT_UM * unit),
+                             layer=49))
+    cell.add(gdstk.Label("VCC", (0.05 * unit, 0.05 * unit), layer=49))
+    cell.add(gdstk.Label("GND", (0.05 * unit,
+                                 (CELL_HEIGHT_UM - 0.1) * unit), layer=49))
+    lib.write_gds(os.path.join(command_dir, cell_name + ".gds"))
     with open(os.path.join(command_dir, cell_name + ".Astranlog"), "w") as fh:
         fh.write("stubbed ASTRAN run\n")
         fh.write("-> Cell Size (W x H): %.2f x %.2f\n"
