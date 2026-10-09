@@ -747,3 +747,17 @@ libgcc_s_seh-1.dll、libstdc++-6.dll、libwinpthread-1.dll、liblzma-5.dll、lib
 **建议(未执行)**:将默认后端切为 CP-SAT(`GUROBI_CL_SOLVER=cpsat` 已可用,或改 gurobi_cl.py 默认值,ortools 缺失自动回退 CBC)。默认切换会改变后续所有生成单元的宽度,属策略决定,留给用户拍板;切换后建议整基准重生成并更新 outputs 快照。
 
 **yosys 安装尝试失败**:MSYS2 pacman 数据库 PGP 签名损坏(ucrt64/clang64/msys 库),未做系统级修复;`yosys_import` 保持优雅降级,装好后直接可用(用户可在 oss-cad-suite 或修好 pacman 后获得)。
+
+### 5.21 yosys 重导入打通:yowasp-yosys 与真实交叉校验(2026-10-09)
+
+**安装**:MSYS2 pacman 数据库损坏无解后,改走 PyPI 的 **yowasp-yosys**(WebAssembly 构建,`pip install yowasp-yosys`,Yosys 0.69)——无需 MSYS2、无需下载 oss-cad-suite。首次运行被系统占用锁(360 扫描)短暂阻塞,重试即正常。
+
+**适配(yosys_import.py)**:① `YOSYS_CANDIDATES` 增加 yowasp-yosys;② `runYosysStat` 改用 `stat -json` **stdout 模式**(YoWASP 沙盒无法写 %TEMP%,真 yosys 同样接受,单一路径);③ 解析器适配真实 0.69 schema:模块名 `\top`、直方图键 `num_cells_by_type`(保留 `cell_histogram` 兼容)、容忍日志前缀截取 JSON;④ 新增 `compareCellCounts`(直方图对拍)——因为 `read_blif` 的单元不绑定 liberty 单元,**yosys 侧 area 为空是机制性限制**,面积交叉校验由流程的 lib 面积和承担;⑤ main.py/flow_core 交叉校验打印升级。
+
+**真实交叉校验结果(adder)**:
+- yosys `num_cells=707` vs 本流程图 707 个库类型单元(710 节点 − 3 个 bool 常量)——**精确一致**;
+- 直方图逐类型一致(NAND2X1=192、XNOR2X1=118、OAI21X1=72、OR2X1=71 等,与第二层校验的独立计数吻合);
+- 流程 lib 面积和=2047.087;delay/power 由 `timing_power.py`(liberty LUT + 迷你 STA)承担,已在 §5.19 验证。
+- 新增自跳过式真实用例 `test_run_stat_real_yosys_if_available`(有 yosys 时断言 707/192)。
+
+**验证**:266 单测通过。

@@ -512,6 +512,15 @@ class FlowRunner(object):
         self._log("yosys stat 交叉校验 / cross-check: %s"
                   % flow["yosys_import"].compareWithFlowArea(
                       yosys_stat, design_lib_area))
+        our_type_counts = {}
+        for c in cells:
+            if c.stopType:
+                continue
+            t = c.stdCellType.typeName
+            our_type_counts[t] = our_type_counts.get(t, 0) + 1
+        self._log("yosys 单元计数交叉校验 / cell-count cross-check: %s"
+                  % flow["yosys_import"].compareCellCounts(
+                      yosys_stat, our_type_counts))
 
         # Width proxy (P2 phase 1, mirrors main.py): report-only default.
         transistor_counts = flow["width_proxy"].countTransistorsPerType(

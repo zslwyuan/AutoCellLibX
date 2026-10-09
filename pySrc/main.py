@@ -12,7 +12,8 @@ from benefit import ShrinkModel, makeGrowthBenefitEstimator
 from routability import loadCellRoutability
 from electrical import loadCellElectricalMetrics, patternElectricalMetrics
 from timing_power import loadTimingPower, patternTimingPower
-from yosys_import import runYosysStat, compareWithFlowArea
+from yosys_import import (runYosysStat, compareWithFlowArea,
+                          compareCellCounts)
 from layout_sanity import checkLayout
 from width_proxy import (WidthProxy, collectSamples,
                          countTransistorsPerType, evaluateLOO,
@@ -109,6 +110,14 @@ def main():
                                  "../benchmark/blif/"+benchmarkName+".blif")
         print("yosys stat cross-check: ",
               compareWithFlowArea(yosysStat, designLibArea))
+        ourTypeCounts = {}
+        for tmpCell in cells:
+            if (tmpCell.stopType):
+                continue
+            tmpType = tmpCell.stdCellType.typeName
+            ourTypeCounts[tmpType] = ourTypeCounts.get(tmpType, 0) + 1
+        print("yosys cell-count cross-check: ",
+              compareCellCounts(yosysStat, ourTypeCounts))
 
         # Width proxy (P2 phase 1): learned from the layouts already in
         # this repo.  Report-only by default (LOO ~16% MAPE overestimates
