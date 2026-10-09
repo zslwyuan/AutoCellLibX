@@ -187,6 +187,57 @@ def main():
 
     obj_text, cons, int_vars, bin_vars, semi_vars = _read_cplex_lp(modelfile)
 
+    # CP-SAT backend (P2 phase 2; GUROBI_CL_SOLVER=cpsat).  CBC stays the
+    # default; the CP-SAT path keeps the same failure semantics (all-zero
+    # .sol on failure) and the same option-3 recovery discipline (only on
+    # a *proved* infeasible, never on a timeout).
+    solverName = os.environ.get("GUROBI_CL_SOLVER", "cbc").lower()
+    if (solverName == "cpsat"):
+        try:
+            import cpsat_backend
+        except ImportError:
+            print("WARNING: GUROBI_CL_SOLVER=cpsat but ortools is not "
+                  "installed; falling back to CBC")
+            solverName = "cbc"
+    if (solverName == "cpsat"):
+        phase1 = int(os.environ.get("GUROBI_CL_TIME_LIMIT", "300"))
+        phase1 = max(60, min(phase1, timelimit))
+        retry = int(os.environ.get("GUROBI_CL_RETRY_LIMIT", "900"))
+        retry = max(0, min(retry, timelimit - phase1))
+
+        def solveCpSat(drop_option3, budget):
+            return cpsat_backend.solveLpWithCpSat(
+                obj_text, cons, int_vars, bin_vars, budget,
+                drop_option3=drop_option3,
+                drop_predicate=_is_option3_disjunct)
+
+        status, values, objective = solveCpSat(False, phase1)
+        if (status == cpsat_backend.NO_SOLUTION and retry > 0):
+            status, values, objective = solveCpSat(False, retry)
+        if (status == cpsat_backend.INFEASIBLE):
+            print("WARNING: compaction model INFEASIBLE; retrying without "
+                  "the option-3 spacing disjuncts (CP-SAT; ASTRAN's repair "
+                  "pass enforces real spacing)")
+            status, values, objective = solveCpSat(True, phase1)
+
+        ok = status in (cpsat_backend.OPTIMAL, cpsat_backend.FEASIBLE)
+        with open(resultfile, "w") as f:
+            if (ok and objective is not None):
+                f.write("# Objective value = %g\n" % objective)
+            else:
+                f.write("# Objective value = 0\n")
+            if (ok):
+                for name in sorted(values.keys()):
+                    f.write("%s %d\n" % (name, _round_away(values[name])))
+        if (ok):
+            print("Solver status %s, objective %g (CP-SAT)"
+                  % (status, objective))
+        else:
+            print("WARNING: no usable LP solution (%s); the all-zero "
+                  "solution written below will make ASTRAN emit a 0 x 0 "
+                  "cell" % status)
+        return 0
+
     def build(drop_option3):
         model = mip.Model()
         model.verbose = 1 if os.environ.get("GUROBI_CL_VERBOSE") else 0

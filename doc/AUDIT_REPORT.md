@@ -713,3 +713,17 @@ libgcc_s_seh-1.dll、libstdc++-6.dll、libwinpthread-1.dll、liblzma-5.dll、lib
 **验证**:重建 Setup.dat(11146 文件 / 323.4 MB),解包核对 `tools/astran/build/bin/` 内 17 个 DLL(2 wx + 15 MinGW)齐全;安装 zip 完整性校验通过。
 
 **附带发现(打包流程)**:360 实时防护对 `dist/` 下新建 exe 的隔离是**延迟判定**——白名单里的交付名 `AutoCellLibX-Setup.exe` 也只在创建后存活约 4 分钟(12:48 写入存活至 12:52+ 被删),且**首次隔离后该文件名被列入写拦截**(cp 直接 Permission denied;`installer_stub.exe` 同名现象一致)。因此打包流程中 exe 只需在 zip 内完整即可:先重建 dat(zip 不被扫描),stub 从旧 zip 提取/临时目录编译,随即打包;不要依赖 dist 里的 exe 长期存活,也不要重跑 `make_installer.py`(其 build_stub 会写回被拦截的名字)。
+
+### 5.19 第十五轮:P2 研究级合入(2026-10-09)
+
+**阶段 0 版图合理性校验门(pySrc/layout_sanity.py)**:对生成 .gds 做结构检查(非退化、metal1 高度=行高、宽度网格对齐、层与电源标签齐全),标定方式与 GUI 查看器一致(16.5 units/µm、井区外扩不计入)。main.py/flow_core 默认开启剔除(`layoutSanityGate`)。真实 COMPLEX0/1/9 全部通过;等价测试桩同步升级为最小合法 GDS。
+
+**yosys 重导入(用户指定优先级)**:① `electrical.py` 增 area 属性与逐引脚电容(`pin_caps`);② 新增 `timing_power.py`:解析 liberty 时序弧(cell_rise/fall、rise/fall_transition)与 internal_power LUT(delay_template_6x6:行=负载 pF、列=输入转换 ns),双线性插值(边缘钳位),并在模式 DAG 上做迷你 STA(逐网负载=被驱动引脚电容和、最坏弧级延迟、摆率传播、最长路径、翻转能量),已用库角点值验证;③ 新增 `yosys_import.py`:探测 yosys→`stat -json`→防御式解析 area/num_cells/histogram 并与流程的 lib 面积和交叉校验;本机无 yosys 时优雅降级。全部 report-only 接入 main.py 与 flow_core(pattern 事件带 timing_power)。
+
+**阶段 1 宽度代理(pySrc/width_proxy.py)**:特征(单元数、晶体管数、基线宽度和)→Ridge 回归,训练语料=仓库既有 12 个 COMPLEX 版图。真实 LOO:MAPE 16.4%、R²=0.79——粗筛可用、精度有限;对 COMPLEX9(好)过估、对 COMPLEX10(坏)方向正确,故默认 report-only,生长估计器替换由 `useWidthProxyForGrowth` 显式开启。
+
+**阶段 2 CP-SAT 压缩后端(tools/gurobi_cl/cpsat_backend.py)**:发现 ASTRAN 的压缩 LP 全整数(400 DBU/µm),CP-SAT 可精确消费(自适应缩放,整数模型 scale=1);`GUROBI_CL_SOLVER=cpsat` 启用,CBC 仍为默认;失败语义(全零 .sol)与 option-3 恢复纪律(仅证明 INFEASIBLE,超时绝不触发)与 CBC 路径一致;ortools 缺失时自动回退 CBC。对拍工具 `tools/gurobi_cl/compare_backends.py`。新增 `compare_backends.py` 与单元测试(小 LP 最优解、INFEASIBLE 检测、端到端 .sol、析取过滤)。
+
+**阶段 3-5(文档化立项,见 doc/P2_MERGE_PLAN.md)**:LLM 出约束/TOPCELL 拓扑生成(待阶段 1 评估);SMT folding+placement 先作 ≤12 管参考实现给 ASTRAN 打分;CoP&R 的 AllSAT 可复用阶段 2 的 CP-SAT 通道;SO3-Cell 因求解成本(44 管 7.2h)与本流程预算不兼容暂缓;NVCell2/RL、DiSPlace/TransOpt、CFET/BSPDN 结论性不合入(架构不匹配或超出库扩展器定位)。
+
+**验证**:263 单测通过;对拍结果见提交记录与 P2_MERGE_PLAN 状态。
