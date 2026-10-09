@@ -32,6 +32,14 @@ def mkdir(pathStr):
 
 def main():
     os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+    # Dual-mode coexistence (AUDIT 5.26): AUTOCELL_REUSE_MODE=1 runs the
+    # mining with the synthesis-reuse constraints (single-output, simple
+    # functions, internalize-only growth) into a separate outputs/
+    # directory, leaving the physical-mode snapshots untouched.
+    reuseMode = os.environ.get("AUTOCELL_REUSE_MODE", "0") == "1"
+    if (reuseMode):
+        global requireReuseEligible
+        requireReuseEligible = True
     # ASTRANBuildPath = ""  # empty when Astran is unavailable.
     # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     ASTRANBuildPath = ASTRAN_BUILD_PATH  # <repo>/tools/astran/build (vendored)
@@ -64,11 +72,11 @@ def main():
         # load liberty/spice/design BLIF
         subckts = loadSpiceSubcircuits("../stdCelllib/cellsAstranFriendly.sp")
         BLIFGraph, cells, netlist, stdCellTypesForFeature, dataset, maxLabelIndex, clusterSeqs, clusterNum = loadDataAndPreprocess(
-            libFileName="../stdCelllib/gscl45nm.lib", blifFileName="../benchmark/blif/"+benchmarkName+".blif", startTime=startTime)
+            libFileName="../stdCelllib/gscl45nm.lib", blifFileName="../benchmark/blif/"+benchmarkName+".blif", startTime=startTime, singleOutputSeeds=reuseMode)
         oriArea = getArea(cells, stdType2GSCLArea)
         print("originalArea=", oriArea)
 
-        outputPath = "./outputs/"+benchmarkName+"/"
+        outputPath = "./outputs/"+benchmarkName + ("_reuse" if reuseMode else "") + "/"
         mkdir(outputPath)
 
         if (ASTRANBuildPath != ""):
@@ -399,7 +407,8 @@ def main():
                     continue
                 newSeqOfClusters, patternNum = growASeqOfClusters(
                     BLIFGraph, headSeq, clusterNum, patternNum,
-                    paintPattern=True, benefitEstimator=growthBenefitEstimator)
+                    paintPattern=True, benefitEstimator=growthBenefitEstimator,
+                    internalizeOnly=reuseMode)
                 clusterSeqs.remove(headSeq)
                 clusterSeqs += newSeqOfClusters
                 grownHeads += 1
@@ -434,7 +443,7 @@ def main():
                 libFileName="../stdCelllib/gscl45nm.lib", blifFileName="../benchmark/blif/"+benchmarkName+".blif", startTime=startTime, bypassInitialCluster=True)
 
             clusterSeqs, clusterNum = heuristicLabelSomeNodesAndGetInitialClusters_BasedOn(
-                BLIFGraph, cells, netlist, targetPatternTrace)
+                BLIFGraph, cells, netlist, targetPatternTrace, singleOutputSeeds=reuseMode)
             endTime = time.time()
             print("heuristicLabelSomeNodesAndGetInitialClusters done. time esclaped: ",
                   endTime-startTime)
@@ -549,7 +558,7 @@ def main():
                     break
 
                 newSeqOfClusters, patternNum = growASeqOfClusters_BasedOn(
-                    BLIFGraph, clusterSeq, clusterNum, patternNum,  paintPattern=True, targetPatternTrace=targetPatternTrace)
+                    BLIFGraph, clusterSeq, clusterNum, patternNum, paintPattern=True, targetPatternTrace=targetPatternTrace, internalizeOnly=reuseMode)
 
                 # No netlist export here: phase 2 only computes the per-pattern
                 # records, and exporting the grown netlist under a patternNum-

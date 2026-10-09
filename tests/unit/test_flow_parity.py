@@ -170,7 +170,8 @@ def _run_main_flow(sandbox, monkeypatch):
         return real_export(cluster_seq, subckts, merge_cell_type_id,
                            output_dir)
 
-    def spy_based_on(graph, cells, netlist, trace):
+    def spy_based_on(graph, cells, netlist, trace,
+                 singleOutputSeeds=False):
         phase2_targets.append(trace)
         return real_based_on(graph, cells, netlist, trace)
 
@@ -243,7 +244,8 @@ def _run_gui_flow(sandbox, monkeypatch):
         return real_export(cluster_seq, subckts, merge_cell_type_id,
                            output_dir)
 
-    def spy_based_on(graph, cells, netlist, trace):
+    def spy_based_on(graph, cells, netlist, trace,
+                 singleOutputSeeds=False):
         phase2_targets.append(trace)
         return real_based_on(graph, cells, netlist, trace)
 

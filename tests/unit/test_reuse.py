@@ -172,3 +172,15 @@ def test_end_to_end_abc_uses_generated_single_output_complex(in_pysrc):
     finally:
         os.unlink(lib_path)
         os.unlink(v_path)
+
+
+def test_function_to_verilog():
+    from reuse import functionToVerilog, verilogDesignForFunction
+    assert functionToVerilog("(!(A B))", {"A": "a", "B": "b"}) == "( ~ ( a & b ) )"
+    assert functionToVerilog("(A+B)", {"A": "a", "B": "b"}) == "( a | b )"
+    f = "(((!((cl0_A) (cl0_B))))+((!((cl1_A) (cl1_B)))))"
+    expected = "( ( ( ~ ( ( a ) & ( b ) ) ) ) | ( ( ~ ( ( c ) & ( d ) ) ) ) )"
+    got = functionToVerilog(f, {"cl0_A": "a", "cl0_B": "b", "cl1_A": "c", "cl1_B": "d"})
+    assert got == expected, (got, expected)
+    v = verilogDesignForFunction("(!(A B))")
+    assert "assign y = ( ~ ( a & b ) )" in v and "module top" in v

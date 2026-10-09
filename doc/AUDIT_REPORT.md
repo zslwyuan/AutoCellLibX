@@ -838,3 +838,22 @@ libgcc_s_seh-1.dll、libstdc++-6.dll、libwinpthread-1.dll、liblzma-5.dll、lib
 **端到端验证(真实 abc)**:单输出合成簇 [NAND2,NAND2,OR2](函数 ¬(ab)∨¬(cd),support 4/深度 4)→ .lib 片段 → 扩展库 → 设计 `y=~(a&b)|~(c&d)` → **ABC RESULTS: COMPLEX_SO cells: 1** ✓。另修 yosys abc 在 Windows 的临时目录混合分隔符问题(测试内 TMP/TEMP 正斜杠化)。固化测试:test_reuse 4 例(含真实 abc 端到端,自跳过)。
 
 **现状与下一步**:adder 现有模式均多输出(测试钉住 top-10 全不合格),复用路径需在"复用模式"下重跑挖掘(`requireReuseEligible=True` + 生长 `internalizeOnly`),预期得到单输出简单函数的新模式族。280 单测通过。
+
+### 5.27 双模式并存:物理库与综合复用库(2026-10-10)
+
+**并存机制**:`AUTOCELL_REUSE_MODE=1` 时 main.py 切到复用模式——初始聚类 `singleOutputSeeds=True`(只保留接口逃逸输出=1 的种子,`_escapeOutputCount`)+ 生长 `internalizeOnly=True`(只吸收输出负载全在簇内的邻居)+ 输出目录隔离为 `outputs/<bench>_reuse`,物理模式快照不受影响;`requireReuseEligible` 门限兜底。
+
+**加种子过滤的原因**:首轮实验证明 adder 初始聚类 top-30 **全部多输出**——单输出约束若只在生长/验收阶段,种子本身不合格就无从谈起;必须从种子开始。
+
+**adder 对照实验结果(pySrc/reuse_experiment.py)**:
+
+| 模式 | 挖掘结果 | abc 可用性 |
+|---|---|---|
+| 物理(现状) | 高频多输出模式(61×[NAND2,NAND2,OR2] 等),面积收益 5.50% | ✗ 0 用(锥不匹配) |
+| 复用(新) | 单输出种子仅 5 个(最高频 2 次),合格 1 个:[XNOR2X1,AND2X1,OR2X1](x1,函数 !((A·B)^(C+D)),support4/深度4) | ✓ **REUSE PATH WORKS**(1 次) |
+
+**权衡的诚实陈述**:单输出约束把 adder 的高频模式全部滤掉(61 次→最高 2 次),复用模式下这个基准几乎无挖掘空间——物理收益与可复用性在同一网表上难以兼得;复用库应面向"单输出、函数简单常见"的新挖掘目标(或接受低频),物理库保留现有多输出模式,两者并存供不同下游选择。
+
+**过程修复**:① _BasedOn 分组仍用旧无序编码(与规范化 trace 前缀匹配失配)——补 canonicalPatternCode;② 实验手写片段引脚名必须与函数/验证设计同名(否则 abc 视为无效单元);③ 等价测试 spy 补新参数。
+
+**验证**:281 单测通过;reuse_experiment 内置 abc 证明自跳过式。

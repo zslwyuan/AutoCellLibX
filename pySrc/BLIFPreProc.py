@@ -271,7 +271,23 @@ def canonicalPatternCode(code):
         "\'", "").replace("\\", "").replace("\"", "").replace(" ", "")
 
 
-def heuristicLabelSomeNodesAndGetInitialClusters(BLIFGraph, cells, netlist):
+
+def _escapeOutputCount(cells, tree):
+    """Number of escaping member output pins of a seed tree (== the
+    complex cell's output pins): a member output pin whose loads are not
+    all inside the tree.  Used by the single-output seed filter of the
+    synthesis-reuse mode."""
+    inside = set(tree)
+    count = 0
+    for cellId in tree:
+        for outNet in cells[cellId].outputNets:
+            if (len(outNet.succCells) == 0
+                    or not all(s.id in inside for s in outNet.succCells)):
+                count += 1
+    return count
+
+
+def heuristicLabelSomeNodesAndGetInitialClusters(BLIFGraph, cells, netlist, singleOutputSeeds=False):
 
     treeDepth = 1
 
@@ -286,6 +302,8 @@ def heuristicLabelSomeNodesAndGetInitialClusters(BLIFGraph, cells, netlist):
             continue
         tree, code = extractAndEncodeSubgraph_Tree(cells, cell.id, treeDepth)
         if (len(tree) < 2):
+            continue
+        if (singleOutputSeeds and _escapeOutputCount(cells, tree) != 1):
             continue
         codeStr = canonicalPatternCode(code)
         if (codeStr.find("bool-") >= 0):
@@ -340,7 +358,7 @@ def heuristicLabelSomeNodesAndGetInitialClusters(BLIFGraph, cells, netlist):
     return resSeqs, labeledCnt
 
 
-def heuristicLabelSomeNodesAndGetInitialClusters_BasedOn(BLIFGraph, cells, netlist, targetPatternTrace):
+def heuristicLabelSomeNodesAndGetInitialClusters_BasedOn(BLIFGraph, cells, netlist, targetPatternTrace, singleOutputSeeds=False):
 
     treeDepth = 1
 
@@ -356,8 +374,9 @@ def heuristicLabelSomeNodesAndGetInitialClusters_BasedOn(BLIFGraph, cells, netli
         tree, code = extractAndEncodeSubgraph_Tree(cells, cell.id, treeDepth)
         if (len(tree) < 2):
             continue
-        codeStr = str(code).replace(
-            "\'", "").replace("\\", "").replace("\"", "").replace(" ", "")
+        if (singleOutputSeeds and _escapeOutputCount(cells, tree) != 1):
+            continue
+        codeStr = canonicalPatternCode(code)
         if (codeStr.find("bool-") >= 0):
             continue
         if (targetPatternTrace.find(codeStr) != 0):
@@ -475,7 +494,7 @@ def convertBLIFGraphIntoDataset(BLIFGraph, stdCellTypesForFeature, maxNumType=36
     return g_list, maxLabel+1
 
 
-def loadDataAndPreprocess(libFileName="sky130_fd_sc_hd__tt_025C_1v80.lib", blifFileName="rocket.blif", startTime=0, bypassInitialCluster=False):
+def loadDataAndPreprocess(libFileName="sky130_fd_sc_hd__tt_025C_1v80.lib", blifFileName="rocket.blif", startTime=0, bypassInitialCluster=False, singleOutputSeeds=False):
     BLIFGraph, cells, netlist, stdCellTypesForFeature = genGraphFromLibertyAndBLIF(
         libFileName, blifFileName)
     endTime = time.time()

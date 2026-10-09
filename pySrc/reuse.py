@@ -51,7 +51,8 @@ def functionComplexity(funcStr):
     level function like OR-of-NANDs reads depth 3, not 5."""
     if (funcStr is None):
         return None
-    toks = funcStr.replace("(", " ( ").replace(")", " ) ").split()
+    toks = (funcStr.replace("(", " ( ").replace(")", " ) ")
+            .replace("+", " + ").replace("^", " ^ ").split())
     stack, pairs = [], {}
     for i, t in enumerate(toks):
         if (t == "("):
@@ -115,3 +116,64 @@ def reuseEligible(members, libFunctions, maxSupport=4, maxDepth=4):
         "functions": funcs,
         "reason": "; ".join(reasons) if reasons else "ok",
     }
+
+
+def functionToVerilog(funcStr, portMap):
+    """Translate a fully parenthesised liberty function to a Verilog
+    expression.  Parens are preserved (safe precedence) and '&' is
+    inserted between adjacent operands -- either as name-name or as
+    ')' followed by '(' -- because liberty's juxtaposition means AND."""
+    if (funcStr is None):
+        return None
+    toks = (funcStr.replace("(", " ( ").replace(")", " ) ")
+            .replace("+", " + ").replace("^", " ^ ").split())
+    out = []
+    prevOut = ""
+    for tok in toks:
+        if (tok == "!"):
+            out.append("~")
+        elif (tok == "+"):
+            out.append("|")
+        elif (tok == "^"):
+            out.append("^")
+        elif (tok == "("):
+            if (prevOut in (")",) or (prevOut and prevOut not in
+                                      ("(", "~", "|", "^"))):
+                out.append("&")
+            out.append("(")
+        elif (tok == ")"):
+            out.append(")")
+        else:
+            if (prevOut in (")",) or (prevOut and prevOut not in
+                                      ("(", "~", "|", "^"))):
+                out.append("&")
+            out.append(portMap.get(tok, tok))
+        prevOut = out[-1]
+    return " ".join(out)
+
+
+def verilogDesignForFunction(funcStr, moduleName="top",
+                             outputName="y", portNames=None):
+    """A Verilog module whose output implements ``funcStr``.  portNames
+    maps the function's input names to a,b,c,d,... in first-appearance
+    order when not provided."""
+    import re as _re
+    inputs = [t for t in _re.findall(r"[A-Za-z0-9_]+", funcStr or "")
+              if t not in ("!",)]
+    if (portNames is None):
+        letters = "abcdefghijklmnop"
+        seen = {}
+        ordered = []
+        for name in inputs:
+            if (name not in seen):
+                seen[name] = letters[len(seen)]
+                ordered.append(name)
+        portNames = seen
+        inDecl = ", ".join(seen.values())
+    else:
+        inDecl = ", ".join(portNames.values())
+    body = functionToVerilog(funcStr, portNames)
+    if (body is None):
+        return None
+    return ("module %s(input %s, output %s); assign %s = %s; endmodule\n"
+            % (moduleName, inDecl, outputName, outputName, body))
