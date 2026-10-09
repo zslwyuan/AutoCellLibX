@@ -10,6 +10,7 @@ from Astran import *
 from GDSIIAnalysis import *
 from benefit import ShrinkModel, makeGrowthBenefitEstimator
 from routability import loadCellRoutability
+from electrical import loadCellElectricalMetrics, patternElectricalMetrics
 
 
 def mkdir(pathStr):
@@ -81,6 +82,13 @@ def main():
         shrinkModel = ShrinkModel()
         growthBenefitEstimator = makeGrowthBenefitEstimator(
             stdType2AstranArea, shrinkModel)
+
+        # Electrical context per candidate (P1-7): leakage / input
+        # capacitance / delay proxy from the liberty file, plus the count
+        # of nets the merge internalises (dynamic-power saving proxy).
+        # Reported only -- the selection metric stays width-based.
+        cellElectricalMetrics = loadCellElectricalMetrics(
+            "../stdCelllib/gscl45nm.lib")
 
         clusterSeqs = sortPatternClusterSeqs(clusterSeqs)
 
@@ -217,6 +225,10 @@ def main():
                           "> gate", routabilityDensityGate,
                           "; excluding the pattern")
                     continue
+                elecMetrics = patternElectricalMetrics(
+                    exampleCells, cellElectricalMetrics)
+                print("electrical ", "COMPLEX"+str(patternTraceId),
+                      ": ", elecMetrics)
                 if (oriUnitAstranArea-newUnitAstranArea > 0):
                     uniqueClusters = countUncoveredClusters(
                         tmpClusterSeq.patternClusters, coveredCellIds)
