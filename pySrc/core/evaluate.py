@@ -20,7 +20,9 @@ from reuse import (functionComplexity, functionToVerilog,
                    verilogDesignForFunction)
 from width_proxy import (WidthProxy, collectSamples,
                          countTransistorsPerType, evaluateLOO,
-                         makeProxyBenefitEstimator)
+                         loadWidthProxy, makeProxyBenefitEstimator,
+                         saveWidthProxy, trainOrLoadWidthProxy,
+                         widthProxyModelStale)
 from layout_sanity import (ASTRAN_GDS_UNITS_PER_UM, checkLayout)
 from liberty_gen import (generateComplexLiberty,
                          generateLibertyForSpiceFile, libertyPinName,

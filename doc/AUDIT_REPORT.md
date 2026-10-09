@@ -870,3 +870,9 @@ libgcc_s_seh-1.dll、libstdc++-6.dll、libwinpthread-1.dll、liblzma-5.dll、lib
 - core/evaluate.py 收编评估层:electrical/timing_power/routability/reuse/width_proxy/layout_sanity/benefit/liberty_gen/pdk_config 的公开面;core/external.py 收编工具层:ASTRAN 常量与运行面/GDSIIAnalysis/yosys_import/yosys_eval。
 - core/pipeline 的依赖导入全部改走两个门面(BLIFPreProc/BLIFPatternGrowth/spice 星号导入保留,属 parse/seed/growth/export 层);test_facades 钉住"pipeline 绑定的对象与门面导出的对象是同一份"(杜绝双实现漂移)与"门面 Qt-free"。
 - 验证:289 单测全绿(新增 4 例)。
+
+### 5.30 性能层落地:CP-SAT 默认化与宽度代理训练管线(2026-10-10)
+
+1. **CP-SAT 压缩后端设为默认**:`GUROBI_CL_SOLVER` 默认由 cbc 切为 cpsat(§5.20 双单元端到端证据:同预算下目标值优 2.5×、COMPLEX0 −8%);保留 CBC 显式可选与 ortools 缺失自动回退;失败语义(全零 .sol)与 option-3 恢复纪律不变。默认切换后,新生成的单元宽度将按 CP-SAT 口径(跟踪快照保持 CBC 产物直至重生成)。
+2. **宽度代理训练管线化**(width_proxy.py):新增 `saveWidthProxy`/`loadWidthProxy`(Ridge 系数 JSON 持久化,加载补 n_features_in_ 与 ndarray)/`widthProxyModelStale`(模型 mtime vs 样本 mtime)/`trainOrLoadWidthProxy`(新鲜即复用,否则重训+持久化+LOO 报告);`core/pipeline` 改经该入口(输出目录 glob + 持久化路径 outputs/width_proxy.json,已加入 .gitignore);`core/evaluate` 门面导出全套。
+3. **验证**:290 单测全绿(新增训练管线 roundtrip/复用/持久化一致 1 例);CP-SAT 后端 4 例保持;全量回归含等价测试。

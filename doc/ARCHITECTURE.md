@@ -58,4 +58,7 @@ gui/flow_core.py     ← 待迁移：第三份控制流副本，下一步改为�
 3. ~~gui/flow_core 消费 core.pipeline~~ ✅ 已迁（2026-10-10）；
 4. ~~core/evaluate + core/external 门面~~ ✅ 已迁（2026-10-10）：pipeline 改为
    经门面取依赖，测试钉住"同一对象绑定"（test_facades）；
-5. 性能层：CP-SAT 后端默认化、宽度代理训练管线化（见 RESEARCH_AND_OPTIMIZATION）。
+5. ~~性能层~~ ✅ 已迁（2026-10-10）：CP-SAT 压缩后端默认化（GUROBI_CL_SOLVER
+   默认 cpsat，缺 ortools 回退 CBC；证据 AUDIT 5.20/5.30）；宽度代理训练
+   管线化（train→persist→load + stale 检查，pipeline 集成，test_width_proxy
+   钉住 roundtrip 与"fresh 即复用"）。

@@ -162,3 +162,80 @@ def makeProxyBenefitEstimator(proxy, stdType2Width, transistorCounts):
         predicted = proxy.predict(len(types), nTrans, baseWidth)
         return occurrences * (baseWidth - predicted)
     return estimate
+
+
+# ---------------------------------------------------------------------------
+# training pipeline: train -> persist -> load (performance layer)
+# ---------------------------------------------------------------------------
+
+def saveWidthProxy(proxy, path):
+    """Persist a trained WidthProxy (Ridge) as JSON (coef + intercept)."""
+    import json as _json
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    payload = {
+        "coef": [float(c) for c in proxy.model.coef_],
+        "intercept": float(proxy.model.intercept_),
+        "n_train": proxy.nTrain,
+    }
+    with open(path, "w") as fh:
+        _json.dump(payload, fh)
+    return path
+
+
+def loadWidthProxy(path):
+    """Restore a WidthProxy previously saved by saveWidthProxy."""
+    import json as _json
+    from sklearn.linear_model import Ridge
+    with open(path) as fh:
+        payload = _json.load(fh)
+    import numpy as _np
+    proxy = WidthProxy()
+    proxy.model = Ridge(alpha=1.0)
+    proxy.model.coef_ = _np.array([float(c) for c in payload["coef"]])
+    proxy.model.intercept_ = payload["intercept"]
+    proxy.model.n_features_in_ = len(payload["coef"])
+    proxy.nTrain = payload["n_train"]
+    return proxy
+
+
+def widthProxyModelStale(path, outputDirs):
+    """Whether the persisted model is older than any training sample
+    (new layouts invalidate the learned shrink behaviour)."""
+    if (not os.path.exists(path)):
+        return True
+    modelMtime = os.path.getmtime(path)
+    newest = 0.0
+    for outDir in outputDirs:
+        for pat in ("COMPLEX*.sp", "COMPLEX*.Astranlog"):
+            for f in glob.glob(os.path.join(outDir, pat)):
+                newest = max(newest, os.path.getmtime(f))
+    return newest > modelMtime
+
+
+def trainOrLoadWidthProxy(outputDirs, transistorCounts, stdType2Width,
+                          path=None):
+    """Training-pipeline entry: (proxy, report).
+
+    Loads the persisted model when it is fresh, otherwise retrains from
+    the layout corpus, persists, and reports LOO quality.  Returns
+    (None, report) when the corpus is too small to train.
+    """
+    if (path is None):
+        path = os.path.join("outputs", "width_proxy.json")
+    if (not widthProxyModelStale(path, outputDirs)):
+        try:
+            proxy = loadWidthProxy(path)
+            return proxy, {"n": proxy.nTrain, "source": "loaded"}
+        except Exception:                       # noqa: BLE001
+            pass                                # corrupt model -> retrain
+    samples = collectSamples(outputDirs, transistorCounts, stdType2Width)
+    if (len(samples) < 4):
+        return None, {"n": len(samples), "skipped": "too few samples"}
+    proxy = WidthProxy().fit(samples)
+    report = evaluateLOO(samples)
+    report["source"] = "trained"
+    try:
+        saveWidthProxy(proxy, path)
+    except Exception as exc:                    # noqa: BLE001
+        report["save_error"] = str(exc)
+    return proxy, report

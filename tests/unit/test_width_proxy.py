@@ -93,3 +93,30 @@ def test_proxy_estimator_vetoes_wide_prediction():
     est3 = makeProxyBenefitEstimator(
         GoodProxy(), {"NAND2X1": 0.76}, {"NAND2X1": 4})
     assert est3(["NAND2X1"], "UNKNOWN", 2, 10) == float("inf")
+
+
+def test_training_pipeline_roundtrip(tmp_path, in_pysrc):
+    import os
+    if not os.path.exists("./outputs/adder/COMPLEX1.sp"):
+        pytest.skip("outputs snapshot not present")
+    from GDSIIAnalysis import loadAstranGDS
+    from width_proxy import (trainOrLoadWidthProxy, loadWidthProxy)
+    counts = countTransistorsPerType("../stdCelllib/cellsAstranFriendly.sp")
+    widths = loadAstranGDS()
+    outDirs = ["./outputs/adder", "./outputs/ctrl", "./outputs/max",
+               "./outputs/multiplier"]
+    model = str(tmp_path / "wp.json")
+    proxy, report = trainOrLoadWidthProxy(outDirs, counts, widths,
+                                          path=model)
+    assert proxy is not None, report
+    assert report["source"] == "trained"
+    assert report["mape"] is not None and report["mape"] < 0.5
+    # reload gives the same predictions (persistence roundtrip)
+    reloaded = loadWidthProxy(model)
+    a = proxy.predict(3, 18, 4.0)
+    b = reloaded.predict(3, 18, 4.0)
+    assert a == pytest.approx(b)
+    # a fresh model is loaded, not retrained
+    proxy2, report2 = trainOrLoadWidthProxy(outDirs, counts, widths,
+                                            path=model)
+    assert report2["source"] == "loaded"

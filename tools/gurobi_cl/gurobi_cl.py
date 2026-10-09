@@ -187,11 +187,15 @@ def main():
 
     obj_text, cons, int_vars, bin_vars, semi_vars = _read_cplex_lp(modelfile)
 
-    # CP-SAT backend (P2 phase 2; GUROBI_CL_SOLVER=cpsat).  CBC stays the
-    # default; the CP-SAT path keeps the same failure semantics (all-zero
+    # CP-SAT backend (performance layer, default since 2026-10-10): the
+    # end-to-end layout experiments (AUDIT 5.20) showed CP-SAT beats CBC
+    # on ASTRAN's big-M compaction models (2.5x better incumbent at the
+    # same budget; -8% width on COMPLEX0).  CBC remains selectable via
+    # GUROBI_CL_SOLVER=cbc; if ortools is missing the default falls back
+    # to CBC.  The CP-SAT path keeps the same failure semantics (all-zero
     # .sol on failure) and the same option-3 recovery discipline (only on
     # a *proved* infeasible, never on a timeout).
-    solverName = os.environ.get("GUROBI_CL_SOLVER", "cbc").lower()
+    solverName = os.environ.get("GUROBI_CL_SOLVER", "cpsat").lower()
     if (solverName == "cpsat"):
         try:
             import cpsat_backend

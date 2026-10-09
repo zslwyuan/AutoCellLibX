@@ -176,16 +176,17 @@ def runPipeline(cfg, hooks=None):
         # compact shapes -- it would have vetoed COMPLEX9); opt into
         # growth pruning via useWidthProxyForGrowth.
         transistorCounts = countTransistorsPerType(cfg.spiceLib)
-        widthProxySamples = collectSamples(
-            sorted(glob.glob("./outputs/*/")),
-            transistorCounts, stdType2AstranArea)
-        widthProxy = None
-        if (len(widthProxySamples) >= 4):
-            widthProxy = WidthProxy().fit(widthProxySamples)
-            loo = evaluateLOO(widthProxySamples)
-            print("width proxy: n=", loo["n"], " LOO MAPE=",
-                  None if loo["mape"] is None else round(loo["mape"], 4),
-                  " R2=", loo["r2"])
+        # Width-proxy training pipeline: load the persisted model when
+        # fresh, else retrain from the layout corpus and persist.
+        widthProxy, proxyReport = trainOrLoadWidthProxy(
+            sorted(glob.glob("./outputs/*/")), transistorCounts,
+            stdType2AstranArea)
+        if (widthProxy is not None):
+            print("width proxy: n=", proxyReport.get("n"),
+                  " source=", proxyReport.get("source"),
+                  " LOO MAPE=",
+                  None if proxyReport.get("mape") is None
+                  else round(proxyReport["mape"], 4))
         if (useWidthProxyForGrowth and widthProxy is not None):
             growthBenefitEstimator = makeProxyBenefitEstimator(
                 widthProxy, stdType2AstranArea, transistorCounts)
