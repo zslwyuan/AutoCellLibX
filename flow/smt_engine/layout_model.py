@@ -290,6 +290,10 @@ def solve_layout(netlist, grid_um=DEFAULT_GRID_UM, min_leg_um=MIN_LEG_UM,
         netlist, grid_um=grid_um, min_leg_um=min_leg_um, max_leg_um=max_leg_um,
         break_um=break_um)
     solver = cp_model.CpSolver()
+    # single worker: parallel search picks different equal-cost optima
+    # across runs (AGENTS.md invariant 9 -- the engine must be
+    # deterministic)
+    solver.parameters.num_search_workers = 1
     solver.parameters.max_time_in_seconds = time_limit_s
     status = solver.Solve(model)
     if (status not in (cp_model.OPTIMAL, cp_model.FEASIBLE)):

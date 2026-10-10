@@ -31,8 +31,10 @@ flow/
   smt_engine/           ← 2026-10-10 新增：完整 SMT 引擎（布局+布线联合 SAT 编码）
                           netlist(链/组/朝向/接入点) · layout_model(折叠+共享+断+
                           互斥+栅对齐) · route_model(双区竖段+几何覆盖+段/交叉+
-                          连通) · gds(诚实 GDS 头,可被 sanity/pin-access 消费) ·
-                          verify(解重算全量复验) · __init__(synth_cell 编排)
+                          连通；第二轮：同网双槽井边界 reachB 合并 + 轨道级精确
+                          连通/转换约束 + poly 层跳线 + 单线程确定性) · gds(诚实
+                          GDS 头,可被 sanity/pin-access 消费) · verify(解重算
+                          全量复验,轨道级物理 BFS) · __init__(synth_cell 编排)
   llm_hint_provider.py  ← 2026-10-09 新增：LLM/离线布局提示（Hint 协议、降级、
                           缓存、并行批处理；AUTOCELL_HINT_MODE 门控，默认 off）
   pin_accessibility.py  ← 2026-10-09 新增：生成单元引脚可达性度量（on-track /

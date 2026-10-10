@@ -137,7 +137,7 @@
 > | yosys 重导入 | ✅ 已合入 | 真实 stat 交叉校验（707 单元逐类型一致）+ abc 可用（vendored） |
 > | 综合复用路径 | ✅ 已合入 | reuse（单输出+简单函数）+ internalize_only 生长；abc 端到端证明 |
 > | 架构重构 | ✅ 完成 | core 八层 + 双门面 + 四 shim + flow_core 委托；300 单测全绿 |
-> | SMT 引擎 | ✅ 已合入 | smt_engine 包（布局+布线完整 SAT 编码；NAND2 全链闭环，≤8 管边界见 §四.2） |
+> | SMT 引擎 | ✅ 已合入 | smt_engine 包（布局+布线完整 SAT 编码；NAND2 全链闭环；NAND3–6 全链闭环、poly 层跳线、边界见 §四.2） |
 > | LLM 提示整合 | ✅ 已合入 | llm_hint_provider（offline/llm 双提供方、降级、缓存、并行；pipeline 挂点默认 off） |
 > | pin accessibility 度量 | ✅ 已合入 | pin_accessibility（轨道对齐/多晶阻塞/同轨拥挤；COMPLEX0 0.500） |
 > | pin accessibility 论文 | ✅ 已检索整合 | 12 篇 2023–2026（§三） |
@@ -270,9 +270,14 @@ met1 w/s 0.230/0.230、rails 0.60。**修正了脚手架两处数字**：gf180 �
 layout_sanity 与 pin_accessibility 消费；verify 从解重算全量复验。
 
 **实测**：NAND2 6 列全链闭环（verify 0 违例、pin accessibility 0.933、
-sanity 通过）；COMPLEX0（14 管）布局 OPTIMAL 19 列（3.61µm）但联合布线
-不可行——**适用边界 ≤8 管**（4 轨+一列双竖段的资源限制；真实版图靠更多
-层/迭代布线）。调试记录与每条模型语义修正见 AUDIT §5.35。
+sanity 通过）；第二轮（2026-10-10）修复 P/N 半区断连（同网双槽竖条经井
+边界 reachB 合并）、连通性升级为轨道级精确图、加入 poly 层跳线（段级
+M1/poly 选择：仅场氧合法 + 同网栅合并锚定 + 自动机约束连段必锚栅），
+**边界实测 NAND3/4/5/6（6/8/10/12 管）全部全链闭环（verify 0 违例，
+M1-only）**；14 管 COMPLEX0 布局 OPTIMAL 19 列（3.61µm）仍不可布（冲突
+列皆有源，poly 无处落）——不规则结构边界仍在 12 管以下。poly 跳线端到端
+实证（四轨封死单元：M1 INFEASIBLE、跳线 7 段 OPTIMAL）。调试记录见
+AUDIT §5.36。
 
 ### 4.3 多模态 LLM Agent 资源整合（P2-15 落点）
 
@@ -301,7 +306,8 @@ outputs/adder/COMPLEX0.gds --log outputs/adder/COMPLEX0.Astranlog`。
    `validated`（§四.1 的收尾）。
 2. **SMT 评分批量对照**：对 `outputs/*/COMPLEX*.sp` 批量跑
    `smt_cell_placer.py --dir`，给出全快照的"参考宽度 vs ASTRAN 宽度"
-   对照表；再补平行组扩散共享与扩散断间距后收紧下限（§四.2 的扩展）。
+   对照表；再补平行组扩散共享与扩散断间距后收紧下限（§四.2 的扩展；
+   poly 层跳线部分已于 2026-10-10 合入，见 §4.2 与 AUDIT §5.36）。
 3. **LLM 提示接入生长剪枝**：offline 的 fold 提示与 benefit_estimator
    联动（超宽器件送版图前先折叠提示），仍保持 env 门控默认关（§四.3）。
 4. **pin accessibility 门槛**：把单元分接入 layout sanity gate（默认关，

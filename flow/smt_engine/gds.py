@@ -126,21 +126,35 @@ def cell_gds(netlist, placement, route, grid_um=0.19, height_um=2.47,
     rect(0, height_um - rail_w, width_um, height_um, LAYER["metal1"])
 
     # --- vertical M1 stripes (one per occupied slot: N and P halves can
-    # share a column because their y-ranges do not overlap) ---
+    # share a column because their y-ranges do not overlap; a same-net
+    # pair merges when both bars reach the well boundary) ---
+    bY = height_um / 2.0
     for c in range(route.width_cols):
-        for net, lo, hi, _slot in route.stripes(c):
+        for net, lo, hi, slot in route.stripes(c):
             xc = _track_x(c, g)
             # rail indices are not y-ordered (GND rail 4 sits below N
             # rows): the stripe spans the min..max rail centre
             ya, yb = railY[lo], railY[hi]
             y0 = min(ya, yb) - M1_W / 2
             y1 = max(ya, yb) + M1_W / 2
+            if (slot == "N" and route.reachB_n[c]):
+                y1 = max(y1, bY + M1_W / 2)
+            if (slot == "P" and route.reachB_p[c]):
+                y0 = min(y0, bY - M1_W / 2)
             rect(xc - M1_W / 2, y0, xc + M1_W / 2, y1, LAYER["metal1"])
 
     # --- horizontal M1 segments ---
     for (t, c), net in sorted(route.hseg.items()):
         rect(c * g, railY[t] - M1_W / 2, (c + 1) * g, railY[t] + M1_W / 2,
              LAYER["metal1"])
+
+    # --- poly jumps: horizontal poly wires on the rails (they cross
+    # foreign M1 stripes in a different layer and merge with same-net
+    # gate stripes) ---
+    for (t, c), net in sorted(route.pj.items()):
+        if (net and route.hseg.get((t, c)) is not None):
+            rect(c * g, railY[t] - POLY_W / 2, (c + 1) * g,
+                 railY[t] + POLY_W / 2, LAYER["poly"])
 
     # --- contacts: diffusion access points, power ends, gate crossings ---
     for dev in netlist.devices:
@@ -149,25 +163,41 @@ def cell_gds(netlist, placement, route, grid_um=0.19, height_um=2.47,
         for j in range(p.legs):
             c = p.start_col + j * p.leg_width_cols + p.leg_width_cols // 2
             xc = _col_x(c, g)
-            # gate contact: a horizontal segment of the gate net crossing
-            # this column (the model's gate access semantics)
+            # gate contact: an M1 segment of the gate net crossing this
+            # column (the model's gate access semantics); a poly jump
+            # crossing merges with the gate stripe directly (no contact)
             gateNet = dev.gate
             touched = False
             for t in range(4):
                 left = route.hseg.get((t, c - 1)) if c - 1 >= 0 else None
                 right = route.hseg.get((t, c)) if c <= route.width_cols - 2 \
                     else None
-                if (left == gateNet or right == gateNet):
+                if (left == gateNet and not route.pj.get((t, c - 1))):
                     rect(xc - CONTACT_S / 2, railY[t] - CONTACT_S / 2,
                          xc + CONTACT_S / 2, railY[t] + CONTACT_S / 2,
                          LAYER["contact"])
                     touched = True
                     break
-            if (not touched and route.col_owner[c] == gateNet):
-                # stripe-only gate connection (rare): contact on the stripe
-                rect(xc - CONTACT_S / 2, railY[route.lo[c]] - CONTACT_S / 2,
-                     xc + CONTACT_S / 2, railY[route.lo[c]] + CONTACT_S / 2,
-                     LAYER["contact"])
+                if (right == gateNet and not route.pj.get((t, c))):
+                    rect(xc - CONTACT_S / 2, railY[t] - CONTACT_S / 2,
+                         xc + CONTACT_S / 2, railY[t] + CONTACT_S / 2,
+                         LAYER["contact"])
+                    touched = True
+                    break
+            if (not touched):
+                # poly-only gate connection: the jump merges with the gate
+                # stripe (same layer); no contact is drawn.  The model
+                # guarantees an M1 or poly crossing for every gate.
+                for t in range(4):
+                    right = route.hseg.get((t, c)) \
+                        if c <= route.width_cols - 2 else None
+                    if (right == gateNet and route.pj.get((t, c))):
+                        touched = True
+                        break
+                if (not touched):
+                    raise ValueError(
+                        "gate %s@%d has no crossing segment"
+                        % (gateNet, c))
     # diffusion-end contacts: block ends whose net is routed
     from .netlist import diffusion_access_points
     sig, _ = diffusion_access_points(netlist, placement)

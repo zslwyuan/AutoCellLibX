@@ -19,7 +19,8 @@ layout-sanity and pin-accessibility checkers, plus a structural
 self-check (verify.py).
 
 The engine is a *generator*, not a replacement for the flow: it solves
-cells up to roughly 16 transistors within budget; the reference
+regular cells up to 12+ transistors (NAND3..NAND6 all close the loop,
+M1-only) and irregular cells within budget; the reference
 implementation (smt_cell_placer) stays as the ideal-width scorer.  See
 doc/RESEARCH_AND_OPTIMIZATION.md section 4.2 for the roadmap.
 """
