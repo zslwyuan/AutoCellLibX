@@ -266,6 +266,66 @@ def test_poly_jump_never_used_by_m1_optimal():
     assert verify_cell(nl, sol.devices, without).ok()
 
 
+FOREIGN_GATE_SP = """\
+.subckt T VCC Y Z A B GND
+MpA Y A VCC VCC PMOS W=0.5u L=0.05u
+MnB Z B GND GND NMOS W=0.5u L=0.05u
+.end
+"""
+
+
+def test_foreign_gates_must_not_share_a_column():
+    """Two poly stripes of DIFFERENT gate nets in one column would merge
+    into one bar -- a short.  The layout model must refuse to place A's
+    gate and B's gate in the same column even when the P/N end spots
+    (which may legally share a column) would allow it."""
+    from ortools.sat.python import cp_model
+    from smt_engine.layout_model import build_layout_model
+    nl = CellNetlist(parse_spice_subckt(FOREIGN_GATE_SP))
+    model, width, blocks, dev_vars, align = build_layout_model(nl)
+    by = {d.name: dev_vars[d] for d in nl.devices}
+    # P end spots at column 0 are cross-zone with the N end spots (legal
+    # to share); forcing the same start puts A's gate (col 1) and B's
+    # gate (col 1) in one column -- the model must be infeasible.
+    model.Add(by["MpA"][0] == by["MnB"][0])
+    solver = cp_model.CpSolver()
+    solver.parameters.num_search_workers = 1
+    solver.parameters.max_time_in_seconds = 10
+    status = solver.Solve(model)
+    assert status == cp_model.INFEASIBLE
+
+
+def test_gate_contact_must_cross_the_column():
+    """A segment at (t, c-1) ends at the column edge -- the gate stripe
+    sits at the column centre, so the drawn contact would float.  The
+    verify must reject a route whose only gate crossing uses that loose
+    edge (it now also rejects hand-built routes, not just SAT outputs)."""
+    from smt_engine.layout_model import PlacedTransistor
+    from smt_engine.route_model import RouteResult, solve_routing
+    from smt_engine.verify import verify_cell
+    nl = CellNetlist(parse_spice_subckt(NAND2))
+    sol = solve_layout(nl, time_limit_s=15)
+    rt = solve_routing(nl, sol.devices, time_limit_s=25)
+    assert rt.ok
+    # take the solved route and REMOVE every segment at (t, cg) crossing
+    # a gate column, keeping only the (t, cg-1) neighbours: the gate
+    # access then relies solely on the loose edge and must fail
+    from smt_engine.netlist import gate_access_points
+    gates = gate_access_points(nl, sol.devices)
+    hseg = dict(rt.hseg)
+    for net, cs in gates.items():
+        for c in cs:
+            for t in range(4):
+                hseg.pop((t, c), None)
+    broken = RouteResult(rt.status_name, rt.col_owner_n, rt.col_owner_p,
+                         rt.lo_n, rt.hi_n, rt.lo_p, rt.hi_p, hseg, rt.pj,
+                         rt.reachB_n, rt.reachB_p, rt.width_cols,
+                         len(hseg), rt.vseg_count, rt.pj_count)
+    report = verify_cell(nl, sol.devices, broken)
+    assert not report.ok()
+    assert any("no segment crosses" in v for v in report.violations)
+
+
 PJ_REQUIRED = """\
 .subckt T VCC Y Z Q A GND
 MnL Y A GND GND NMOS W=0.5u L=0.05u

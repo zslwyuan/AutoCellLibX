@@ -227,7 +227,25 @@ def build_layout_model(netlist, grid_um=DEFAULT_GRID_UM,
             if (a[1] == b[1] or a[3] == b[3]):
                 continue
             if (a[4] == "G" and b[4] == "G"):
-                continue            # poly stripes may share a column
+                # Same-net gate stripes merge into one straight poly bar
+                # (the alignment soft objective's payoff) -- legal.
+                # FOREIGN gates in one column are two overlapping poly
+                # stripes -- a short (the GDS merges them).  Same-net
+                # pairs were skipped above, so every pair reaching here
+                # must keep its gate columns apart.
+                if (a[2] is None and b[2] is None):
+                    model.Add(a[0] != b[0])
+                elif (a[2] is None):
+                    model.Add(a[0] != b[0]).OnlyEnforceIf(b[2])
+                elif (b[2] is None):
+                    model.Add(a[0] != b[0]).OnlyEnforceIf(a[2])
+                else:
+                    both = model.NewBoolVar("both_%d_%d" % (i, j2))
+                    model.Add(both == 1).OnlyEnforceIf(a[2], b[2])
+                    model.Add(both == 0).OnlyEnforceIf(a[2].Not())
+                    model.Add(both == 0).OnlyEnforceIf(b[2].Not())
+                    model.Add(a[0] != b[0]).OnlyEnforceIf(both)
+                continue
             if ((a[4] == "P" and b[4] == "N")
                     or (a[4] == "N" and b[4] == "P")):
                 continue            # P/N stripes live in disjoint y-ranges

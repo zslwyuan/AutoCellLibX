@@ -157,19 +157,10 @@ def verify_cell(netlist, placement, route, grid_um=0.19, height_um=2.47,
         for c in cols:
             crossed = False
             for t in range(4):
-                if ((t, c - 1) in route.hseg
-                        and route.hseg[(t, c - 1)] == net
-                        and not pj.get((t, c - 1))):
+                if ((t, c) in route.hseg and route.hseg[(t, c)] == net):
+                    # the segment at (t, c) spans the gate centre: M1
+                    # contacts it, a poly jump merges with it
                     crossed = True
-                if ((t, c) in route.hseg and route.hseg[(t, c)] == net
-                        and not pj.get((t, c))):
-                    crossed = True
-            if (not crossed):
-                # a poly jump crosses the gate column directly (merge)
-                for t in range(4):
-                    if ((t, c) in route.hseg and route.hseg[(t, c)] == net
-                            and pj.get((t, c))):
-                        crossed = True
             if (not crossed):
                 violations.append("gate %s@%d: no segment crosses the "
                                   "column" % (net, c))
@@ -341,7 +332,10 @@ def _net_connected_exact(netlist, placement, route, net, diffPts, gateCols,
                 if (cc == cg):
                     edge(g, node("PJ", (t, cc)))
             else:
-                if (cc == cg - 1 or cc == cg):
+                # the M1 segment crosses the gate centre only when it
+                # spans the column (cc == cg); cc == cg-1 would end at
+                # the column edge and float
+                if (cc == cg):
                     edge(g, node(t, cc))
                     edge(g, node(t, cc + 1))
     # dual columns: same-net bars merged at the well boundary

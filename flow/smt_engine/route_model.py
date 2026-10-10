@@ -522,18 +522,17 @@ def build_routing_model(netlist, placement, width_cols=None,
                      (2, 0, 0), (2, 1, 2), (2, 2, 2)])
 
     # --- gate access points: a horizontal segment crosses the column ---
-    # An M1 segment at (t, c-1) or (t, c) contacts the gate; a poly jump
-    # only merges when it actually crosses the column (its left column),
-    # so the (t, c-1) side must be an M1 segment.
+    # The gate stripe sits at the column CENTRE, so only a segment at
+    # (t, c) -- spanning [c*g, (c+1)*g] -- actually crosses it; a segment
+    # at (t, c-1) ends at the column edge and would leave the drawn
+    # contact floating (the old loose edge is gone).  M1 contacts the
+    # gate, a poly jump merges with it -- either layer counts.
     for net, cols in gate.items():
         if (net not in net_index):
             continue
         for c in cols:
             lits = []
             for t in range(4):
-                if (c - 1 >= 0):
-                    lits.append(_m1_lit(model, h_lit, pj, net, t, c - 1,
-                                        m1_memo))
                 if (c <= width_cols - 2):
                     lits.append(h_lit[(net, t, c)])
             if (lits):

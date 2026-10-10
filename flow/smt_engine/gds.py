@@ -163,21 +163,15 @@ def cell_gds(netlist, placement, route, grid_um=0.19, height_um=2.47,
         for j in range(p.legs):
             c = p.start_col + j * p.leg_width_cols + p.leg_width_cols // 2
             xc = _col_x(c, g)
-            # gate contact: an M1 segment of the gate net crossing this
-            # column (the model's gate access semantics); a poly jump
-            # crossing merges with the gate stripe directly (no contact)
+            # gate contact: an M1 segment of the gate net CROSSING this
+            # column (spanning [c*g, (c+1)*g] -- a segment at (t, c-1)
+            # ends at the column edge and would leave the contact
+            # floating); a poly jump crossing merges directly (no contact)
             gateNet = dev.gate
             touched = False
             for t in range(4):
-                left = route.hseg.get((t, c - 1)) if c - 1 >= 0 else None
                 right = route.hseg.get((t, c)) if c <= route.width_cols - 2 \
                     else None
-                if (left == gateNet and not route.pj.get((t, c - 1))):
-                    rect(xc - CONTACT_S / 2, railY[t] - CONTACT_S / 2,
-                         xc + CONTACT_S / 2, railY[t] + CONTACT_S / 2,
-                         LAYER["contact"])
-                    touched = True
-                    break
                 if (right == gateNet and not route.pj.get((t, c))):
                     rect(xc - CONTACT_S / 2, railY[t] - CONTACT_S / 2,
                          xc + CONTACT_S / 2, railY[t] + CONTACT_S / 2,
