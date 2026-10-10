@@ -18,9 +18,14 @@ Model (two diffusion rows per polarity, like ASTRAN's double-row packing):
   diffusions in the 2.47 um row, which is where most of its width win
   over a single-row model comes from);
 - transistors connected through an internal node (degree-2 node that is
-  not a subcircuit port) form a *series chain*; chain members must share
-  a row and abut (end of one == start of the next) so they share
-  diffusion;
+  not a subcircuit port and feeds no gate) form a *series chain*; chain
+  members must share a row and abut (end of one == start of the next)
+  so they share diffusion;
+- transistors with the same terminal net pair and type form a
+  *parallel group*; members must share a row and abut with the
+  net-pair alternating orientation (L0 = lexicographically smaller net
+  on even members, flipped on odd), so every shared edge is same-net
+  and the group shares diffusion like ASTRAN's stacked parallel MOS;
 - a transistor can be *folded* into k parallel legs, each of width
   ceil(w / k) on the grid; the legs occupy k contiguous columns.  A leg is
   capped at ``max_leg_um`` (a manufacturing limit on one diffusion finger,
@@ -28,21 +33,24 @@ Model (two diffusion rows per polarity, like ASTRAN's double-row packing):
   division), so without that cap the optimum is always k=1 and the joint
   choice would be meaningless.  The joint solve picks the k whose waste is
   smallest while the chain still abuts;
-- different chains must not overlap (NoOverlap2D over row + column
-  intervals).
+- different blocks must not overlap (NoOverlap2D over row + column
+  intervals), and two blocks of the same polarity and row whose touching
+  ends carry different nets must keep a *diffusion-break* gap (ASTRAN's
+  wGaps) -- the break is a disjunction over the two touching directions,
+  active only when the blocks share a row.
 
 Deliberate simplifications (documented so the score stays explainable):
-parallel-group diffusion sharing, diffusion-break spacing between
-unrelated chains, diffusion-sharing row stickiness (parallel PMOS may
-split across the two rows, which ASTRAN would not do), and intra-cell
-routing are not modelled -- width is an idealized lower bound, and the
-comparison table says so.  ASTRAN usually wins or ties once routing
-overhead counts, which is exactly the quality signal the reference is
-for.
+diffusion-sharing row stickiness (a parallel group may split across the
+two rows, which ASTRAN would not do), and intra-cell routing are not
+modelled -- width is an idealized lower bound, and the comparison table
+says so.  ASTRAN usually wins or ties once routing overhead counts, which
+is exactly the quality signal the reference is for.
 
-Determinism: CP-SAT is deterministic for an identical model, and every
-iteration here is over sorted structures, so two runs on the same machine
-give the same placement (AGENTS.md invariant 9).
+Determinism: CP-SAT is deterministic for an identical model (the solver
+runs single-worker -- the parallel search picks different equal-cost
+optima across runs, AGENTS.md invariant 9), and every iteration here is
+over sorted structures, so two runs on the same machine give the same
+placement.
 
 Usage:
     from smt_cell_placer import place_cell
@@ -134,11 +142,13 @@ def parse_spice_subckt(text):
 def find_series_chains(netlist):
     """Group devices into series chains via degree-2 internal nodes.
 
-    A node with exactly two device terminals that is not a subcircuit port
-    is a diffusion-sharing point: the two devices on it are in series.
-    Chains are walked deterministically (devices sorted by name, then the
-    unique path through internal nodes); standalone devices come back as
-    length-1 chains.
+    A node with exactly two source/drain device terminals that is not a
+    subcircuit port -- and feeds no gate (a net under a poly stripe
+    cannot be diffusion-shared; COMPLEX0's cl2#a_2_54# is both a chain
+    node and a gate net) -- is a diffusion-sharing point: the two devices
+    on it are in series.  Chains are walked deterministically (devices
+    sorted by name, then the unique path through internal nodes);
+    standalone devices come back as length-1 chains.
     """
     node_terms = collections.defaultdict(list)
     for dev in netlist.devices:
@@ -148,7 +158,9 @@ def find_series_chains(netlist):
     for node, terms in node_terms.items():
         if (node in netlist.external_nodes):
             continue
-        if (len(terms) == 2 and terms[0][0] is not terms[1][0]):
+        gate_count = sum(1 for dev in netlist.devices if dev.gate == node)
+        if (len(terms) == 2 and gate_count == 0
+                and terms[0][0] is not terms[1][0]):
             internal.add(node)
 
     chains = []
@@ -197,6 +209,145 @@ def find_series_chains(netlist):
     return chains
 
 
+def find_parallel_groups(netlist):
+    """Parallel groups: >=2 devices, same type, same drain/source net
+    pair -- terminal *order* ignored (members may list the pair either
+    way).  These share diffusion when adjacent (both terminal nets equal,
+    so the touching edges are same-net).  Groups are sorted by (first
+    device name); members keep netlist order (deterministic block
+    order)."""
+    groups = collections.defaultdict(list)
+    for dev in netlist.devices:
+        key = (dev.is_p, min(dev.drain, dev.source),
+               max(dev.drain, dev.source))
+        groups[key].append(dev)
+    result = [g for g in groups.values() if len(g) > 1]
+    result.sort(key=lambda g: g[0].name)
+    return result
+
+
+class BlockMember(object):
+    """One device inside a DiffusionBlock with its orientation.
+
+    Orientation follows the structure: series chains walk from the outer
+    net through the internal nodes; parallel groups alternate (even
+    member: L0 left / R0 right; odd: flipped) so shared edges are always
+    same-net; standalone devices expose source left / drain right.
+    """
+
+    __slots__ = ("device", "left_net", "right_net")
+
+    def __init__(self, device, left_net, right_net):
+        self.device = device
+        self.left_net = left_net
+        self.right_net = right_net
+
+    @property
+    def name(self):
+        return self.device.name
+
+
+class DiffusionBlock(object):
+    """One diffusion-sharing unit: series chain / parallel group / single.
+
+    members are oriented BlockMembers in block order; the block's left
+    net is members[0].left_net, right net members[-1].right_net.  Shared
+    internal edges (member i right == member i+1 left) are same-net by
+    construction.
+    """
+
+    def __init__(self, kind, members):
+        self.kind = kind
+        self.members = list(members)
+
+    @property
+    def first(self):
+        return self.members[0].device
+
+    @property
+    def last(self):
+        return self.members[-1].device
+
+    @property
+    def left_net(self):
+        return self.members[0].left_net
+
+    @property
+    def right_net(self):
+        return self.members[-1].right_net
+
+
+def build_diffusion_blocks(netlist):
+    """Diffusion blocks (chains, parallel groups, standalone) with member
+    orientations; deterministic order (longest chains first, then groups,
+    then singles, each sorted by first-device name).  Mirrors the engine's
+    structural model (smt_engine.netlist) so both stages see the same
+    diffusion-sharing units."""
+    chains = find_series_chains(netlist)
+    groups = find_parallel_groups(netlist)
+    grouped = set()
+    blocks = []
+    for chain in chains:
+        if (len(chain) == 1):
+            continue              # length-1 "chains" are standalone
+        for dev in chain:
+            grouped.add(dev)
+    for group in groups:
+        for dev in group:
+            grouped.add(dev)
+    node_terms = collections.defaultdict(list)
+    for dev in netlist.devices:
+        node_terms[dev.source].append(dev)
+        node_terms[dev.drain].append(dev)
+    for chain in chains:
+        if (len(chain) == 1):
+            continue
+        # the internal node shared by chain[i] and chain[i+1]
+        shared = []
+        for a, b in zip(chain, chain[1:]):
+            node = None
+            for n in (a.source, a.drain):
+                if (n == b.source or n == b.drain):
+                    node = n
+                    break
+            shared.append(node)
+        members = []
+        left = None
+        for node in (chain[0].source, chain[0].drain):
+            if (node != shared[0]):
+                left = node
+        members.append(BlockMember(chain[0], left, shared[0]))
+        for i in range(1, len(chain) - 1):
+            members.append(BlockMember(chain[i], shared[i - 1], shared[i]))
+        right = None
+        for node in (chain[-1].source, chain[-1].drain):
+            if (node != shared[-1]):
+                right = node
+        members.append(BlockMember(chain[-1], shared[-1], right))
+        blocks.append(DiffusionBlock("series", members))
+    for group in groups:
+        # orientation is net-pair alternation, independent of the
+        # original drain/source listing: member j exposes L0 left / R0
+        # right when j even, flipped when j odd, so the shared edge
+        # (right of j == left of j+1) is always the same net.  L0 is the
+        # lexicographically smaller net of the pair (deterministic).
+        l0 = min(group[0].drain, group[0].source)
+        r0 = max(group[0].drain, group[0].source)
+        members = []
+        for j, dev in enumerate(group):
+            left = l0 if j % 2 == 0 else r0
+            right = r0 if j % 2 == 0 else l0
+            members.append(BlockMember(dev, left, right))
+        blocks.append(DiffusionBlock("parallel", members))
+    for dev in netlist.devices:
+        if (dev in grouped):
+            continue
+        blocks.append(DiffusionBlock(
+            "single", [BlockMember(dev, dev.source, dev.drain)]))
+    blocks.sort(key=lambda b: (len(b.members) == 1, b.first.name))
+    return blocks
+
+
 class PlacementResult(object):
     """Solved placement of one cell."""
 
@@ -241,12 +392,18 @@ class PlacedDevice(object):
 
 
 def build_smt_model(netlist, grid_um=DEFAULT_GRID_UM, min_leg_um=MIN_LEG_UM,
-                  max_leg_um=MAX_LEG_UM, max_width_um=None):
+                  max_leg_um=MAX_LEG_UM, break_um=DEFAULT_GRID_UM,
+                  max_width_um=None):
     """Build the CP-SAT joint folding+placement model.
 
-    Returns (model, Wvar, end_vars, dev_vars, chains) where dev_vars maps
-    Device -> (start_var, k_var, legw_var, block_w_var, end_var).  Exposed for
-    tests; place_cell() wraps it.
+    Operates on *diffusion blocks* (series chains, parallel groups,
+    standalone): members of a block abut and share a row; blocks of one
+    polarity do not overlap; same-row blocks whose touching ends carry
+    different nets keep a diffusion-break gap (a disjunction over the
+    two touching directions).  Returns (model, Wvar, end_vars, dev_vars,
+    chains) where dev_vars maps Device -> (start_var, row_var, k_var,
+    legw_var, block_w_var, end_var).  Exposed for tests; place_cell()
+    wraps it.
     """
     model = cp_model.CpModel()
     w_cols = {}
@@ -259,11 +416,12 @@ def build_smt_model(netlist, grid_um=DEFAULT_GRID_UM, min_leg_um=MIN_LEG_UM,
 
     min_leg_cols = max(1, int(math.ceil(min_leg_um / grid_um)))
     max_leg_cols = max(1, int(math.ceil(max_leg_um / grid_um)))
+    break_cols = max(1, int(math.ceil(break_um / grid_um)))
     chains = find_series_chains(netlist)
+    blocks = build_diffusion_blocks(netlist)
 
     dev_vars = {}
     end_vars = []
-    per_polarity = {"P": [], "N": []}       # (x interval, y interval) pairs
     for dev in netlist.devices:
         max_fold = max(1, int(math.ceil(w_cols[dev] / min_leg_cols)))
         start = model.NewIntVar(0, width_ub, "start_%s" % dev.name)
@@ -279,23 +437,67 @@ def build_smt_model(netlist, grid_um=DEFAULT_GRID_UM, min_leg_um=MIN_LEG_UM,
         model.Add(legw <= max_leg_cols)      # manufacturing cap on one finger
         model.AddMultiplicationEquality(block, k, legw)
         model.Add(end == start + block)
-        interval = model.NewIntervalVar(start, block, end, "iv_%s" % dev.name)
-        row_interval = model.NewIntervalVar(row, 1, row + 1,
-                                           "rowiv_%s" % dev.name)
-        dev_vars[dev] = (start, row, k, legw, block, end, interval, row_interval)
+        dev_vars[dev] = (start, row, k, legw, block, end)
         end_vars.append(end)
-        per_polarity["P" if dev.is_p else "N"].append((interval, row_interval))
 
-    for polarity, pairs in per_polarity.items():
-        if (len(pairs) > 1):
-            model.AddNoOverlap2D(
-                [p[0] for p in pairs], [p[1] for p in pairs])
+    # intra-block: members abut and share the row (series chains AND
+    # parallel groups share diffusion)
+    for block in blocks:
+        for a, b in zip(block.members, block.members[1:]):
+            model.Add(dev_vars[a.device][1] == dev_vars[b.device][1])
+            model.Add(dev_vars[a.device][5] == dev_vars[b.device][0])
 
-    # series chains: same row, member i+1 starts where member i ends
-    for chain in chains:
-        for a, b in zip(chain, chain[1:]):
-            model.Add(dev_vars[a][1] == dev_vars[b][1])
-            model.Add(dev_vars[a][5] == dev_vars[b][0])
+    # block intervals for NoOverlap2D, per polarity
+    block_start = {}
+    block_end = {}
+    by_polarity = {"P": [], "N": []}
+    for block in blocks:
+        start = dev_vars[block.first][0]
+        end = dev_vars[block.last][5]
+        row = dev_vars[block.first][1]
+        block_start[block] = start
+        block_end[block] = end
+        by_polarity["P" if block.first.is_p else "N"].append(
+            (start, end, row, block))
+    for key, entries in by_polarity.items():
+        if (len(entries) > 1):
+            xs = []
+            ys = []
+            for s, e, r, b in entries:
+                size = model.NewIntVar(0, width_ub, "sbw_%s_%s"
+                                       % (key, b.first.name))
+                model.Add(size == e - s)
+                xs.append(model.NewIntervalVar(s, size, e, "sbx_%s_%s"
+                                               % (key, b.first.name)))
+                ys.append(model.NewIntervalVar(r, 1, r + 1, "sby_%s_%s"
+                                               % (key, b.first.name)))
+            model.AddNoOverlap2D(xs, ys)
+
+    # diffusion breaks: same-row blocks whose touching ends carry
+    # different nets need a gap; a disjunction over the two touching
+    # directions, active only when the blocks share a row
+    for key, entries in by_polarity.items():
+        for i in range(len(entries)):
+            for j in range(i + 1, len(entries)):
+                a = entries[i][3]
+                b = entries[j][3]
+                same_row = model.NewBoolVar("same_row_%s_%s"
+                                            % (a.first.name, b.first.name))
+                model.Add(dev_vars[a.first][1] == dev_vars[b.first][1]) \
+                    .OnlyEnforceIf(same_row)
+                model.Add(dev_vars[a.first][1] != dev_vars[b.first][1]) \
+                    .OnlyEnforceIf(same_row.Not())
+                u1 = model.NewBoolVar("brk_%s_%s_a"
+                                      % (a.first.name, b.first.name))
+                u2 = model.NewBoolVar("brk_%s_%s_b"
+                                      % (a.first.name, b.first.name))
+                if (a.right_net != b.left_net):
+                    model.Add(block_end[a] + break_cols <= block_start[b]) \
+                        .OnlyEnforceIf(u1)
+                if (b.right_net != a.left_net):
+                    model.Add(block_end[b] + break_cols <= block_start[a]) \
+                        .OnlyEnforceIf(u2)
+                model.Add(u1 + u2 >= 1).OnlyEnforceIf(same_row)
 
     width = model.NewIntVar(1, width_ub + 1, "width")
     model.AddMaxEquality(width, end_vars)
@@ -328,13 +530,17 @@ def place_cell(sp_path, grid_um=DEFAULT_GRID_UM, min_leg_um=MIN_LEG_UM,
     model, width, end_vars, dev_vars, chains = build_smt_model(
         netlist, grid_um=grid_um, min_leg_um=min_leg_um, max_leg_um=max_leg_um)
     solver = cp_model.CpSolver()
+    # single worker: parallel search picks different equal-cost optima
+    # across runs (AGENTS.md invariant 9 -- the reference must be
+    # deterministic)
+    solver.parameters.num_search_workers = 1
     solver.parameters.max_time_in_seconds = time_limit_s
     status = solver.Solve(model)
     if (status not in (cp_model.OPTIMAL, cp_model.FEASIBLE)):
         return PlacementResult(_statusName(status), None, None, [])
     placed = []
     for dev in netlist.devices:
-        start, row, k, legw, block, end, _, _ = dev_vars[dev]
+        start, row, k, legw, block, end = dev_vars[dev]
         placed.append(PlacedDevice(
             dev.name, dev.is_p, solver.Value(row),
             solver.Value(start), solver.Value(k), solver.Value(legw)))
@@ -356,7 +562,17 @@ def astran_width_from_log(log_path):
 
 def compare_with_astran(sp_path, log_path=None, grid_um=DEFAULT_GRID_UM,
                       time_limit_s=_SOLVE_TIME_LIMIT_S):
-    """Width comparison for one cell: {smt, astran, ratio}."""
+    """Width comparison for one cell: {smt, astran, ratio}.
+
+    ``astran_plausible`` flags logs that cannot belong to the current
+    netlist: the recorded transistor count must match the .sp's device
+    count (AUDIT 5.6: COMPLEX1's log once recorded a 30-transistor
+    layout for a 26-transistor netlist -- the width belonged to another
+    netlist).  A width-based check is deliberately avoided: ASTRAN packs
+    devices at roughly one column each (the drawn diffusion is the
+    column-quantized leg, not the .sp W in columns), so a width below
+    the naive W/2 floor is normal and not a staleness signal.
+    """
     result = place_cell(sp_path, grid_um=grid_um, time_limit_s=time_limit_s)
     astran = astran_width_from_log(log_path) if log_path else None
     row = {
@@ -370,7 +586,27 @@ def compare_with_astran(sp_path, log_path=None, grid_um=DEFAULT_GRID_UM,
     else:
         row["astran_width_um"] = astran
         row["ratio"] = None
+    row["astran_plausible"] = _astran_log_matches(sp_path, log_path)
     return row
+
+
+def _astran_log_matches(sp_path, log_path):
+    """The log's transistor count must equal the .sp's device count."""
+    if (not log_path or not os.path.exists(log_path)):
+        return False
+    try:
+        with open(sp_path, 'r', errors="ignore") as f:
+            netlist = parse_spice_subckt(f.read())
+    except ValueError:
+        return False
+    want = len(netlist.devices)
+    for line in open(log_path, 'r', errors="ignore"):
+        if ("Number of transistors before folding" in line):
+            try:
+                return int(line.split("before folding:")[1].split()[0]) == want
+            except (ValueError, IndexError):
+                return False
+    return False
 
 
 def main(argv=None):
@@ -392,8 +628,10 @@ def main(argv=None):
         log = sp[:-3] + ".Astranlog" if args.dir else None
         row = compare_with_astran(sp, log, grid_um=args.grid,
                                 time_limit_s=args.time_limit)
-        print("%(cell)-14s %(smt_status)-10s smt=%(smt_width_um)-8s "
-              "astran=%(astran_width_um)-8s ratio=%(ratio)s" % row)
+        flag = "" if row["astran_plausible"] else " (STALE)"
+        line = ("%(cell)-14s %(smt_status)-10s smt=%(smt_width_um)-8s "
+                "astran=%(astran_width_um)-8s ratio=%(ratio)s" % row)
+        print(line + flag)
 
 
 if (__name__ == "__main__"):

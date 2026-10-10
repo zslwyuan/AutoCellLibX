@@ -257,9 +257,13 @@ met1 w/s 0.230/0.230、rails 0.60。**修正了脚手架两处数字**：gf180 �
 
 ### 4.2 SMT 引擎：联合 folding+placement+routing 的完整 SAT 编码（P2-13 落点）
 
-**参考实现**（`flow/smt_cell_placer.py`，8 单测）：宽度下限打分器，两行/
-极性、串联链共享扩散、腿宽制造上限、`min(1000·宽度 + 腿数)`；COMPLEX0
-单行 4.75µm → 两行 2.47µm（ASTRAN 2.09µm）。
+**参考实现**（`flow/smt_cell_placer.py`，13 单测，2026-10-10 收紧）：宽度
+下限打分器，两行/极性、串联链共享扩散、**平行组扩散共享（网对交替朝向，
+组内强相邻）**、**扩散断距（同行异网触端最小一列 gap）**、腿宽制造上限、
+`min(1000·宽度 + 腿数)`、单线程确定性；块结构与引擎逐字段一致（parity
+单测固定）。实测 COMPLEX0 单行 4.75µm → 两行 2.47µm（ASTRAN 2.09µm，
+见 §5.37 的量化约定说明）。批量对照：`python smt_cell_placer.py --dir
+outputs/<bench>`（含晶体管计数新鲜度标志）。
 
 **完整引擎**（`flow/smt_engine/` 包，11 单测，2026-10-10）：布局与布线
 全部编入 CP-SAT。布局：折叠+串联/平行组共享扩散+扩散断间距+双行+栅对齐+
@@ -306,8 +310,9 @@ outputs/adder/COMPLEX0.gds --log outputs/adder/COMPLEX0.Astranlog`。
    `validated`（§四.1 的收尾）。
 2. **SMT 评分批量对照**：对 `outputs/*/COMPLEX*.sp` 批量跑
    `smt_cell_placer.py --dir`，给出全快照的"参考宽度 vs ASTRAN 宽度"
-   对照表；再补平行组扩散共享与扩散断间距后收紧下限（§四.2 的扩展；
-   poly 层跳线部分已于 2026-10-10 合入，见 §4.2 与 AUDIT §5.36）。
+   对照表（**已交付**：平行组扩散共享与扩散断距已建模（AUDIT §5.37），
+   批量表含计数新鲜度标志；multiplier/COMPLEX0 22 管已现 27.6% 收益，
+   详见 §4.2 与 AUDIT §5.37）。
 3. **LLM 提示接入生长剪枝**：offline 的 fold 提示与 benefit_estimator
    联动（超宽器件送版图前先折叠提示），仍保持 env 门控默认关（§四.3）。
 4. **pin accessibility 门槛**：把单元分接入 layout sanity gate（默认关，

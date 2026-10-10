@@ -1,8 +1,8 @@
-astran> read ./outputs/adder//COMPLEX1.run
--> Reading file: ./outputs/adder//COMPLEX1.run
+astran> read D:\AutoCellLibX\flow\outputs\adder/COMPLEX1.run
+-> Reading file: D:\AutoCellLibX\flow\outputs\adder/COMPLEX1.run
 -> Setting lpsolve executable to: D:\AutoCellLibX\tools\gurobi_cl\gurobi_cl.cmd
 -> Loading technology from file: D:\AutoCellLibX\tools\astran\build\Work\tech_freePDK45.rul
--> Loading cells netlist from file: ./outputs/adder//COMPLEX1.sp
+-> Loading cells netlist from file: D:\AutoCellLibX\flow\outputs\adder\COMPLEX1.sp
 -> Selecting cell netlist: COMPLEX1
 -> Trying with 2 tracks and conservative = 0 ...
 -> Calculating cell area...
@@ -269,7 +269,7 @@ astran> read ./outputs/adder//COMPLEX1.run
    NMOS: MCL1#6-MCL1#7-MCL1#8-MCL1#9-MCL1#10-MCL1#11-MCL0#6-MCL0#7-MCL0#8-MCL0#9-MCL0#10-MCL0#11-MCL2#5-MCL2#4-MCL2#3-
 -> Placing transistors...
 -> Routing cell...
--> Routing finished in 49 attempts after 0.896 s
+-> Routing finished in 49 attempts after 0.495 s
  ( initial cost = 44041 num reps = 33750 problem size = 225 )  Iteration 1; cost = 86043.000 (44041.000); p_cost = 86043.000; accept = 1.000; avg_delta = 1.245; dp = 5696.152; thres = 99999.000; cost_ratio = 1.954; [0]
  Iteration 2; cost = 89571.000 (44041.000); p_cost = 89571.000; accept = 1.000; avg_delta = 0.105; dp = 5737.638; thres = 47999.520; cost_ratio = 1.041; [0]
  Iteration 3; cost = 87435.000 (44041.000); p_cost = 87435.000; accept = 1.000; avg_delta = -0.063; dp = 5742.500; thres = 23039.770; cost_ratio = 0.976; [0]
@@ -338,7 +338,7 @@ astran> read ./outputs/adder//COMPLEX1.run
  Iteration 66; cost = 24258.000 (24258.000); p_cost = 24258.000; accept = 0.062; avg_delta = 0.000; dp = 0.023; thres = 488.817; cost_ratio = 1.000; [9]
  final cost = 24258 
 -> Routing cell...
--> Routing finished in 35 attempts after 0.788 s
+-> Routing finished in 35 attempts after 0.519 s
  ( initial cost = 44041 num reps = 33750 problem size = 225 )  Iteration 1; cost = 83562.000 (44041.000); p_cost = 83562.000; accept = 1.000; avg_delta = 1.171; dp = 5672.452; thres = 99999.000; cost_ratio = 1.897; [0]
  Iteration 2; cost = 89614.000 (44041.000); p_cost = 89614.000; accept = 1.000; avg_delta = 0.179; dp = 5752.833; thres = 47999.520; cost_ratio = 1.072; [0]
  Iteration 3; cost = 84301.000 (44041.000); p_cost = 84301.000; accept = 1.000; avg_delta = -0.157; dp = 5687.849; thres = 23039.770; cost_ratio = 0.941; [0]
@@ -408,7 +408,7 @@ astran> read ./outputs/adder//COMPLEX1.run
  Iteration 67; cost = 24676.000 (24258.000); p_cost = 24676.000; accept = 0.062; avg_delta = 0.000; dp = 0.023; thres = 479.395; cost_ratio = 1.000; [9]
  final cost = 24676 
 -> Routing cell...
--> Routing finished in 28 attempts after 0.81 s
+-> Routing finished in 28 attempts after 0.467 s
 -> New best transistor ordering found with cost: 5791
  ( initial cost = 44041 num reps = 33750 problem size = 225 )  Iteration 1; cost = 85848.000 (44041.000); p_cost = 85848.000; accept = 1.000; avg_delta = 1.239; dp = 5726.541; thres = 99999.000; cost_ratio = 1.949; [0]
  Iteration 2; cost = 99024.000 (44041.000); p_cost = 99024.000; accept = 1.000; avg_delta = 0.390; dp = 5765.163; thres = 47999.520; cost_ratio = 1.153; [0]
@@ -509,30 +509,30 @@ astran> read ./outputs/adder//COMPLEX1.run
  Iteration 97; cost = 24258.000 (24258.000); p_cost = 24258.000; accept = 0.064; avg_delta = 0.000; dp = 0.023; thres = 248.315; cost_ratio = 1.000; [9]
  final cost = 24258 
 -> Routing cell...
--> Routing finished in 35 attempts after 0.54 s
+-> Routing finished in 35 attempts after 0.512 s
 -> Final cost: Width=33; Gate Mismatches=4; WL=64; Rt. Density=5; Nr. Gaps=4
    PMOS: MCL1#0-MCL1#4-MCL1#3-MCL1#2-MCL1#1-MCL1#5-MCL0#0-MCL0#4-MCL0#3-MCL0#2-MCL0#1-MCL0#5-MCL2#2-MCL2#1-MCL2#0-
    NMOS: MCL1#6-MCL1#10-MCL1#9-MCL1#8-MCL1#7-MCL1#11-MCL0#6-MCL0#10-MCL0#9-MCL0#8-MCL0#7-MCL0#11-MCL2#5-MCL2#4-MCL2#3-
 -> Routing cell...
--> Routing finished in 28 attempts after 0.53 s
+-> Routing finished in 28 attempts after 0.471 s
 
 -> Cost before optimization:5791
 -> Optimizing routing graph...
 -> Cost after optimization: 5764
--> Runtime = 68.436 s
+-> Runtime = 40.483 s
 
 -> Cost before optimization:5764
 -> Optimizing routing graph...
 -> Cost after optimization: 5764
--> Runtime = 27.511 s
+-> Runtime = 17.442 s
 -> Compacting layout...
 -> Calling LP Solver (25037 variables, 40739 constraints)
 -> Running command: "D:\AutoCellLibX\tools\gurobi_cl\gurobi_cl.cmd" TimeLimit=3600 ResultFile=ILPmodel.sol ILPmodel.lp
 -> To interrupt earlier and get the current best solution, type in a terminal: kill -2 [gurobi process]
--> * and H means new feasible solution found:Solver status FEASIBLE, objective 7.44722e+06 (CP-SAT)
+-> * and H means new feasible solution found:Solver status FEASIBLE, objective 7.44832e+06 (CP-SAT)
 -> repair detection: met1=273 poly=149
 -> Spacing repair pass 0: 0 violating pair(s)
 -> Cell Size (W x H): 3.61 x 2.47
--> Total generation time for cell COMPLEX1: 973s
--> Saving GDSII Technology Mapping File: ./outputs/adder//GDSIILTable.txt
--> Saving layout COMPLEX1 to file: ./outputs/adder//COMPLEX1.gds
+-> Total generation time for cell COMPLEX1: 680s
+-> Saving GDSII Technology Mapping File: D:\AutoCellLibX\flow\outputs\adder/GDSIILTable.txt
+-> Saving layout COMPLEX1 to file: D:\AutoCellLibX\flow\outputs\adder/COMPLEX1.gds
