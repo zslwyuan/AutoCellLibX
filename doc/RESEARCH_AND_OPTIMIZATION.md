@@ -137,7 +137,7 @@
 > | yosys 重导入 | ✅ 已合入 | 真实 stat 交叉校验（707 单元逐类型一致）+ abc 可用（vendored） |
 > | 综合复用路径 | ✅ 已合入 | reuse（单输出+简单函数）+ internalize_only 生长；abc 端到端证明 |
 > | 架构重构 | ✅ 完成 | core 八层 + 双门面 + 四 shim + flow_core 委托；300 单测全绿 |
-> | SMT 参考实现 | ✅ 已合入 | smt_cell_placer（CP-SAT 联合 folding+placement；COMPLEX0 2.47µm vs ASTRAN 2.09µm） |
+> | SMT 引擎 | ✅ 已合入 | smt_engine 包（布局+布线完整 SAT 编码；NAND2 全链闭环，≤8 管边界见 §四.2） |
 > | LLM 提示整合 | ✅ 已合入 | llm_hint_provider（offline/llm 双提供方、降级、缓存、并行；pipeline 挂点默认 off） |
 > | pin accessibility 度量 | ✅ 已合入 | pin_accessibility（轨道对齐/多晶阻塞/同轨拥挤；COMPLEX0 0.500） |
 > | pin accessibility 论文 | ✅ 已检索整合 | 12 篇 2023–2026（§三） |
@@ -255,15 +255,24 @@ met1 w/s 0.230/0.230、rails 0.60。**修正了脚手架两处数字**：gf180 �
 `loadTechnologyRul` 解析器、状态改为 `draft`（几何真实、DRC 未跑），
 `test_pdk_config` 8 测试全绿。
 
-### 4.2 SMT 联合 folding+placement 参考实现（P2-13 落点）
+### 4.2 SMT 引擎：联合 folding+placement+routing 的完整 SAT 编码（P2-13 落点）
 
-`flow/smt_cell_placer.py`（8 单测）：CP-SAT 联合求解折叠与摆放，两行/
-极性（对应 ASTRAN 双排扩散堆叠）、串联链共享扩散（内节点度 2 识别）、
-腿宽制造上限 `maxLegUm`（否则折叠永远无收益）、NoOverlap2D、目标
-`min(1000·宽度 + 腿数)`。实测 COMPLEX0（14 管）：单行模型 4.75µm →
-两行模型 **2.47µm**（ASTRAN 2.09µm）——参考模型进入可比区间；差距即
-ASTRAN 布线/扩散共享的余量，正是"给 ASTRAN 打分"的意义。简化项如实
-记录：平行组扩散共享、无关链扩散断、行粘性未建模。
+**参考实现**（`flow/smt_cell_placer.py`，8 单测）：宽度下限打分器，两行/
+极性、串联链共享扩散、腿宽制造上限、`min(1000·宽度 + 腿数)`；COMPLEX0
+单行 4.75µm → 两行 2.47µm（ASTRAN 2.09µm）。
+
+**完整引擎**（`flow/smt_engine/` 包，11 单测，2026-10-10）：布局与布线
+全部编入 CP-SAT。布局：折叠+串联/平行组共享扩散+扩散断间距+双行+栅对齐+
+接入点列互斥（P/N/G 三区——跨区 P/N 同列合法，正对真实 NAND2X1）。布线：
+每列双区竖段（N/P slot，y 分离同列共存）、几何覆盖表（GND 竖段 [0,4] 只
+覆盖底部轨——真实不堵轨的原因）、栅接触=段与 poly 交叉、连通=全覆盖+桥接
+段、交叉安全（信号+电源竖段）。GDS 诚实头（1um/1nm）直接被
+layout_sanity 与 pin_accessibility 消费；verify 从解重算全量复验。
+
+**实测**：NAND2 6 列全链闭环（verify 0 违例、pin accessibility 0.933、
+sanity 通过）；COMPLEX0（14 管）布局 OPTIMAL 19 列（3.61µm）但联合布线
+不可行——**适用边界 ≤8 管**（4 轨+一列双竖段的资源限制；真实版图靠更多
+层/迭代布线）。调试记录与每条模型语义修正见 AUDIT §5.35。
 
 ### 4.3 多模态 LLM Agent 资源整合（P2-15 落点）
 

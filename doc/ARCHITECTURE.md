@@ -27,8 +27,12 @@ flow/
   blif_pattern_growth.py ← 生长（下一步迁 core/growth）
   ...其余单职责模块（benefit/routability/electrical/timing_power/liberty_gen/
      reuse/width_proxy/layout_sanity/yosys_import/yosys_eval/pdk_config/...）
-  smt_cell_placer.py    ← 2026-10-09 新增：SMT 联合 folding+placement 参考实现
-                          （CP-SAT，两行/极性，串联链共享扩散；给 ASTRAN 打质量分）
+  smt_cell_placer.py    ← 2026-10-09 新增：SMT 宽度下限参考实现（打分器）
+  smt_engine/           ← 2026-10-10 新增：完整 SMT 引擎（布局+布线联合 SAT 编码）
+                          netlist(链/组/朝向/接入点) · layout_model(折叠+共享+断+
+                          互斥+栅对齐) · route_model(双区竖段+几何覆盖+段/交叉+
+                          连通) · gds(诚实 GDS 头,可被 sanity/pin-access 消费) ·
+                          verify(解重算全量复验) · __init__(synth_cell 编排)
   llm_hint_provider.py  ← 2026-10-09 新增：LLM/离线布局提示（Hint 协议、降级、
                           缓存、并行批处理；AUTOCELL_HINT_MODE 门控，默认 off）
   pin_accessibility.py  ← 2026-10-09 新增：生成单元引脚可达性度量（on-track /
