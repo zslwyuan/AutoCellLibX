@@ -80,3 +80,16 @@ def test_driver_progress_hook_and_cancel(tmp_path):
     with pytest.raises(CancelledError):
         v2c.main([str(src), "--top", "toy", "--out", str(outdir),
                   "--skip-astran"], should_cancel=lambda: True)
+
+
+def test_block_areas_use_measured_height_not_constant():
+    from astran_queue import CellResult
+    results = [
+        CellResult(name="A", ok=True, width=2.0, height=3.04),   # 16x0.19
+        CellResult(name="B", ok=True, width=1.0, height=None),   # log lacked H
+        CellResult(name="C", ok=False, width=0.0, height=2.47),  # failed run
+    ]
+    areas = v2c.block_areas(results)
+    assert abs(areas["A"] - 2.0 * 3.04) < 1e-9
+    assert abs(areas["B"] - 1.0 * v2c.ROW_HEIGHT) < 1e-9         # fallback
+    assert "C" not in areas

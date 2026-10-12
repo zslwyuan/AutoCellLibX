@@ -43,6 +43,22 @@ DEFAULT_CELLS_SP = os.path.join(_REPO, "std_celllib",
 ROW_HEIGHT = ASTRAN_CELLS_HEIGHT * ASTRAN_VGRID               # 2.47 um
 
 
+def block_areas(results, fallback_height=ROW_HEIGHT):
+    """{cell: area_um2} from queue results -- width x MEASURED height.
+
+    The height comes from the same ASTRAN log line as the width, so a
+    non-default geometry override (GUI / build_astran_commands) yields
+    correct areas; the compiled-in constant only covers logs that lack
+    the H field, it is NOT the source of truth.
+    """
+    out = {}
+    for r in results:
+        if r.ok and r.width:
+            height = r.height if r.height else fallback_height
+            out[r.name] = r.width * height
+    return out
+
+
 def parse_liberty_areas(lib_path):
     """{cell: area_um2} -- the width proxy denominator lives in the lib."""
     text = open(lib_path, "r", errors="replace").read()
@@ -341,8 +357,18 @@ def main(argv=None, on_note=None, should_cancel=None):
         discrete_by_block[name] = area / ROW_HEIGHT
 
     width_by_block = {r.name: r.width for r in results if r.ok}
+    area_by_block = block_areas(results)
     custom_total = sum(width_by_block.values())
     discrete_total = sum(discrete_by_block.values())
+
+    odd_heights = {r.name: r.height for r in results
+                   if r.ok and r.height
+                   and abs(r.height - ROW_HEIGHT) > 0.01}
+    if odd_heights:
+        note("WARNING: measured heights differ from the discrete "
+             "baseline's row height (%.2f um): %s -- per invariant 10 the "
+             "width comparison is not like-for-like"
+             % (ROW_HEIGHT, odd_heights))
 
     # ---- 5b. liberty closure ---------------------------------------------
     closure = None
@@ -372,14 +398,13 @@ def main(argv=None, on_note=None, should_cancel=None):
                 caps = bl.block_pin_caps(members, insts, ports, lib_caps)
                 fragments.append(bl.emit_fragment(
                     name, funcs, ports,
-                    area_um2=width_by_block[name] * ROW_HEIGHT,
+                    area_um2=area_by_block[name],
                     pin_caps=caps))
             closure = bl.closure_remap(fragments, args.verilog, args.top,
                                        args.lib, outdir)
             if closure.get("ok"):
                 ext_areas = dict(areas)
-                ext_areas.update({name: width_by_block[name] * ROW_HEIGHT
-                                  for name in width_by_block})
+                ext_areas.update(area_by_block)
                 hist = closure["histogram"]
                 missing = [t for t in hist if t not in ext_areas]
                 if missing:
