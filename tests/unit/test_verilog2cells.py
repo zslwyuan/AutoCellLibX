@@ -62,3 +62,21 @@ def test_driver_end_to_end_without_astran(tmp_path):
     # gold/gate BLIF pair kept for auditing
     assert (outdir / "gold.blif").exists()
     assert (outdir / "gates.blif").exists()
+
+
+@pytest.mark.skipif(find_yosys() is None, reason="no yosys executable")
+def test_driver_progress_hook_and_cancel(tmp_path):
+    src = tmp_path / "toy.v"
+    src.write_text(TOY_V)
+    outdir = tmp_path / "out"
+    notes = []
+    rc = v2c.main([str(src), "--top", "toy", "--out", str(outdir),
+                   "--skip-astran", "--no-png"], on_note=notes.append)
+    assert rc == 0
+    assert any("synthesising" in n for n in notes)
+    assert any("PASS" in n for n in notes)
+
+    from astran_queue import CancelledError
+    with pytest.raises(CancelledError):
+        v2c.main([str(src), "--top", "toy", "--out", str(outdir),
+                  "--skip-astran"], should_cancel=lambda: True)

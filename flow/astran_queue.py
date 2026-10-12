@@ -50,6 +50,10 @@ class CellResult:
     note: str = ""
 
 
+class CancelledError(Exception):
+    """Raised when the queue's should_cancel callable fires."""
+
+
 def _read_cell_size(log_path):
     """(width, height) from an ASTRAN log, or (None, None)."""
     if not os.path.exists(log_path):
@@ -92,12 +96,16 @@ def _is_fresh(entry, sp_path, gds_path):
 
 
 def run_queue(cells, outdir, jobs=1, resume=True,
-              runner=run_astran_for_netlist, on_event=None):
+              runner=run_astran_for_netlist, on_event=None,
+              should_cancel=None):
     """Run each cell of ``cells`` (names of <outdir>/<cell>.sp) through
     ASTRAN; returns [CellResult] in the input order.
 
     ``runner`` is injectable for tests.  ``on_event`` receives
     ("start"|"done", CellResult|name) callbacks for progress reporting.
+    ``should_cancel`` is polled before each cell (serial mode) or before
+    scheduling (parallel mode); when it returns True the queue raises
+    CancelledError -- in-flight cells finish, pending ones never start.
     """
     outdir = os.path.abspath(outdir)
     manifest = _load_manifest(outdir)
@@ -162,9 +170,16 @@ def run_queue(cells, outdir, jobs=1, resume=True,
 
     if jobs <= 1:
         for name in pending:
+            if should_cancel and should_cancel():
+                _save_manifest(outdir, manifest)
+                raise CancelledError(
+                    "cancelled before cell %s" % name)
             results[name] = run_one(name)
             emit("done", results[name])
     else:
+        if should_cancel and should_cancel():
+            _save_manifest(outdir, manifest)
+            raise CancelledError("cancelled before scheduling")
         with ThreadPoolExecutor(max_workers=jobs) as pool:
             for name, result in zip(pending, pool.map(run_one, pending)):
                 results[name] = result

@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (QHBoxLayout, QLabel, QListWidget, QListWidgetItem
 from . import __version__, flow_core, flow_worker, paths, theme
 from .state import AppContext, AppState
 from .tabs.configure import ConfigureTab
+from .tabs.custom_module import CustomModuleTab
 from .tabs.design import DesignTab
 from .tabs.layouts import LayoutsTab
 from .tabs.overview import OverviewTab
@@ -28,6 +29,7 @@ class MainWindow(QMainWindow):
         ("layouts", "版图", "Layouts", "▦"),
         ("results", "结果", "Results", "∑"),
         ("design", "设计", "Design", "⌘"),
+        ("custom", "自定义模块", "Custom Module", "◆"),
         ("pdk", "PDK 编辑", "PDK Editor", "⚒"),
     ]
 
@@ -88,6 +90,7 @@ class MainWindow(QMainWindow):
         self.layouts_tab = LayoutsTab(self.ctx)
         self.results_tab = ResultsTab(self.ctx)
         self.design_tab = DesignTab(self.ctx)
+        self.custom_tab = CustomModuleTab(self.ctx)
         self.pdk_tab = PdkTab(self.ctx)
         self._page_by_key = {
             "overview": self.overview_tab,
@@ -97,6 +100,7 @@ class MainWindow(QMainWindow):
             "layouts": self.layouts_tab,
             "results": self.results_tab,
             "design": self.design_tab,
+            "custom": self.custom_tab,
             "pdk": self.pdk_tab,
         }
         for key, _n, _s, _g in self.PAGES:

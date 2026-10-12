@@ -1177,3 +1177,47 @@ lib 面积 ÷ 2.47µm(不变量 10 等行高)。toy 模块(4 门)全链实证:
 
 **测试**:新增 42 例(lint 19 / queue 8 / flatten 8 / verify 7,
 另有 verilog2cells 冒烟 2 例中面积解析 1 例免 yosys)。
+
+### 5.40 一键链补强:宽度代理预筛 + liberty 闭环 + GUI 页签(2026-10-12 第二批)
+
+承接 §5.39,把"外来 Verilog → 自定义 cell"链路的三个缺口补齐:
+
+**(1) 划分预筛(verilog2cells --partition-search)**:候选划分(预算
+8/16/24/36/48T)先用仓库 WidthProxy(outputs 基准语料,n=13,ridge on
+n_cells/n_transistors/base_width)预测总宽度再动手——toy 实证:预测
+4.65µm vs 实测 4.37µm(误差 6.4%)。语料不足或 sklearn 缺失时安静降级
+回默认预算。报告含预测 vs 实测对照表。
+
+**(2) liberty 闭环(block_liberty.py + --liberty-closure)**:为每个
+合并块生成 .lib 片段——函数经成员 liberty function AST 代入组合
+(懒引脚求值防多输出伪环)、面积=实测宽×2.47(不虚构)、输入电容按
+扇出求和、max_capacitance 抄驱动成员——合并进基础库后 abc 重映射
+**原始 Verilog**(不走 BLIF:read_blif 产 $lut 而 abc 只认 $_AND_ 系,
+曾静默"nothing to map",基线面积全 0,此为本次实证排掉的第二个集成
+坑)。toy 实证:genlib 成功加载 BLK0(26th cell),abc 按每输出锥全
+面积计价未选用(0% 收益,诚实记录)——多输出块在闭环里天然吃亏,
+单输出块(CC_MAJ 型)才有得赢,这正是既定"单输出+简单函数"方向
+的旁证。
+
+**(3) 缓存契约修复(不变量 7 的镜像个案)**:verilog2cells 重跑时
+无条件重写 BLK*.sp → mtime 失效 → --resume 恒失效(一次完整 22 分钟
+重跑实证)。修复为"内容不变不重写"(与 export_spice_netlist 同契约),
+修复后全链重跑 1.4s(0s 复用版图)。
+
+**(4) GUI 自定义模块页签(gui/tabs/custom_module.py)**:文件选择/
+选项(jobs、预算、resume、partition-search、liberty-closure)/运行
+取消(worker 线程 + should_cancel 钩子直插队列逐 cell 检查点)/日志
+复用 LogView/结果报告渲染 + 版图复用 GdsCanvas。主流程运行中禁用
+(主流程仍共享进程级 LP cwd,队列的 per-cell cwd 只护队列客户)。
+
+**过程中抓到 GUI 启动级回归(非本批引入,d205c21 批量改名误伤)**:
+rowCount()/selectedRows() 被一并改成 snake_case(row_count()/
+selected_rows()),patterns/pdk 表与 layouts 图层面板一碰数据即崩。
+三处修复(patterns.py、gds_canvas.py、pdk.py 共 5 个调用点),并对
+gui/ 全量做了两轮 Qt 方法族 grep 清扫 + offscreen 实例化冒烟(9 页
+全部通过)。**教训已固化进 AGENTS.md 坑清单:批量改名不得覆盖 Qt
+API**。
+
+**测试**:新增 16 例(block_liberty 7 / queue 取消 1 / 驱动钩子 1 /
+verilog2cells 冒烟 1 含面积解析);全量 396 通过(6 个 test_smt_engine
+失败属并行会话在途改动,与本批零依赖)。

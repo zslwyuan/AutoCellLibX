@@ -438,7 +438,7 @@ class LayerPanel(QWidget):
         self.table.setRowCount(0)
         if model is not None:
             for layer in model.ordered_layers():
-                row = self.table.row_count()
+                row = self.table.rowCount()
                 self.table.insertRow(row)
                 check = QTableWidgetItem("%s/%s" % (layer.layer, layer.datatype))
                 check.setFlags(Qt.ItemIsUserCheckable | Qt.ItemIsEnabled)
@@ -454,7 +454,7 @@ class LayerPanel(QWidget):
     def sync_from_canvas(self, canvas):
         """Reflect the canvas' current visibility (used after a preset)."""
         self._updating = True
-        for row in range(self.table.row_count()):
+        for row in range(self.table.rowCount()):
             item = self.table.item(row, 0)
             key = item.data(Qt.UserRole)
             item.setCheckState(Qt.Checked if canvas.layer_visible(key) else Qt.Unchecked)

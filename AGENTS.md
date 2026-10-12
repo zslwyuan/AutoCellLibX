@@ -243,6 +243,13 @@ is only in the code is effectively undocumented.
 - **`wx-config` from MSYS2 mis-resolves under Git Bash.** The build uses
   `tools/astran/bin/wx-config`, a shim that reports the MSYS2 wxWidgets 3.2
   flags directly.
+- **Mass identifier renames must never touch Qt API calls.** The 633-rename
+  snake_case pass (d205c21) also converted Qt method names it did not own —
+  `rowCount()→row_count()`, `selectedRows()→selected_rows()` — crashing the
+  patterns/pdk tables and the layouts layer panel on real data (the GUI
+  only starts empty by luck).  Grep Qt families (`row_count|selected_rows|
+  current_index|set_row_height|...`) after any repo-wide rename; the GUI
+  smoke test (offscreen MainWindow instantiation) catches the rest.
 - **Layer/stream numbers now follow the GSCL45 stream map** (metal1=49,
   via=50, …) — see `std_celllib/gds2_encounter.map` and the calibrated layer
   map in `tools/astran/build/Work/tech_freePDK45.rul`. Generated GDS can be
@@ -272,7 +279,9 @@ cd flow && python regenerate_cells.py --dir outputs/adder COMPLEX1
 
 # one-command ad-hoc module -> custom cells (synth, equivalence check,
 # partition, flatten, ASTRAN queue, report); see flow/verilog2cells.py
-cd flow && python verilog2cells.py module.v --out out_dir --jobs 2 --resume
+cd flow && python verilog2cells.py module.v --out out_dir --jobs 2 --resume \
+    --partition-search --liberty-closure
+# (also available as the GUI's "自定义模块 / Custom Module" tab)
 
 # preflight any hand- or script-edited ASTRAN netlist (ms, not hours)
 cd flow && python astran_lint.py path/to/cell.sp

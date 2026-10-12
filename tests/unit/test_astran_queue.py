@@ -121,3 +121,28 @@ def test_events_fire_in_order(tmp_path):
     run_queue(["CELLA"], str(tmp_path), runner=make_runner([]),
               on_event=lambda kind, payload: events.append(kind))
     assert events == ["start", "done"]
+
+
+def test_cancel_between_cells(tmp_path):
+    from astran_queue import CancelledError
+    for name in ("CELLA", "CELLB"):
+        make_cell(tmp_path, name)
+    calls = []
+    state = {"cancel": False}
+
+    def cancel_after_first():
+        return state["cancel"]
+
+    def runner(**kwargs):
+        fake = make_runner([], width=1.9)
+        fake(**kwargs)
+        state["cancel"] = True          # cancel after the first cell
+
+    with pytest.raises(CancelledError):
+        run_queue(["CELLA", "CELLB"], str(tmp_path), runner=runner,
+                  should_cancel=cancel_after_first)
+    # the finished cell's manifest entry survives the cancellation
+    results = run_queue(["CELLA", "CELLB"], str(tmp_path), resume=True,
+                        runner=make_runner(calls))
+    assert results[0].skipped                    # CELLA resumed from cache
+    assert results[1].ok and not results[1].skipped

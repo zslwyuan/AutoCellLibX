@@ -184,7 +184,7 @@ class PatternsTab(QWidget):
 
         self.table.setRowCount(0)
         for r in self._rows:
-            row = self.table.row_count()
+            row = self.table.rowCount()
             self.table.insertRow(row)
             self._set(row, 0, r["name"], bold=True)
             self._set(row, 1, r["trace"])
@@ -212,7 +212,7 @@ class PatternsTab(QWidget):
         self.table.setItem(row, col, item)
 
     def _selected_row(self):
-        rows = self.table.selectionModel().selected_rows()
+        rows = self.table.selectionModel().selectedRows()
         return rows[0].row() if rows else -1
 
     def _on_select(self):
