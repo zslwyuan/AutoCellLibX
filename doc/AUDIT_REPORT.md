@@ -1130,3 +1130,50 @@ max 3 / multiplier 4)全部通过 layout_sanity(0 违例),pin 分
 0.325–0.536——快照 layout 正确性确认。
 
 **测试**:引擎 18 例(新增 2),全量 347 通过。
+
+### 5.39 外来 Verilog 一键入胞工具链:lint 预检 + 可续跑并行队列 + 展平/验证/驱动(2026-10-12)
+
+用户场景:只给一个 Verilog 模块,要求按"高频子块 merge"路线用
+ASTRAN 评估面积收益。首轮全程手工跑通(综合→验证→划分→展平→逐块
+版图)后,将其中四类人工踩坑固化为工具:
+
+**(1) `flow/astran_lint.py`(预检,毫秒级)**:复刻 ASTRAN spice.h
+解析契约——晶体管行必须 M 开头(本次实证:`g0#M0` 前缀导致整网表
+加载中止、"Cell not found");C/D 开头器件被静默跳过、X 开头变
+实例;模型名须字面 PMOS/NMOS;`L={param}` 经 atof 得 0;`+` 续行
+整行被忽略(W/L 必须在 M 行);`.END/.MODEL` 截断、嵌套 .SUBCKT 拒收;
+缺 VCC/GND(默认电源网)与 >40T 单 cell(超出已验证 36T 区间)给警告。
+对库文件 cellsAstranFriendly.sp 与既有 COMPLEX*.sp 冒烟全过。
+
+**(2) `flow/astran_queue.py` + `run_astran_for_netlist(work_dir=)`**
+(断点续跑 + 安全并行):"禁止并发"的根因是 LP 文件落在进程 cwd;
+现每 cell 独立 cwd(`<outdir>/.lpwork/<cell>/`,已加 gitignore),
+并行不再互踩——**AGENTS.md 并发不变量据此修订**(仅经队列时允许)。
+manifest(`.astran_queue.json`)记录 sp_mtime/宽度/耗时,`--resume`
+按既有缓存契约(sp 未变 + gds 在)跳过已完成 cell;lint 作为硬门,
+0×0 结果一律记失败不静默。ASTRAN 另在 .gds 旁重写 GDSIILTable.txt
+(designmng.cpp:336,内容确定性),并行时同内容覆写,风险已记录。
+
+**(3) `flow/gate_flatten.py`(划分+展平)**:解析 yosys 映射网表
+(含 `\name[0]`/`$` 转义网名)、按连通性贪心聚类到晶体管预算内
+(默认 ≤36T,即历史已验证上限)、发射 M 前缀正确的晶体管级 .subckt;
+输出端口按"网被块外消费或是模块输出"推导,全程确定性(不变量 9)。
+
+**(4) `flow/logic_verify.py`(验证模板化)**:yosys 分别导
+gold(综合后)与 gate(abc 映射后,`write_blif -gates`)两种 BLIF;
+`.names` 按覆盖表语义、`.gate` 按 liberty `function` 字符串求值
+(解析器支持 `! * + ^` 与**相邻即与**的 liberty 习惯、多输出 cell
+的懒引脚求值避免 YS/YC 伪组合环);≤20 输入穷举、否则种子随机采样。
+对真实 gscl45nm.lib 与 yosys 产物验证通过(含反相 MUX 语义)。
+
+**(5) `flow/verilog2cells.py`(一键驱动)**:串起六步(synth→
+verify→partition→flatten→lint→queue→report.md+PNG);基线宽度按
+lib 面积 ÷ 2.47µm(不变量 10 等行高)。toy 模块(4 门)全链实证:
+映射 4 cell、穷举 8/8 等价、36T 单块 lint 干净。
+
+**过程中第二次踩到 360 查杀**:布局跑到一半 Astran.exe 被隔离
+(二进制凭空消失,日志 "拒绝访问"),按预案从同目录 Astran.keep
+恢复——已是第三次发生,AGENTS.md 计数已更新。
+
+**测试**:新增 42 例(lint 19 / queue 8 / flatten 8 / verify 7,
+另有 verilog2cells 冒烟 2 例中面积解析 1 例免 yosys)。

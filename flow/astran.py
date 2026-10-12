@@ -1,4 +1,5 @@
 import os
+import subprocess
 import sys
 
 # ASTRAN needs the MSYS2 runtime DLLs (wxWidgets, libstdc++...) on PATH, and its
@@ -105,7 +106,16 @@ exit
     return script
 
 
-def run_astran_for_netlist(astran_path, gurobi_path, technology_path, spice_netlist_path, complex_name, command_dir):
+def run_astran_for_netlist(astran_path, gurobi_path, technology_path, spice_netlist_path, complex_name, command_dir, work_dir=None):
+    """Run one cell through ASTRAN shell mode.
+
+    ``work_dir`` optionally sets the ASTRAN process working directory.  The
+    LP solver model/solution files (ILPmodel.lp/.sol) are written relative
+    to the cwd, so the default (None) keeps the historical behaviour of
+    dropping them in the caller's cwd -- which is also exactly why two
+    cells must never share one cwd concurrently.  astran_queue passes a
+    per-cell work_dir so parallel cells cannot clobber each other's LP.
+    """
     commands = build_astran_commands(gurobi_path, technology_path,
                                    spice_netlist_path, complex_name, command_dir)
 
@@ -113,9 +123,14 @@ def run_astran_for_netlist(astran_path, gurobi_path, technology_path, spice_netl
     print(commands, file=output_file)
     output_file.close()
 
-    os.system(astran_path+"/bin/Astran --shell " +
-              command_dir+"/"+complex_name+".run > " +
-              command_dir+"/"+complex_name+".Astranlog")
+    cmd = (astran_path+"/bin/Astran --shell " +
+           command_dir+"/"+complex_name+".run > " +
+           command_dir+"/"+complex_name+".Astranlog")
+    if (work_dir is None):
+        os.system(cmd)
+    else:
+        os.makedirs(work_dir, exist_ok=True)
+        subprocess.run(cmd, shell=True, cwd=work_dir)
 
 
 def astran_layout_is_stale(gds_path, netlist_path):

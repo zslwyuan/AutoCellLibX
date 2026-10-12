@@ -137,9 +137,25 @@ is only in the code is effectively undocumented.
 
 ## Pitfalls that have already bitten
 
-- **Don't run two ASTRAN cells concurrently.** The LP is written as
-  `ILPmodel.lp` / `ILPmodel.sol` in the process working directory; parallel
-  runs clobber each other.
+- **Don't run two ASTRAN cells concurrently in one working directory.**
+  The LP is written as `ILPmodel.lp` / `ILPmodel.sol` in the process working
+  directory; parallel runs clobber each other. Since 2026-10
+  `flow/astran_queue.py` runs each cell with its own cwd
+  (`<outdir>/.lpwork/<cell>/`, git-ignored), so `regenerate_cells.py --jobs N`
+  and `verilog2cells.py --jobs N` are parallel-safe — the rule now applies
+  only to ad-hoc `run_astran_for_netlist` calls that do not pass `work_dir`.
+  (ASTRAN also rewrites `GDSIILTable.txt` next to the exported .gds
+  regardless of cwd; content is deterministic, keep --jobs modest.)
+- **Every transistor line in an ASTRAN-bound `.sp` must start with `M`.**
+  The parser recognises devices by the first character of the line
+  (`spice.h`): an instance prefix like `g0#M0` makes the load abort
+  ("Errot in line 2") and `cellgen select` then reports "Cell not found";
+  names starting with `C`/`D` are silently *skipped* as capacitor/diode
+  cards, and `X...` becomes a subcircuit instance.  Models must be
+  literally `PMOS`/`NMOS`, W/L must be numeric (`L={param}` atofs to 0),
+  and `+` continuation lines are ignored entirely.  `flow/astran_lint.py`
+  checks all of this in milliseconds and the queue gates every run on it —
+  run it before burning an ASTRAN hour on a hand- or script-edited deck.
 - **ASTRAN's `autoFlow` is the slow part**: placement (simulated annealing)
   plus one or more compaction solves, ~5–10 min per cell. The adapter caps a
   solve at 300 s and uses a 2 % relative gap; this only trades shrink quality
@@ -219,7 +235,8 @@ is only in the code is effectively undocumented.
   (`HEUR/QVM…Malware.Gen`, from its `_popen` use). It is a false positive;
   `build_astran.sh` strips the binary after linking, which *reduces* the
   heuristic hits but does not prevent a quarantine when 360 updates its
-  definitions (observed twice). The durable fix is adding the directory to
+  definitions (observed three times, latest 2026-10-12 mid-run). The durable
+  fix is adding the directory to
   360's trust list (done manually on the development machine); `Astran.keep`
   and `AstranBackup.zip` next to the binary are restore backups for a
   mid-run quarantine.
@@ -252,6 +269,13 @@ python -m gui
 
 # regenerate one cell's layout without re-running mining
 cd flow && python regenerate_cells.py --dir outputs/adder COMPLEX1
+
+# one-command ad-hoc module -> custom cells (synth, equivalence check,
+# partition, flatten, ASTRAN queue, report); see flow/verilog2cells.py
+cd flow && python verilog2cells.py module.v --out out_dir --jobs 2 --resume
+
+# preflight any hand- or script-edited ASTRAN netlist (ms, not hours)
+cd flow && python astran_lint.py path/to/cell.sp
 ```
 
 ## Conventions
