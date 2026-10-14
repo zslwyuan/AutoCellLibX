@@ -216,9 +216,13 @@ def main():
 
     # tools: the ASTRAN build (binary + wx DLLs + technology rules) and the
     # gurobi_cl-compatible solver wrapper.  The ASTRAN sources are dev-only,
-    # but its licensing statement ships with the package.
+    # but its licensing statement ships with the package.  The vendored
+    # yosys (mingw64, abc-capable, self-contained DLLs) travels too --
+    # verilog2cells and the custom-module tab need it, and customers have
+    # no yosys of their own.
     copy_repo_dir("tools/astran/build")
     copy_repo_dir("tools/gurobi_cl")
+    copy_repo_dir("tools/yosys")
     astran_lic = os.path.join(REPO, "tools", "astran", "LICENSE.md")
     if os.path.exists(astran_lic):
         os.makedirs(os.path.join(STAGE, "tools", "astran"), exist_ok=True)
