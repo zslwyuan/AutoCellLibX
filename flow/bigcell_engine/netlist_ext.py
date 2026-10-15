@@ -108,9 +108,10 @@ def fold_devices(netlist, p_budget_um=FOLD_BUDGET_P_UM,
     (cellnetlst.cpp:269-285).  Devices are never mutated in place.
 
     ``leg_widths`` maps EVERY device name of ``netlist2`` to
-    ``(legs, leg_width_cols)`` in geometry.py's format: the width-fold
-    decision (in place, like smt_engine's k/legw) plus the two-column
-    contactability minimum of ``default_leg_widths``.
+    ``(legs, leg_width_cols)`` in geometry.py's slot format: the
+    width-fold decision (in place, like smt_engine's k/legw) with
+    ``leg_width_cols = 1`` -- one column per leg, W drawn vertically
+    (doc/BIGCELL_SLOT_GEOMETRY.md section 3).
     """
     chains, _internal = find_series_chains(netlist)
     # work on copies: the input netlist stays untouched (purity)
@@ -143,15 +144,15 @@ def fold_devices(netlist, p_budget_um=FOLD_BUDGET_P_UM,
 
     # width folding, cellnetlst.cpp:262-285: any device whose electrical
     # width exceeds the per-row diffusion budget becomes ceil(w/budget)
-    # parallel legs; represented in place as (legs, leg_width_cols).
+    # parallel legs; each leg occupies ONE slot column (the slot model's
+    # leg_width_cols = 1) with the leg's W/legs as its strip height.
     leg_widths = {}
     for dev in all_devices:
-        cols = max(2, int(math.ceil(dev.width_um / grid_um)))
         bud = _budget_um(dev, p_budget_um, n_budget_um)
         legs = 1
         if dev.width_um > bud + _EPS:
             legs = int(math.ceil(dev.width_um / bud - _EPS))
-        leg_widths[dev.name] = (legs, max(2, int(math.ceil(cols / legs))))
+        leg_widths[dev.name] = (legs, 1)
 
     if not new_devices:
         return netlist, leg_widths
@@ -180,30 +181,35 @@ def mirror_block(block):
 # tree/branch blocks: the total decomposition (doc section 2.1.3)
 # --------------------------------------------------------------------------
 
-def _pure_internal_nodes(netlist):
-    """({net: [devices]} for pure internal degree-3 diffusion nodes, and
-    the set of all pure internal diffusion nodes of degree 2 or 3.
+def _pure_internal_nodes(netlist, max_degree=None):
+    """({net: [devices]} for pure internal coupler nodes of degree >= 3,
+    and the set of all pure internal diffusion nodes of degree 2 or 3.
 
     "Pure": no gate terminal on the net (the poly stripe would separate
     the diffusions, smt_engine.netlist.find_series_chains' rule) and not
-    a subcircuit port."""
+    a subcircuit port.  ``max_degree`` caps the coupler degree (the
+    default 3 reproduces the historical degree-3-only behaviour; the
+    slot chain passes None so doubled networks' degree-4 junctions --
+    NOR3X1's a_2_64#/a_25_64# -- couple their units too,
+    doc/BIGCELL_SLOT_GEOMETRY.md section 5).
+    """
     terms = {}
     gates = set()
     for dev in netlist.devices:
         terms.setdefault(dev.source, []).append(dev)
         terms.setdefault(dev.drain, []).append(dev)
         gates.add(dev.gate)
-    deg3 = {}
+    couplers = {}
     all_pure = set()
     for net in sorted(terms):
         if net in netlist.external or net in gates:
             continue
         n = len(terms[net])
-        if n == 3:
-            deg3[net] = sorted(terms[net], key=lambda d: d.name)
+        if n >= 3 and (max_degree is None or n <= max_degree):
+            couplers[net] = sorted(terms[net], key=lambda d: d.name)
         if n in (2, 3):
             all_pure.add(net)
-    return deg3, all_pure
+    return couplers, all_pure
 
 
 def _slot_nets(block):
@@ -220,17 +226,25 @@ def _slot_nets(block):
     return ends, internal
 
 
-def build_bigcell_blocks(netlist):
+def build_bigcell_blocks(netlist, max_coupler_degree=3):
     """The TOTAL diffusion-block decomposition: smt_engine blocks plus
     tree/branch blocks over degree-3-coupled units.
 
+    ``max_coupler_degree`` caps how high a pure internal node's terminal
+    count may go and still couple its units into one trail (None =
+    unbounded).  The default 3 keeps the historical behaviour exactly:
+    when the cell has no coupled degree-3 node the output is exactly
+    ``build_diffusion_blocks(netlist)`` (same objects, same order).  The
+    slot-model chain (geometry parity with ASTRAN's eulerian runs) calls
+    with ``max_coupler_degree=None`` so doubled networks' degree-4
+    junctions linearize into one strip (doc/BIGCELL_SLOT_GEOMETRY.md
+    section 5).
+
     Returns a deterministic list of DiffusionBlock (kinds: series /
-    parallel / single / tree) covering every device exactly once.  When
-    the cell has no coupled degree-3 node the output is exactly
-    ``build_diffusion_blocks(netlist)`` (same objects, same order).
+    parallel / single / tree) covering every device exactly once.
     """
     base = build_diffusion_blocks(netlist)
-    deg3, _all_pure = _pure_internal_nodes(netlist)
+    deg3, _all_pure = _pure_internal_nodes(netlist, max_coupler_degree)
     if not deg3:
         return base
 
@@ -354,8 +368,12 @@ def _linearize(units, member_idxs):
 
     Deterministic search: enumerate every (unit, orientation) start in
     sorted order, greedily grow the trail preferring candidates whose
-    other end continues it (one-step lookahead), keep the best run by
-    (-shared edges, lexicographic sequence); then repeat on the rest.
+    other end continues it (one-step lookahead), splice leftover CLOSED
+    circles into the run at their leftmost incident position (Euler
+    splicing -- NOR3X1's doubled pull-up linearizes into ASTRAN's single
+    6-transistor strip this way, doc/BIGCELL_SLOT_GEOMETRY.md section 5);
+    keep the best run by (-shared edges, lexicographic sequence); then
+    repeat on the rest.
     """
     remaining = sorted(member_idxs, key=lambda i: units[i].first.name)
     runs = []
@@ -367,6 +385,7 @@ def _linearize(units, member_idxs):
                 else (False, True)
             for flip in flips:
                 run = _grow_run(units, remaining, idx, flip)
+                run = _splice(units, remaining, run)
                 key = (-(len(run) - 1),
                        tuple((units[i].first.name, f) for i, f in run))
                 if best is None or key < best[0]:
@@ -376,6 +395,41 @@ def _linearize(units, member_idxs):
         done = {i for i, _f in run}
         remaining = [i for i in remaining if i not in done]
     return runs
+
+
+def _splice(units, avail, run):
+    """Extend ``run`` with leftover units incident to one of its slots.
+
+    Only CLOSED sub-runs (start net == end net) may be inserted before
+    the run's end -- the surrounding shared-edge chain stays valid; at
+    the run's right end an open sub-run may attach.  Leftmost position
+    first, candidate units sorted, sub-runs grown by _grow_run's greedy;
+    repeats until nothing incident remains.  Deterministic.
+    """
+    run = list(run)
+    used = {i for i, _f in run}
+    free = [i for i in avail if i not in used]
+    while True:
+        found = None                         # (cand-key, pos, sub)
+        for pos in range(len(run)):
+            _l, right = _unit_ends(units, run[pos][0], run[pos][1])
+            for i in free:
+                flip = _match_flip(units, i, right)
+                if flip is None:
+                    continue
+                sub = _grow_run(units, free, i, flip)
+                closes = _unit_ends(units, sub[-1][0], sub[-1][1])[1] == right
+                if pos + len(sub) < len(run) and not closes:
+                    continue                 # open trail mid-run: invalid
+                cand = (pos, 0 if closes else 1, units[i].first.name)
+                if found is None or cand < found[0]:
+                    found = (cand, pos, sub)
+        if found is None:
+            return run
+        _cand, pos, sub = found
+        run = run[:pos + 1] + sub + run[pos + 1:]
+        used |= {i for i, _f in sub}
+        free = [i for i in free if i not in used]
 
 
 def _unit_ends(units, idx, flip):

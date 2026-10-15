@@ -235,16 +235,16 @@ def test_layout_cell_width_matches_hand_computed_columns():
     nl, lw, seeds = _pipeline(NAND2)
     op, on = euler_orderings(seeds, lw)
     placements, width = layout_cell(op, on, lw)
-    # N row: MnA(3 cols) + MnB(3 cols) sharing n1 -> 6 columns, no break;
-    # P row: the parallel pair shares its ends -> 6 columns, no break.
-    # Hand-computed: width 6, every device 3 columns.
-    assert width == 6
-    assert placements[nl.devices[0]].leg_width_cols == 3
+    # slot model (doc/BIGCELL_SLOT_GEOMETRY.md): one column per device
+    # leg -- N row MnA+MnB sharing n1 = 2 columns, no break; P row the
+    # parallel pair = 2 columns, no break.  Width 2, every leg 1 column.
+    assert width == 2
+    assert placements[nl.devices[0]].leg_width_cols == 1
     # every row accounts exactly: widths + one column per break <= width
     for row in (op, on):
         total = sum(block_width_cols(b, lw) for b in row)
         assert total + _row_breaks(row) * 1 <= width
-    # P row end position of the last device lands on column 6
+    # P row end position of the last device lands on column 2
     last_p = op[-1].members[-1].device
     assert placements[last_p].start_col + \
         placements[last_p].legs * placements[last_p].leg_width_cols == width

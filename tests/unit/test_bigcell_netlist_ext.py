@@ -91,9 +91,10 @@ def test_fold_defaults_no_fold_on_narrow_devices():
     nl = CellNetlist(parse_spice_subckt(NAND2))
     folded, leg_widths = fold_devices(nl)
     assert folded is nl                # nothing folded, netlist untouched
-    # W=0.5u -> 3 columns, one leg; every device covered
-    assert leg_widths == {"MpA": (1, 3), "MpB": (1, 3),
-                          "MnA": (1, 3), "MnB": (1, 3)}
+    # slot model (doc/BIGCELL_SLOT_GEOMETRY.md): one leg of ONE column
+    # per device -- W is drawn vertically, not spread horizontally
+    assert leg_widths == {"MpA": (1, 1), "MpB": (1, 1),
+                          "MnA": (1, 1), "MnB": (1, 1)}
 
 
 def test_fold_width_folding_over_budget():
@@ -112,9 +113,9 @@ Mn Y A GND GND NMOS W=0.5u L=0.05u
     # leg copies follow (K descending, cellnetlst.cpp:269-285)
     names = [d.name for d in folded.devices]
     assert names == ["Mp", "Mn", "Mp#leg3", "Mp#leg2"]
-    assert leg_widths["Mp"] == (1, 7)          # 3.6/3 -> 7 columns
-    assert leg_widths["Mn"] == (1, 3)
-    assert leg_widths["Mp#leg3"] == leg_widths["Mp#leg2"] == (1, 7)
+    assert leg_widths["Mp"] == (1, 1)          # 3.6/3 = 1.2u per leg slot
+    assert leg_widths["Mn"] == (1, 1)
+    assert leg_widths["Mp#leg3"] == leg_widths["Mp#leg2"] == (1, 1)
 
 
 def test_fold_series_folding_matches_astran_logs(flow_dir):
@@ -157,20 +158,24 @@ def test_fold_series_legs_are_real_chains():
     # leg widths: originals divided by legs, copies at the same width
     assert leg_widths["Mp1"][0] == 1 and leg_widths["Mp2"][0] == 1
     # N devices untouched
-    assert leg_widths["Mn1"] == (1, 3)
+    assert leg_widths["Mn1"] == (1, 1)
 
 
 def test_fold_round_trip_width_never_shrinks(corpus):
-    """The fold must not lose electrical width: every FOLDED device's
-    legs x leg_width_cols x GRID >= its (possibly divided) width_um."""
-    import math
-    from bigcell_engine.geometry import GRID_UM
+    """The fold must not lose electrical width.  Slot model
+    (doc/BIGCELL_SLOT_GEOMETRY.md): width lives in the strip heights --
+    a (legs, 1) device's legs are separate strips of width_um/legs each
+    (series fold) or the same strip repeated (width fold), so the
+    per-device width never grows past the budget and the DEVICE COUNT
+    carries the split width.  Pin: no folded device exceeds the budget
+    and every device maps to a (legs, 1) footprint."""
     for key, nl in sorted(corpus.items()):
         folded, leg_widths = fold_devices(nl)
+        assert set(leg_widths) == {d.name for d in folded.devices}, key
         for dev in folded.devices:
             legs, cols = leg_widths[dev.name]
-            assert legs * cols * GRID_UM >= dev.width_um - 1e-9, (
-                key, dev.name)
+            assert cols == 1 and legs >= 1, (key, dev.name)
+            assert dev.width_um <= 1.2 + 1e-9 or legs > 1, (key, dev.name)
 
 
 def test_fold_is_deterministic_and_pure(corpus):

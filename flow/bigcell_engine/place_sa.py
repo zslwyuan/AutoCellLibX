@@ -15,14 +15,15 @@ with the weights autoFlow passes to placeTrans (autocell2.cpp:152:
 
 - ``posPN`` (ASTRAN's lockstep slot-coordinate width proxy) becomes the
   real cell width in 0.19 um columns -- max over the two rows of
-  (sum of block widths + one break column per diffusion break), which is
-  exactly what geometry.layout_cell emits;
+  (sum of member columns + one break column per diffusion break), which
+  is exactly what geometry.layout_cell emits;
 - ``mismatchesGate`` counts per *column* (both rows carry a gate stripe
-  in the same column with different nets) instead of per slot, because
-  blocks span several columns; net bounding boxes / congestion cover
-  every diffusion edge and gate centre of every non-power net in one
-  column space shared by both rows, like ASTRAN's posPN space; power
-  nets are excluded from the bbox terms, as in getCost.
+  in the same column with different nets) instead of per slot; net
+  bounding boxes / congestion cover every diffusion edge and gate centre
+  of every non-power net in one HALF-SLOT space shared by both rows --
+  ASTRAN's posPN space (edge e at 2e, column c's gate at 2c+1, one
+  position per terminal/gate slot, cellnetlst.cpp:406-443); power nets
+  are excluded from the bbox terms, as in getCost.
 
 Upgrades over ASTRAN:
 
@@ -56,14 +57,13 @@ not by copying ASTRAN's constant.  ``quality`` stays a parameter.
 """
 
 import hashlib
-import math
 import random
 
 from smt_engine.netlist import BlockMember
 
 from bigcell_engine.netlist_ext import mirror_block
 
-ENGINE_VERSION = "bigcell-sa/1"
+ENGINE_VERSION = "bigcell-sa/2"     # /2: the slot-model cost (half-slots)
 
 POWER_NETS = ("VCC", "GND", "VDD", "VSS")
 
@@ -138,11 +138,13 @@ def _entry(block, flip, leg_widths):
 
 
 def _row_picture(entries):
-    """Column picture of one row, mirroring geometry.place_row exactly:
+    """Half-slot picture of one row, mirroring geometry.place_row exactly:
     one break column where a block's left net differs from the previous
-    block's right net; a member registers its left net at its first
-    column, right net at its last, gate stripes at the leg centres.
-    Returns (dnet, gate, breaks, width, starts, ends)."""
+    block's right net; a member registers its left net at its left edge
+    (2*col), right net at its right edge (2*(col+w)) and its gate
+    stripes at the leg centres (2*(col+j*legw)+1) -- the slot space
+    ASTRAN's posPN counts (doc/BIGCELL_SLOT_GEOMETRY.md section 4).
+    Returns (dnet, gate, breaks, width_cols, starts, ends)."""
     dnet = {}
     gate = {}
     col = 0
@@ -157,12 +159,12 @@ def _row_picture(entries):
             breaks += 1
         end = col
         for dev, lnet, rnet, w, centres in entry.members:
-            dnet[col] = lnet
-            dnet[col + w - 1] = rnet
+            dnet[2 * col] = lnet
             for off in centres:
-                gate[col + off] = dev.gate
+                gate[2 * (col + off) + 1] = dev.gate
             col += w
             end = col - 1
+            dnet[2 * col] = rnet
         ends.append(end)
         prev_right = entry.members[-1][2]
     return dnet, gate, breaks, col, starts, ends
@@ -199,24 +201,19 @@ class _SAState(object):
 
     def __init__(self, ordering_p, ordering_n, leg_widths):
         if leg_widths is None:
-            # geometry.default_leg_widths semantics, inlined: that helper
-            # currently reads a nonexistent Device.width attribute
-            # (flagged to geometry's owner); keep the fallback local.
-            from bigcell_engine.geometry import (DEFAULT_LEG_WIDTHS_MIN_COLS,
-                                                 GRID_UM)
+            # geometry.default_leg_widths' slot-model semantics: one leg
+            # of one column per device (W is vertical).
             devices = [m.device for row in (ordering_p, ordering_n)
                        for b in row for m in b.members]
-            leg_widths = {dev.name: (1, max(
-                DEFAULT_LEG_WIDTHS_MIN_COLS,
-                int(math.ceil(float(dev.width_um) / GRID_UM))))
-                for dev in devices}
+            leg_widths = {dev.name: (1, 1) for dev in devices}
         self.leg_widths = leg_widths
         self.rows = [[_entry(b, False, leg_widths) for b in ordering_p],
                      [_entry(b, False, leg_widths) for b in ordering_n]]
         self.power = frozenset(POWER_NETS)
         total_w = sum(e.width for row in self.rows for e in row)
         breaks_ub = sum(max(0, len(row) - 1) for row in self.rows)
-        self.max_cols = total_w + breaks_ub + 2
+        # the pictures live in half-slots (edges 2e, gates 2c+1)
+        self.max_cols = 2 * (total_w + breaks_ub) + 3
         self.full_recompute()
 
     # -- moves ---------------------------------------------------------

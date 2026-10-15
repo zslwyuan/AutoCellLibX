@@ -85,7 +85,7 @@ def _field_map(netlist, placement, width_cols):
 
 
 def verify_cell(netlist, placement, route, grid_um=0.19, height_um=2.47,
-                break_um=0.19, blocks=None):
+                break_um=0.19, blocks=None, slot_model=False):
     """Structural verification; returns VerifyReport.
 
     ``blocks`` optionally supplies the diffusion-block view the placement
@@ -95,6 +95,15 @@ def verify_cell(netlist, placement, route, grid_um=0.19, height_um=2.47,
     against the base build_diffusion_blocks view would split the unit and
     report a false "diffusion break missing".  Default (None) keeps the
     historical base-decomposition behaviour.
+
+    ``slot_model`` switches the diffusion access-point derivation to the
+    bigcell slot model (doc/BIGCELL_SLOT_GEOMETRY.md): member terminals
+    sit on the member's EDGE columns (the exact engine insets a
+    width-1 leg's right access into its own column), multi-region nets
+    (one net occupying several edge slots of a row) are access points
+    everywhere so their regions stay tied, and the orientation-aware
+    block view is required -- pass ``blocks`` with it.  Additive only:
+    the default path is byte-identical to the historical behaviour.
     """
     violations = []
     trackY, barY = track_geometry(height_um, grid_um)
@@ -167,7 +176,21 @@ def verify_cell(netlist, placement, route, grid_um=0.19, height_um=2.47,
                                   % (a[4], b[4]))
 
     # ---- routing invariants ----
-    sig_diff, power_diff = diffusion_access_points(netlist, placement)
+    if slot_model:
+        # the bigcell slot model's access derivation (lazy import: keeps
+        # smt_engine importable without bigcell_engine).  The caller must
+        # supply the orientation-aware view in ``blocks`` (block_objs --
+        # ``blocks`` itself is rebound to plain rects below); it is split
+        # back into the two rows by polarity.
+        from bigcell_engine.geometry import slot_diffusion_access
+        rows_p = [b for b in block_objs if b.first.is_p]
+        rows_n = [b for b in block_objs if not b.first.is_p]
+        sig_diff, power_diff = slot_diffusion_access(
+            netlist, placement, (rows_p, rows_n),
+            {dev.name: (p.legs, p.leg_width_cols)
+             for dev, p in placement.items()})
+    else:
+        sig_diff, power_diff = diffusion_access_points(netlist, placement)
     gate = gate_access_points(netlist, placement)
     field = _field_map(netlist, placement, width_cols)
     spans = _gate_spans(netlist, placement, height_um, grid_um)
