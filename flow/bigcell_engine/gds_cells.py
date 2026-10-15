@@ -25,7 +25,7 @@ pending, design note section 8).
 import gdstk
 
 from smt_engine.gds import (CONTACT_S, LAYER, M1_W, POLY_OVERHANG, POLY_W,
-                            track_geometry)
+                            row_geometry, track_geometry)
 
 from bigcell_engine.geometry import (BREAK_GAP_COLS, ESCAPE_L_UM, GRID_UM,
                                      HEIGHT_UM, MID_UM, N_ROW, P_ROW,
@@ -51,6 +51,19 @@ def _strip_y(is_p, w_dev, height_um=HEIGHT_UM):
         return y0, y0 + w_dev
     y1 = MID_UM - WELL_GAP_UM
     return y1 - w_dev, y1
+
+
+def _gate_entries_by_col(ordering_p, ordering_n, leg_widths):
+    """Column -> {row: (gate_net, device)}: the poly-stripe pass's map,
+    shared by the stripe drawing, the gate-contact tracks and the
+    gate-only pin labels."""
+    gates = {P_ROW: row_gate_columns(ordering_p, leg_widths),
+             N_ROW: row_gate_columns(ordering_n, leg_widths)}
+    by_col = {}
+    for row, items in gates.items():
+        for c, net, dev in items:
+            by_col.setdefault(c, {})[row] = (net, dev)
+    return by_col
 
 
 def cell_gds(netlist, placement, width_cols, ordering_p, ordering_n,
@@ -108,12 +121,7 @@ def cell_gds(netlist, placement, width_cols, ordering_p, ordering_n,
             rect(x0, y0, x1, y1, LAYER["active"])
 
     # --- poly stripes at the gate slots, merged where P/N gates align ---
-    gates = {P_ROW: row_gate_columns(ordering_p, leg_widths),
-             N_ROW: row_gate_columns(ordering_n, leg_widths)}
-    by_col = {}
-    for row, items in gates.items():
-        for c, net, dev in items:
-            by_col.setdefault(c, {})[row] = (net, dev)
+    by_col = _gate_entries_by_col(ordering_p, ordering_n, leg_widths)
     for c in sorted(by_col):
         entries = by_col[c]
         xc = edge_x(c) + grid_um / 2.0
@@ -194,7 +202,8 @@ def cell_gds(netlist, placement, width_cols, ordering_p, ordering_n,
     if route is not None and getattr(route, "ok", False):
         pin_labels = _draw_route(cell, route, edge_x, trackY, barY,
                                  grid_um, height_um, netlist, placement,
-                                 ordering_p, ordering_n, leg_widths)
+                                 ordering_p, ordering_n, leg_widths,
+                                 by_col)
 
     lib = gdstk.Library("BIGCELL", unit=1e-6, precision=1e-9)
     lib.add(cell)
@@ -203,8 +212,52 @@ def cell_gds(netlist, placement, width_cols, ordering_p, ordering_n,
 
 
 
+def _gate_contact_tracks(gate_entries, placement, grid_um, height_um,
+                         trackY):
+    """(gate_net, column) -> sorted tracks where a gate contact square is
+    drawable on the drawn poly.
+
+    The router's slot-model gate-track rule (route_grid._gate_maps, doc
+    section 8.4), which verify's row-band spans accept: every same-net
+    strip clipped to the verify row band and expanded by the poly
+    overhang less the contact half-size, plus the well-boundary corridor
+    T3 where an aligned P/N gate pair makes the drawn merged poly stripe
+    continuous over the boundary (the drawn merged rect spans
+    [n-strip y0, p-strip y1] +/- POLY_OVERHANG, so a contact square at
+    MID +/- WELL_GAP - CONTACT_S/2 sits fully on poly).  A crossing on
+    one of these tracks is a real poly/M1 contact; without the T3 clause
+    a corridor crossing verifies but draws nothing (honest-gaps round).
+    """
+    _, rows = row_geometry(height_um, grid_um)
+    by_net = {}
+    for c, entries in gate_entries.items():
+        for _row, (net, dev) in entries.items():
+            by_net.setdefault((net, c), []).append(dev)
+    out = {}
+    for (net, c), devs in by_net.items():
+        band = [rows[(dev.is_p, placement[dev].row)] for dev in devs]
+        y0 = min(b[0] for b in band)
+        y1 = max(b[1] for b in band)
+        tracks = set()
+        for dev in devs:
+            sy0, sy1 = _strip_y(dev.is_p, dev.width_um, height_um)
+            lo = max(sy0, y0) - POLY_OVERHANG + CONTACT_S / 2.0
+            hi = min(sy1, y1) + POLY_OVERHANG - CONTACT_S / 2.0
+            tracks.update(t for t in range(len(trackY))
+                          if lo <= trackY[t] <= hi)
+        if any(dev.is_p for dev in devs) \
+                and any(not dev.is_p for dev in devs):
+            lo = MID_UM - WELL_GAP_UM + CONTACT_S / 2.0
+            hi = MID_UM + WELL_GAP_UM - CONTACT_S / 2.0
+            tracks.update(t for t in range(len(trackY))
+                          if lo <= trackY[t] <= hi)
+        out[(net, c)] = sorted(tracks)
+    return out
+
+
 def _draw_route(cell, route, edge_x, trackY, barY, grid_um, height_um,
-                netlist, placement, ordering_p, ordering_n, leg_widths):
+                netlist, placement, ordering_p, ordering_n, leg_widths,
+                gate_entries):
     """Draw a RouteResult shifted into the die frame; return pin labels."""
     m2 = getattr(route, "m2", {}) or {}
     via = getattr(route, "via", {}) or {}
@@ -236,7 +289,15 @@ def _draw_route(cell, route, edge_x, trackY, barY, grid_um, height_um,
              edge_x(c + 1), trackY[t] + POLY_W / 2, LAYER["poly"])
 
     # gate contacts: an M1 (or poly) crossing of the gate net on a track
-    # inside the stripe's y-range, at the gate column centre
+    # inside the stripe's y-range, at the gate column centre.  Drawable
+    # tracks: the member's own W-tall strip (the historical rule) union
+    # the router/verify contact range -- the corridor track T3 of an
+    # aligned P/N gate pair draws its square on the merged poly over the
+    # well boundary (route_grid._gate_maps slot rule; without it a
+    # verifying corridor crossing emitted no contact square).
+    contact_tracks = _gate_contact_tracks(gate_entries, placement,
+                                          grid_um, height_um, trackY)
+    drawn = set()
     for row_ordering in (ordering_p, ordering_n):
         col = 0
         prev_right = None
@@ -256,8 +317,14 @@ def _draw_route(cell, route, edge_x, trackY, barY, grid_um, height_um,
                             if c <= route.width_cols - 2 else None
                         if right != member.device.gate:
                             continue
-                        if trackY[t] < y0 or trackY[t] > y1:
+                        if not (y0 <= trackY[t] <= y1
+                                or t in contact_tracks.get(
+                                    (member.device.gate, c), ())):
                             continue
+                        key = (round(xc, 4), round(trackY[t], 4))
+                        if key in drawn:
+                            break
+                        drawn.add(key)
                         rect(xc - CONTACT_S / 2, trackY[t] - CONTACT_S / 2,
                              xc + CONTACT_S / 2, trackY[t] + CONTACT_S / 2,
                              LAYER["contact"])
@@ -283,6 +350,47 @@ def _draw_route(cell, route, edge_x, trackY, barY, grid_um, height_um,
         y = barY[lo] if lo is not None else height_um / 2.0
         labels.append((x, y, net))
         cell.add(gdstk.Label(net, origin=(x, y), layer=LAYER["metal1"]))
+
+    # gate-only nets (no diffusion access anywhere): their terminal is
+    # the poly stripe at the gate column -- the terminal the router
+    # exposes for them (route_grid materializes their crossing straight
+    # onto the gate node).  Label the first sorted gate column on the
+    # drawn poly, the way the diffusion labels label the first
+    # edge-column contact.  Only external nets: an internal gate-only
+    # node is no pin.
+    ports = getattr(netlist, "external", set())
+    labeled = set(t[2] for t in labels)
+    gate_nets = set(net2 for entries in gate_entries.values()
+                    for _row, (net2, _dev) in entries.items())
+    for net in sorted(gate_nets):
+        if net in sig or net in POWER_NETS or net in labeled \
+                or net not in ports:
+            continue
+        span = None
+        for c in sorted(gate_entries):
+            own = [dev for _row, (net2, dev)
+                   in gate_entries[c].items() if net2 == net]
+            if not own:
+                continue
+            if len(own) > 1:
+                # aligned pair: the drawn merged stripe over the boundary
+                ny0, _ = _strip_y(False,
+                                  next(d.width_um for d in own
+                                       if not d.is_p), height_um)
+                _, py1 = _strip_y(True,
+                                  next(d.width_um for d in own
+                                       if d.is_p), height_um)
+                span = (ny0 - POLY_OVERHANG, py1 + POLY_OVERHANG)
+            else:
+                y0, y1 = _strip_y(own[0].is_p, own[0].width_um, height_um)
+                span = (y0 - POLY_OVERHANG, y1 + POLY_OVERHANG)
+            x = edge_x(c) + grid_um / 2.0
+            break
+        if span is None:
+            continue
+        y = (span[0] + span[1]) / 2.0
+        labels.append((x, y, net))
+        cell.add(gdstk.Label(net, origin=(x, y), layer=LAYER["poly"]))
     return labels
 
 

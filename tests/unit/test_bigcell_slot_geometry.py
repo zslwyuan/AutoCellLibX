@@ -66,6 +66,18 @@ Mn n1 A GND GND NMOS W=0.5u L=0.05u
 """
 
 
+T3CELL = """\
+.subckt T3CELL VCC Y A B C GND
+Mn1 Y A n1 GND NMOS W=0.5u L=0.05u
+Mn2 n1 B n2 GND NMOS W=0.5u L=0.05u
+Mn3 n2 C GND GND NMOS W=0.5u L=0.05u
+Mp1 VCC C p2 VCC PMOS W=0.5u L=0.05u
+Mp2 p2 B p1 VCC PMOS W=0.5u L=0.05u
+Mp3 p1 A Y VCC PMOS W=0.5u L=0.05u
+.end
+"""
+
+
 def _subckt_text(cell):
     text = open(os.path.join(FLOW, "..", "std_celllib",
                              "cellsAstranFriendly.sp"),
@@ -356,3 +368,149 @@ def test_chain_is_deterministic():
                              for d, p in pl.items())),
                 bd)
     assert shape(a) == shape(b)
+
+
+# --------------------------------------------------------------------------
+# honest-gaps round: the corridor gate contact + the gate-only pin labels
+# --------------------------------------------------------------------------
+
+def _t3cell_chain():
+    """T3CELL placements with every gate column ALIGNED (C/B/A at 0/1/2):
+    P row pristine (VCC p2 p1 Y), N row mirrored (GND n2 n1 Y)."""
+    from bigcell_engine.netlist_ext import mirror_block
+    nl = CellNetlist(parse_spice_subckt(T3CELL))
+    nl3, lw = fold_devices(nl)
+    blocks = build_bigcell_blocks(nl3, max_coupler_degree=None)
+    nb = next(b for b in blocks if not b.first.is_p)
+    pb = next(b for b in blocks if b.first.is_p)
+    op, on = [pb], [mirror_block(nb)]
+    pl, cols = layout_cell(op, on, lw)
+    return nl3, lw, op, on, pl, cols
+
+
+#: the GDS database unit is 1 nm (the honest header pins precision=1e-9),
+#: so every file-read coordinate is the in-memory value snapped to that
+#: grid -- 0.3325 stores as 0.333 (half a db unit of worst-case shift,
+#: the same snapping every pre-existing shape and label goes through)
+GDS_DB_UM = 5.01e-4
+
+
+def test_gds_draws_the_corridor_gate_contact_verify_accepts(tmp_path):
+    # Gap 1 (honest-gaps round): a gate net crossing on the well-boundary
+    # corridor T3 VERIFIES -- verify's row-band spans accept T3 wherever
+    # an aligned P/N gate pair makes the drawn merged poly continuous --
+    # but the W-tall strips never reach T3, so the emitter used to draw
+    # no contact square and the GDS did not show the legal connection.
+    # The hand-built route crosses C on T3 at column 0 (both neighbouring
+    # columns carry no bar reaching the boundary, so the M1 crossing is
+    # foreign-stripe-clean).
+    import gdstk
+    from smt_engine.route_model import RouteResult
+    from smt_engine.verify import (_gate_spans, _touches_gate, verify_cell)
+    from smt_engine.gds import track_geometry
+    nl3, lw, op, on, pl, cols = _t3cell_chain()
+    route = RouteResult(
+        "FEASIBLE",
+        ["GND", None, None, "Y"], ["VCC", None, None, "Y"],
+        [0, 0, 0, 3], [3, 0, 0, 4],
+        [5, 8, 8, 4], [8, 8, 8, 5],
+        {(3, 0): "C", (4, 1): "B", (2, 2): "A"},
+        {(2, 2): True}, {}, {},
+        [False, False, False, True], [False, False, False, True],
+        4, 3, 4, 1, 0, 0)
+    rep = verify_cell(nl3, pl, route, blocks=op + on)
+    assert rep.ok(), rep.violations
+    trackY, _barY = track_geometry(2.47, 0.19)
+    # where verify says the contact is: (gate C, column 0, track T3)
+    assert _touches_gate(_gate_spans(nl3, pl, 2.47, 0.19), "C", 0, 3,
+                         trackY)
+    gds = str(tmp_path / "T3CELL.gds")
+    write_cell_gds(gds, nl3, pl, cols, op, on, lw, route=route,
+                   cell_name="T3CELL")
+    cell = gdstk.read_gds(gds).cells[0]
+    xc = 0.2375 + 0.19 / 2.0
+    squares = [p for p in cell.polygons if p.layer == 10
+               and abs((p.bounding_box()[0][0] + p.bounding_box()[1][0]) / 2
+                       - xc) < 1e-9
+               and abs((p.bounding_box()[0][1] + p.bounding_box()[1][1]) / 2
+                       - trackY[3]) < 1e-9]
+    assert len(squares) == 1, "no contact square where verify puts it"
+    bb = squares[0].bounding_box()
+    assert (bb[1][1] - bb[0][1]) == pytest.approx(0.07)
+    # the square sits fully on the drawn merged poly stripe (continuous
+    # over the well boundary) -- a real poly/M1 contact, not floating
+    merged = [p for p in cell.polygons if p.layer == 9
+              and abs((p.bounding_box()[0][0] + p.bounding_box()[1][0]) / 2
+                      - xc) < 1e-9
+              and p.bounding_box()[0][1] <= trackY[3]
+              <= p.bounding_box()[1][1]]
+    assert len(merged) == 1
+    assert merged[0].bounding_box()[0][1] <= bb[0][1]
+    assert bb[1][1] <= merged[0].bounding_box()[1][1]
+    from layout_sanity import check_layout
+    srep = check_layout(gds, units_per_um=1.0)
+    assert srep.ok(), srep.violations
+
+
+def test_gate_contact_tracks_add_t3_only_for_aligned_pairs():
+    # the drawable-track rule mirrors the router's: T3 joins ONLY where
+    # an aligned P/N gate pair merges the drawn poly over the boundary.
+    # T3CELL with the P row pristine (gates C B A) against the pristine
+    # N row (gates A B C) leaves columns 0/2 unaligned -- no T3 there.
+    from bigcell_engine.gds_cells import (_gate_contact_tracks,
+                                          _gate_entries_by_col)
+    from bigcell_engine.geometry import row_gate_columns
+    from smt_engine.gds import track_geometry
+    nl3, lw, op, on, pl, _cols = _t3cell_chain()
+    trackY, _barY = track_geometry(2.47, 0.19)
+    aligned = _gate_contact_tracks(_gate_entries_by_col(op, on, lw),
+                                   pl, 0.19, 2.47, trackY)
+    for net, c in (("C", 0), ("B", 1), ("A", 2)):
+        assert 3 in aligned[(net, c)]
+    unaligned = _gate_contact_tracks(
+        _gate_entries_by_col([op[0]], [next(
+            b for b in build_bigcell_blocks(nl3, max_coupler_degree=None)
+            if not b.first.is_p)], lw),
+        pl, 0.19, 2.47, trackY)
+    for net, c in (("A", 0), ("C", 0), ("B", 1), ("C", 2), ("A", 2)):
+        if c == 1:
+            continue                # B/B stays aligned in this view too
+        assert 3 not in unaligned[(net, c)]
+
+
+def test_gds_labels_gate_only_nets_on_their_poly_stripes(tmp_path):
+    # Gap 2 (honest-gaps round): a gate-only input (no diffusion access
+    # anywhere) routes as a pure gate crossing and used to get no pin
+    # label at all.  Its label goes on the poly stripe at its gate
+    # column -- the terminal the router exposes -- the way the diffusion
+    # labels label the first edge-column contact.
+    import gdstk
+    from bigcell_engine.route_grid import route_cell
+    from layout_sanity import check_layout
+    nl3, lw, op2, on2, pl, cols, _bd = _chain(INV)
+    sig, _pow = slot_diffusion_access(nl3, pl, (op2, on2), lw)
+    assert "A" not in sig                    # gate-only precondition
+    route = route_cell(nl3, pl, cols, lw)
+    assert route.ok, (route.status_name, getattr(route, "fail_note", None))
+    gds = str(tmp_path / "INV.gds")
+    pins = write_cell_gds(gds, nl3, pl, cols, op2, on2, lw, route=route,
+                          cell_name="INV")
+    cell = gdstk.read_gds(gds).cells[0]
+    a = [l for l in cell.labels if l.text == "A"]
+    assert len(a) == 1 and a[0].layer == 9   # a poly-layer pin label
+    x, y = a[0].origin
+    assert x == pytest.approx(0.2375 + 0.095, abs=GDS_DB_UM)
+    # containment, not centre equality: the file's 1 nm grid snaps the
+    # stripe edges and the label origin independently (0.3075 -> 0.307
+    # but 0.3325 -> 0.333), so the label can sit half a db unit off the
+    # snapped stripe's centre while still being on the stripe
+    stripe = [p for p in cell.polygons if p.layer == 9
+              and p.bounding_box()[0][0] <= x <= p.bounding_box()[1][0]
+              and p.bounding_box()[0][1] <= y <= p.bounding_box()[1][1]]
+    assert stripe, "gate-only label not on the poly stripe"
+    assert any(n == "A" and abs(px - x) <= GDS_DB_UM
+               and abs(py - y) <= GDS_DB_UM
+               for px, py, n in pins)
+    srep = check_layout(gds, units_per_um=1.0)
+    assert srep.ok(), srep.violations
+    assert {"GND", "VCC", "Y", "A"} <= set(srep.metrics["labels"])
