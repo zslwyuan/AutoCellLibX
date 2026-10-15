@@ -50,6 +50,27 @@ A move's inverse is the same machinery applied to the inverse move
 (mirror is an involution; a shift's inverse shifts back), so undo is
 exact without an undo log.
 
+Routability-aware selection (doc section 2.2 "Composition" -- ASTRAN's
+speculate loop, autocell2.cpp:187-216): SA's cost is blind to
+routability, and on cells like the library NAND2X1 the cost-optimal
+orientation is structurally unroutable (both power accesses land on the
+input gate's column, leaving the output merge and the input crossing to
+fight over one corridor node) while an electrically identical MIRRORED
+orientation routes in one attempt.  ``sa_refine_routable`` therefore
+adds a selection stage after the pure-cost refine: a deterministic pool
+of top-K distinct candidate orderings (the SA best, its row
+mirror/die-mirror variants, the pre-SA euler seed and its variants,
+plus cost-ranked per-block flip combinations) is trial-routed by
+``route_grid.route_cell`` at a REDUCED attempt budget, and the first
+candidate that routes FEASIBLE wins; if none does, the candidate with
+the lowest (trial conflicts, SA cost, pool index) is returned so the
+caller's full-budget route starts from the best-known orientation.
+The pure-cost path (``sa_refine``) is unchanged and remains available;
+the selection is additive, parameterized (``candidate_count``,
+``trial_attempts``, injectable ``trial_router``) and fully
+deterministic (no RNG; every candidate and score is a pure function of
+the inputs, invariant 9).
+
 Throughput note: DEFAULT_QUALITY is 20, not ASTRAN's 150 -- Python
 applies ~5k moves/s where ASTRAN's C applies ~10^6/s; the budget is set
 by measured convergence on the benchmark corpus (doc section 6, risk 1),
@@ -58,6 +79,7 @@ not by copying ASTRAN's constant.  ``quality`` stays a parameter.
 
 import hashlib
 import random
+import re
 
 from smt_engine.netlist import BlockMember
 
@@ -530,3 +552,264 @@ def sa_refine(ordering_p, ordering_n, netlist, leg_widths, iterations=None,
         raise RuntimeError("best snapshot cost mismatch")
     op, on = state.orderings()
     return op, on, state.breakdown()
+
+
+# --------------------------------------------------------------------------
+# routability-aware selection (doc section 2.2 "Composition": ASTRAN's
+# speculate loop, autocell2.cpp:187-216 -- place -> trial route -> keep best)
+# --------------------------------------------------------------------------
+
+#: default speculate-pool size and trial budget.  K = 10 covers the SA
+#: best, all six row mirror/die-mirror variants and the euler seed with
+#: its flip/die-mirror variants (the classes the stage-3 plateau
+#: analysis identified); per-block flip combinations fill any further
+#: slots.  The trial budget is a fraction of route_grid.MAX_ATTEMPTS
+#: (8000): the negotiation either separates the nets early (the proven
+#: NAND2X1 mirror closure routes at attempt 1) or its plateau conflict
+#: count already ranks candidates correctly (measured on
+#: ctrl/COMPLEX0: the trial ranking picks the same class the full
+#: 8000-attempt sweep does).
+DEFAULT_CANDIDATES = 10
+DEFAULT_TRIAL_ATTEMPTS = 300
+
+#: 2**(nP + nN) per-block flip combinations are enumerated only below
+#: this cap; bigger rows fall back to the row-level variants.
+_MAX_FLIP_COMBOS = 1024
+
+#: trial score of a candidate the router cannot even BUILD (misaligned
+#: gate order, terminal clash) -- worse than any negotiable plateau.
+_UNROUTABLE = 1 << 30
+
+
+def ordering_signature(ordering_p, ordering_n):
+    """Canonical dedupe key for a candidate: per-row block content.
+
+    Blocks are compared by (kind, members as (device, left, right)) --
+    never by identity (mirror_block builds new objects) and never by
+    hash() (invariant 9).
+    """
+
+    def row_key(row):
+        return tuple(
+            (b.kind,) + tuple((m.device.name, m.left_net, m.right_net)
+                              for m in b.members)
+            for b in row)
+
+    return (row_key(ordering_p), row_key(ordering_n))
+
+
+def _row_flipped(row):
+    """Every block mirrored IN PLACE, sequence order kept (the
+    orientation the mirrored-demo closure evidence used)."""
+    return [mirror_block(b) for b in row]
+
+
+def _row_die_mirror(row):
+    """The row's left-right die image: sequence reversed AND every block
+    flipped.  Same breaks/width as the identity (adjacency pairs are
+    preserved), different access sides."""
+    return [mirror_block(b) for b in reversed(row)]
+
+
+def generate_candidates(best_p, best_n, seed_p, seed_n, leg_widths,
+                        candidate_count=DEFAULT_CANDIDATES):
+    """The deterministic top-K candidate pool (speculate stage, step 1).
+
+    ``best_p``/``best_n`` are the SA cost-best orderings;
+    ``seed_p``/``seed_n`` the pre-SA seed (``sa_refine_routable`` passes
+    the euler output, an alternative block ORDER the SA search may have
+    moved away from).  Pool priority order:
+
+    1. the SA best (the pure-cost optimum -- keeps already-closing
+       cells on their proven orientation);
+    2. its both-rows flip / die-mirror (the proven NAND2X1 closure
+       class);
+    3. single-row flip / die-mirror variants;
+    4. the seed ordering and its flip / die-mirror variants;
+    5. further per-block flip combinations of the SA best, ranked by
+       SA cost then lexicographic bit order (only below the fixed
+       classes when ``candidate_count`` allows, and only when
+       2**(nP+nN) <= _MAX_FLIP_COMBOS).
+
+    Deduped by :func:`ordering_signature` (first occurrence wins) and
+    truncated to ``candidate_count``.  Pure and deterministic.
+    """
+    best_p, best_n = list(best_p), list(best_n)
+    seed_p, seed_n = list(seed_p), list(seed_n)
+    pool = [
+        ("best", best_p, best_n),
+        ("flip-both", _row_flipped(best_p), _row_flipped(best_n)),
+        ("die-both", _row_die_mirror(best_p), _row_die_mirror(best_n)),
+        ("flip-P", _row_flipped(best_p), best_n),
+        ("flip-N", best_p, _row_flipped(best_n)),
+        ("die-P", _row_die_mirror(best_p), best_n),
+        ("die-N", best_p, _row_die_mirror(best_n)),
+        ("seed", seed_p, seed_n),
+        ("seed-flip-both", _row_flipped(seed_p), _row_flipped(seed_n)),
+        ("seed-die-both", _row_die_mirror(seed_p), _row_die_mirror(seed_n)),
+    ]
+    n_blocks = len(best_p) + len(best_n)
+    if 2 ** n_blocks <= _MAX_FLIP_COMBOS:
+        combos = []
+        for bits in _iter_flip_bits(len(best_p), len(best_n)):
+            op = [b if not bit else mirror_block(b)
+                  for b, bit in zip(best_p, bits[:len(best_p)])]
+            on = [b if not bit else mirror_block(b)
+                  for b, bit in zip(best_n, bits[len(best_p):])]
+            combos.append((_SAState(op, on, leg_widths).total, bits, op, on))
+        combos.sort(key=lambda t: (t[0], t[1]))
+        pool.extend(("flip%s" % ("".join(map(str, t[1])),), t[2], t[3])
+                    for t in combos)
+    seen = set()
+    out = []
+    for kind, op, on in pool:
+        sig = ordering_signature(op, on)
+        if sig in seen:
+            continue
+        seen.add(sig)
+        out.append((kind, op, on))
+        if len(out) >= candidate_count:
+            break
+    return out
+
+
+def _iter_flip_bits(n_p, n_n):
+    """Flip-bit tuples, P row's blocks first; deterministic order."""
+    from itertools import product
+    return product((0, 1), repeat=n_p + n_n)
+
+
+def _trial_conflicts(result):
+    """Trial score of a route result: 0 when FEASIBLE, otherwise the
+    plateau's best conflict count parsed from the honest fail note; a
+    build-time failure (misaligned gate order, terminal clash) has no
+    count and scores _UNROUTABLE."""
+    if getattr(result, "ok", False):
+        return 0
+    note = getattr(result, "fail_note", None) or ""
+    m = re.search(r"best (\d+) conflicts", note)
+    return int(m.group(1)) if m else _UNROUTABLE
+
+
+def _default_trial_router():
+    """The production trial router (lazy import keeps place_sa
+    import-light and cycle-free)."""
+    from bigcell_engine.route_grid import route_cell
+    return route_cell
+
+
+def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
+                     candidate_count=DEFAULT_CANDIDATES,
+                     trial_attempts=DEFAULT_TRIAL_ATTEMPTS,
+                     trial_router=None):
+    """Speculate stage (doc section 2.2 "Composition"): score the
+    candidate pool by a fast trial route and pick the winner.
+
+    Returns ``(ordering_p, ordering_n, report)``.  A candidate that
+    routes FEASIBLE at ``trial_attempts`` wins immediately, in pool
+    priority order (the SA-best candidate is tried first, so a cell
+    whose cost-optimal orientation already routes is unaffected --
+    INVX1/NAND2 stay on the pure-cost path).  When nothing routes
+    within the trial budget the candidate with the lowest
+    (conflicts, SA cost, pool index) is returned: the caller's
+    full-budget route then starts from the best-known orientation.
+
+    ``trial_router`` defaults to ``route_grid.route_cell`` and is
+    called as ``router(netlist, placements, width_cols, leg_widths,
+    max_attempts=trial_attempts)``; an injected stub must keep that
+    contract.  A router exception is caught and scored _UNROUTABLE
+    (recorded in the report) so one bad candidate cannot kill the
+    placement.
+
+    ``report`` (plain data, no wall-clock -- invariant 9):
+    ``selected``/``kind``/``feasible``/``conflicts`` of the winner plus
+    per-trialed-candidate entries.  Pure and deterministic.
+    """
+    router = trial_router if trial_router is not None \
+        else _default_trial_router()
+    if leg_widths is None:
+        from bigcell_engine.geometry import default_leg_widths
+        leg_widths = default_leg_widths(
+            [m.device for row in (best_p, best_n, seed_p, seed_n)
+             for b in row for m in b.members])
+    pool = generate_candidates(best_p, best_n, seed_p, seed_n, leg_widths,
+                               candidate_count)
+    from bigcell_engine.geometry import layout_cell
+    entries = []
+    fallback = None                     # (conflicts, cost, index) -> entry
+    for idx, (kind, op, on) in enumerate(pool):
+        placements, width = layout_cell(op, on, leg_widths)
+        try:
+            result = router(netlist, placements, width, leg_widths,
+                            max_attempts=trial_attempts)
+        except Exception as exc:                   # noqa: BLE001
+            result = None
+            note = "trial router raised %s: %s" % (
+                type(exc).__name__, exc)
+        else:
+            note = getattr(result, "fail_note", None)
+        conflicts = _trial_conflicts(result) if result is not None \
+            else _UNROUTABLE
+        cost = _SAState(op, on, leg_widths).total
+        entry = {"index": idx, "kind": kind, "cost": cost,
+                 "width_cols": width, "conflicts": conflicts,
+                 "feasible": conflicts == 0,
+                 "attempts": getattr(result, "attempts_used", None),
+                 "note": note}
+        entries.append(entry)
+        if conflicts == 0:
+            return op, on, {
+                "selected": idx, "kind": kind, "feasible": True,
+                "conflicts": 0, "trial_attempts": trial_attempts,
+                "candidate_count": len(pool), "candidates": entries,
+            }
+        if fallback is None or (conflicts, cost, idx) < \
+                (fallback["conflicts"], fallback["cost"], fallback["index"]):
+            fallback = entry
+    return pool[fallback["index"]][1], pool[fallback["index"]][2], {
+        "selected": fallback["index"], "kind": fallback["kind"],
+        "feasible": False, "conflicts": fallback["conflicts"],
+        "trial_attempts": trial_attempts,
+        "candidate_count": len(pool), "candidates": entries,
+    }
+
+
+def sa_refine_routable(ordering_p, ordering_n, netlist, leg_widths,
+                       candidate_count=DEFAULT_CANDIDATES,
+                       trial_attempts=DEFAULT_TRIAL_ATTEMPTS,
+                       trial_router=None, iterations=None,
+                       quality=DEFAULT_QUALITY, init_moves=None,
+                       seed=None, check=True):
+    """``sa_refine`` + the speculate selection stage: the rung-3 entry
+    point for routability-aware placement.
+
+    Mirrors :func:`sa_refine`'s positional signature and RETURN SHAPE
+    -- ``(ordering_p, ordering_n, breakdown)`` -- so a call site only
+    changes the function name.  Differences:
+
+    - the returned orderings are the routability-selected candidate,
+      not necessarily the cost-best one (the cost-best is tried first,
+      so a cell that already routes keeps it);
+    - ``breakdown`` describes the SELECTED ordering (what will actually
+      be laid out) and carries the speculate ``selection`` report;
+      ``breakdown["selection"]["feasible"]`` says whether any candidate
+      routed at the trial budget.
+
+    ``ordering_p``/``ordering_n`` are consumed twice: as the SA seed
+    and as the alternative-ordering candidates of the speculate pool.
+    All randomness stays inside sa_refine's content-hash discipline;
+    the selection itself uses none (invariant 9).  ``trial_router`` is
+    injectable for tests; the default runs the real
+    ``route_grid.route_cell`` at ``trial_attempts``.
+    """
+    cost_p, cost_n, _bd = sa_refine(
+        ordering_p, ordering_n, netlist, leg_widths,
+        iterations=iterations, quality=quality, init_moves=init_moves,
+        seed=seed, check=check)
+    sel_p, sel_n, sel = select_orderings(
+        cost_p, cost_n, ordering_p, ordering_n, netlist, leg_widths,
+        candidate_count=candidate_count, trial_attempts=trial_attempts,
+        trial_router=trial_router)
+    breakdown = _SAState(sel_p, sel_n, leg_widths).breakdown()
+    breakdown["selection"] = sel
+    return sel_p, sel_n, breakdown

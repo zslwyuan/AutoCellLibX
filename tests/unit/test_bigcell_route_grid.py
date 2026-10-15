@@ -858,19 +858,18 @@ def test_slot_route_is_byte_stable_across_processes(flow_dir, tmp_path):
     assert len(digests) == 1, digests
 
 
-def test_lib_nand2x1_slot_route_plateaus_honestly(flow_dir):
-    """The library NAND2X1's SA orientation double-walls the gate column
-    (both power accesses on edge 0): the input gate's only crossing is
-    the corridor track whose right endpoint is also the output's forced
-    P<->N tie node -- one node, two nets, no alternative.  The router
-    must fail HONESTLY (plateau note, no bogus clash, width invariant)
-    and never report a success it cannot draw."""
-    nl3, pl, w, lws, _blocks = _slot_state(_lib_subckt(LIB_NAND2X1_CELL,
-                                                       flow_dir))
+def test_lib_nand2x1_slot_route_closes_after_speculate(flow_dir):
+    """The library NAND2X1's pure-cost SA orientation double-walls the
+    gate column (both power accesses on edge 0) -- bd3fda4 proved that
+    arrangement unroutable.  The speculate selection stage (place_sa)
+    now picks the mirrored flip-both orientation, which routes FEASIBLE
+    and verifies clean: the plateau is broken by orientation choice,
+    not by router tuning."""
+    nl3, pl, w, lws, blocks = _slot_state(_lib_subckt(LIB_NAND2X1_CELL,
+                                                      flow_dir))
     r = route_cell(nl3, pl, w, lws)
-    assert not r.ok and r.status_name == "UNKNOWN"
-    note = getattr(r, "fail_note", None) or ""
-    assert "no conflict-free routing" in note
-    assert "unresolved: A" in note
-    assert "terminal clash" not in note
+    assert r.ok and r.status_name == "FEASIBLE"
+    assert "terminal clash" not in (getattr(r, "fail_note", None) or "")
     assert r.width_cols >= max(p.end_col for p in pl.values())
+    rep = verify_cell(nl3, pl, r, blocks=blocks)
+    assert rep.ok()

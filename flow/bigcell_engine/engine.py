@@ -80,13 +80,13 @@ def _heuristic_placement(netlist):
     from .netlist_ext import (build_bigcell_blocks, fold_devices,
                               row_seeds)
     from .place_euler import euler_orderings
-    from .place_sa import sa_refine
+    from .place_sa import sa_refine_routable
 
     netlist3, leg_widths = fold_devices(netlist)
     blocks = build_bigcell_blocks(netlist3)
     seeds = row_seeds(blocks, leg_widths)
     ordering_p, ordering_n = euler_orderings(seeds, leg_widths)
-    ordering_p, ordering_n, _cost = sa_refine(
+    ordering_p, ordering_n, _cost = sa_refine_routable(
         ordering_p, ordering_n, netlist3, leg_widths)
     placements, width_cols = geometry.layout_cell(
         ordering_p, ordering_n, leg_widths)
