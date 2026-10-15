@@ -185,6 +185,21 @@ def main():
         print("ERROR: usage: gurobi_cl TimeLimit=<sec> ResultFile=<sol> <model>")
         return 2
 
+    # STAGE 1 (JSON model path): when ASTRAN_MODEL_DUMP points at a usable
+    # JSON model, build and solve it directly instead of parsing the LP text
+    # (see model_json.py).  The in-ASTRAN dump (tools/astran/src/modeldump.cpp)
+    # writes that JSON right after the LP, so a JSON older than the LP is a
+    # stale leftover and the run falls back to the legacy path below.  With
+    # the env var unset -- the default -- nothing changes here.
+    json_model = os.environ.get("ASTRAN_MODEL_DUMP")
+    if json_model:
+        import model_json
+        if model_json.usable_json_model(json_model, modelfile):
+            return model_json.run_json_path(json_model, timelimit, resultfile)
+        print("WARNING: ASTRAN_MODEL_DUMP=%s is not a usable JSON model "
+              "(missing, stale or invalid); using the legacy LP path"
+              % json_model)
+
     obj_text, cons, int_vars, bin_vars, semi_vars = _read_cplex_lp(modelfile)
 
     # CP-SAT backend (performance layer, default since 2026-10-10): the

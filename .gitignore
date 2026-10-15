@@ -32,6 +32,11 @@ outputs/width_proxy.json
 # Sensitive case work — must never leave this machine (no commit, no push).
 # The cmp42 compressor experiment lives here; keep it untracked on purpose.
 flow/_cmp42_work/
+# Multi-agent replacement-work scratch dirs: captured LPs, parity harnesses,
+# ASTRAN side-by-side runs — all regenerable evidence, kept local.
+flow/_stage0_check/
+flow/_stage1_check/
+flow/_stage2_check/
 # Convention for future sensitive cases: a top-level _private*/ directory
 # anywhere is never tracked.  Put such work there instead of inventing a
 # new unprotected path.
