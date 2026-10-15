@@ -85,6 +85,22 @@ def _fail_exact_routing(monkeypatch, status="INFEASIBLE"):
         lambda *a, **k: eng._failed_route(status))
 
 
+def _disable_rung3(monkeypatch):
+    """Silence the rung-3 rescue so rung-2 handling can be pinned."""
+    def boom(netlist):
+        raise RuntimeError("rung 3 disabled for this test")
+    monkeypatch.setattr(eng, "_heuristic_placement", boom)
+
+
+def _rung_attempt(meta, rung):
+    """The first attempt record of ``rung`` (search, not [-1]: rung 3
+    appends after rung 2 when it runs)."""
+    for a in meta["attempts"]:
+        if a["rung"] == rung:
+            return a
+    raise AssertionError("no rung-%d attempt in %r" % (rung, meta["attempts"]))
+
+
 def test_exact_failure_falls_to_injected_grid_router(monkeypatch):
     _fail_exact_routing(monkeypatch)
     calls = []
@@ -126,6 +142,7 @@ def test_grid_route_returned_unverified_note_present(monkeypatch):
 
 def test_grid_stub_not_implemented_is_unavailable(monkeypatch):
     _fail_exact_routing(monkeypatch)
+    _disable_rung3(monkeypatch)
 
     def stub_router(*a, **k):
         raise NotImplementedError("route_grid.route_cell")
@@ -134,25 +151,56 @@ def test_grid_stub_not_implemented_is_unavailable(monkeypatch):
     with pytest.raises(UnsupportedCell) as excinfo:
         synth_cell(nl, exact_budget_s=20.0, grid_router=stub_router)
     meta = excinfo.value.meta
-    last = meta["attempts"][-1]
-    assert last["rung"] == 2 and last["status"] == "UNAVAILABLE"
-    assert "route_grid.route_cell" in last["note"]
+    grid = _rung_attempt(meta, 2)
+    assert grid["status"] == "UNAVAILABLE"
+    assert "route_grid.route_cell" in grid["note"]
     assert meta["engine"] is None
     assert "no engine closed the cell" in excinfo.value.diagnosis
     assert "NAND2" in excinfo.value.diagnosis
 
 
-def test_no_router_injected_raises_unsupported(monkeypatch):
+def test_default_router_is_real_and_closes_rung2(monkeypatch):
+    """grid_router=None resolves to the real route_grid and its route is
+    verify-gated inside the ladder."""
     _fail_exact_routing(monkeypatch)
+    placement, route, meta = synth_cell(_netlist(NAND2),
+                                        exact_budget_s=20.0)
+    grid = _rung_attempt(meta, 2)
+    assert grid["ok"] is True and grid["note"] == "verify ok"
+    assert meta["engine"] == "bigcell-grid"
+    assert route.width_cols >= real_layout_width(placement)
+
+
+def test_rung3_closes_when_rung2_disabled(monkeypatch):
+    """The full heuristic placement chain + grid router rescues a cell
+    whose exact route and rung-2 offering were both unavailable."""
+    _fail_exact_routing(monkeypatch)
+    placement, route, meta = synth_cell(_netlist(NAND2), exact_budget_s=20.0,
+                                        grid_router=False)
+    full = _rung_attempt(meta, 3)
+    assert full["ok"] is True
+    assert meta["engine"] == "bigcell-full"
+    assert meta["folded"] is False            # nothing folded on NAND2
+    assert meta["cell_netlist"] is not None
+    assert meta["width_cols"] == real_layout_width(placement)
+
+
+def test_rung3_placement_failure_is_recorded(monkeypatch):
+    _fail_exact_routing(monkeypatch)
+    _disable_rung3(monkeypatch)
     with pytest.raises(UnsupportedCell) as excinfo:
-        synth_cell(_netlist(NAND2), exact_budget_s=20.0)
-    last = excinfo.value.meta["attempts"][-1]
-    assert last["rung"] == 2 and last["status"] == "UNAVAILABLE"
-    assert "no router injected" in last["note"]
+        synth_cell(_netlist(NAND2), exact_budget_s=20.0,
+                   grid_router=False)
+    meta = excinfo.value.meta
+    full = _rung_attempt(meta, 3)
+    assert full["stage"] == "placement" and full["status"] == "ERROR"
+    assert "rung 3 disabled" in full["note"]
+    assert meta["engine"] is None
 
 
 def test_router_crash_is_recorded_not_raised(monkeypatch):
     _fail_exact_routing(monkeypatch)
+    _disable_rung3(monkeypatch)
 
     def crashing_router(*a, **k):
         raise RuntimeError("boom")
@@ -160,19 +208,22 @@ def test_router_crash_is_recorded_not_raised(monkeypatch):
     with pytest.raises(UnsupportedCell) as excinfo:
         synth_cell(_netlist(NAND2), exact_budget_s=20.0,
                    grid_router=crashing_router)
-    last = excinfo.value.meta["attempts"][-1]
-    assert last["rung"] == 2 and last["status"] == "ERROR"
-    assert "RuntimeError: boom" in last["note"]
+    meta = excinfo.value.meta
+    grid = _rung_attempt(meta, 2)
+    assert grid["status"] == "ERROR"
+    assert "RuntimeError: boom" in grid["note"]
 
 
 def test_grid_route_failure_recorded(monkeypatch):
     _fail_exact_routing(monkeypatch)
+    _disable_rung3(monkeypatch)
     with pytest.raises(UnsupportedCell) as excinfo:
         synth_cell(_netlist(NAND2), exact_budget_s=20.0,
                    grid_router=lambda *a: _FakeRoute(ok=False))
-    last = excinfo.value.meta["attempts"][-1]
-    assert last["rung"] == 2 and last["ok"] is False
-    assert last["status"] == "INFEASIBLE"
+    meta = excinfo.value.meta
+    grid = _rung_attempt(meta, 2)
+    assert grid["ok"] is False
+    assert grid["status"] == "INFEASIBLE"
 
 
 # --- layout failure and the boundary skip -------------------------------

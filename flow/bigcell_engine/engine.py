@@ -12,11 +12,19 @@ Ladder per cell:
   without burning it.  The layout solve always runs: every later rung
   consumes its placement.
 - **rung 2 -- bigcell-grid**: the negotiated-congestion router
-  (flow/bigcell_engine/route_grid.py).  In this stage the router is
-  *injected* (``grid_router(netlist, placement, width_cols, leg_widths)``)
-  so the ladder is complete and testable while the router itself lands;
-  a stub raising NotImplementedError is treated as "unavailable", not as
-  a cell failure cause of its own.
+  (flow/bigcell_engine/route_grid.py, the GraphRouter port) on the
+  exact-engine placement.  By default the real router runs and its route
+  is verify-gated inside the ladder; an explicitly injected callable
+  replaces it (its route stays "verify deferred" -- the injected contract
+  is for tests), ``False`` disables the rung, and a stub raising
+  NotImplementedError is treated as "unavailable", not as a cell failure
+  cause of its own.
+- **rung 3 -- bigcell-full**: the heuristic placement chain
+  (netlist_ext.fold_devices -> build_bigcell_blocks -> row_seeds ->
+  place_euler -> place_sa -> geometry.layout_cell) routed by the same
+  grid router.  This is the doc section 2.2 composition and the path for
+  cells the exact placement cannot serve (big/irregular).  Its placement
+  is factored as :func:`_heuristic_placement` so tests can stub it.
 
 Nothing here re-implements a solve: this module only sequences rungs,
 records every attempt in ``meta`` (the benchmark report's provenance),
@@ -47,6 +55,37 @@ EXACT_MAX_NETS = 12
 
 _ENG_EXACT = "smt-exact"
 _ENG_GRID = "bigcell-grid"
+_ENG_FULL = "bigcell-full"
+
+
+def _default_grid_router():
+    """The production rung-2/3 router, resolved lazily for testability."""
+    from .route_grid import route_cell
+    return route_cell
+
+
+def _heuristic_placement(netlist):
+    """Rung-3 placement: fold -> blocks -> seeds -> euler -> SA -> columns.
+
+    Returns (netlist3, placements, width_cols, leg_widths) where
+    ``netlist3`` is the (possibly fold-expanded) netlist the placement is
+    expressed against.  Deterministic; raises on structural failure.
+    """
+    from . import geometry
+    from .netlist_ext import (build_bigcell_blocks, fold_devices,
+                              row_seeds)
+    from .place_euler import euler_orderings
+    from .place_sa import sa_refine
+
+    netlist3, leg_widths = fold_devices(netlist)
+    blocks = build_bigcell_blocks(netlist3)
+    seeds = row_seeds(blocks, leg_widths)
+    ordering_p, ordering_n = euler_orderings(seeds, leg_widths)
+    ordering_p, ordering_n, _cost = sa_refine(
+        ordering_p, ordering_n, netlist3, leg_widths)
+    placements, width_cols = geometry.layout_cell(
+        ordering_p, ordering_n, leg_widths)
+    return netlist3, placements, width_cols, leg_widths
 
 
 class UnsupportedCell(Exception):
@@ -230,18 +269,23 @@ def synth_cell(netlist, exact_budget_s=60.0, grid_budget_s=120.0,
                          stage="routing", note=vnote,
                          seconds=time.time() - t0)
 
-    # --- rung 2: the injected grid router (route_grid when it lands) ----
-    if (grid_router is None):
+    # --- rung 2: the grid router on the exact-engine placement ----------
+    # grid_router: None = the real route_grid (verify-gated here);
+    # False = explicitly disabled; callable = injected (verify deferred).
+    using_real_router = grid_router is None
+    if (grid_router is False):
         _attempt(meta, 2, _ENG_GRID, False, status="UNAVAILABLE",
-                 note="no router injected")
-    elif (not callable(grid_router)):
+                 note="router disabled")
+    elif (grid_router is not None and not callable(grid_router)):
         _attempt(meta, 2, _ENG_GRID, False, status="UNAVAILABLE",
                  note="injected router is not callable")
     else:
+        router = grid_router if grid_router is not None \
+            else _default_grid_router()
         t0 = time.time()
         try:
-            route2 = grid_router(netlist, layout.devices, layout.width_cols,
-                                 leg_widths)
+            route2 = router(netlist, layout.devices, layout.width_cols,
+                            leg_widths)
         except NotImplementedError as exc:
             _attempt(meta, 2, _ENG_GRID, False, status="UNAVAILABLE",
                      note=str(exc) or "router stub", seconds=time.time() - t0)
@@ -250,19 +294,96 @@ def synth_cell(netlist, exact_budget_s=60.0, grid_budget_s=120.0,
                      note="%s: %s" % (type(exc).__name__, exc),
                      seconds=time.time() - t0)
         else:
-            if (getattr(route2, "ok", True)):
-                width_cols = getattr(route2, "width_cols",
-                                     layout.width_cols)
-                _attempt(meta, 2, _ENG_GRID, True,
-                         status=getattr(route2, "status_name", "OK"),
-                         note="verify deferred to the caller",
+            if (not getattr(route2, "ok", True)):
+                _attempt(meta, 2, _ENG_GRID, False,
+                         status=getattr(route2, "status_name", "UNKNOWN"),
+                         note=getattr(route2, "fail_note", None),
                          seconds=time.time() - t0)
-                meta["engine"] = _ENG_GRID
-                meta["width_cols"] = width_cols
-                meta["width_um"] = width_cols * GRID_UM
-                return layout.devices, route2, meta
-            _attempt(meta, 2, _ENG_GRID, False,
-                     status=getattr(route2, "status_name", "UNKNOWN"),
-                     seconds=time.time() - t0)
+            else:
+                vnote = "verify deferred to the caller"
+                if (using_real_router):
+                    try:
+                        report2 = verify_cell(netlist, layout.devices,
+                                              route2)
+                    except Exception as exc:       # noqa: BLE001
+                        report2 = None
+                        vnote = "verify raised %s: %s" % (
+                            type(exc).__name__, exc)
+                    if (report2 is None or not report2.ok()):
+                        if (vnote == "verify deferred to the caller"):
+                            vnote = "verify failed: %s" % (
+                                report2.violations[:2] if report2 else [])
+                        _attempt(meta, 2, _ENG_GRID, False,
+                                 status=getattr(route2, "status_name",
+                                                "UNKNOWN"),
+                                 note=vnote, seconds=time.time() - t0)
+                        route2 = None
+                    else:
+                        vnote = "verify ok"
+                if (route2 is not None):
+                    width_cols = getattr(route2, "width_cols",
+                                         layout.width_cols)
+                    _attempt(meta, 2, _ENG_GRID, True,
+                             status=getattr(route2, "status_name", "OK"),
+                             note=vnote, seconds=time.time() - t0)
+                    meta["engine"] = _ENG_GRID
+                    meta["width_cols"] = width_cols
+                    meta["width_um"] = width_cols * GRID_UM
+                    return layout.devices, route2, meta
+
+    # --- rung 3: heuristic placement chain + the grid router ------------
+    t0 = time.time()
+    try:
+        netlist3, placements3, width3, leg_widths3 = \
+            _heuristic_placement(netlist)
+    except Exception as exc:                       # noqa: BLE001
+        _attempt(meta, 3, _ENG_FULL, False, status="ERROR", stage="placement",
+                 note="%s: %s" % (type(exc).__name__, exc),
+                 seconds=time.time() - t0)
+        raise UnsupportedCell(_diagnosis(cell_name, meta["attempts"]),
+                              meta=meta)
+    _attempt(meta, 3, _ENG_FULL, True, status="OK", stage="placement",
+             note="width %d cols" % width3, seconds=time.time() - t0)
+    meta["folded"] = netlist3 is not netlist
+    meta["cell_netlist"] = netlist3
+
+    t0 = time.time()
+    try:
+        route3 = _default_grid_router()(netlist3, placements3, width3,
+                                        leg_widths3)
+    except NotImplementedError as exc:
+        _attempt(meta, 3, _ENG_FULL, False, status="UNAVAILABLE",
+                 note=str(exc) or "router stub", seconds=time.time() - t0)
+        route3 = None
+    except Exception as exc:                       # noqa: BLE001
+        _attempt(meta, 3, _ENG_FULL, False, status="ERROR",
+                 note="%s: %s" % (type(exc).__name__, exc),
+                 seconds=time.time() - t0)
+        route3 = None
+    if (route3 is not None and getattr(route3, "ok", True)):
+        try:
+            report3 = verify_cell(netlist3, placements3, route3)
+        except Exception as exc:                   # noqa: BLE001
+            report3 = None
+            vnote = "verify raised %s: %s" % (type(exc).__name__, exc)
+        else:
+            vnote = ("verify ok" if report3.ok()
+                     else "verify failed: %s" % (report3.violations[:2],))
+        if (report3 is not None and report3.ok()):
+            _attempt(meta, 3, _ENG_FULL, True,
+                     status=getattr(route3, "status_name", "OK"),
+                     stage="routing", note=vnote, seconds=time.time() - t0)
+            meta["engine"] = _ENG_FULL
+            meta["width_cols"] = width3
+            meta["width_um"] = width3 * GRID_UM
+            return placements3, route3, meta
+        _attempt(meta, 3, _ENG_FULL, False,
+                 status=getattr(route3, "status_name", "UNKNOWN"),
+                 stage="routing", note=vnote, seconds=time.time() - t0)
+    elif (route3 is not None):
+        _attempt(meta, 3, _ENG_FULL, False,
+                 status=getattr(route3, "status_name", "UNKNOWN"),
+                 stage="routing", note=getattr(route3, "fail_note", None),
+                 seconds=time.time() - t0)
 
     raise UnsupportedCell(_diagnosis(cell_name, meta["attempts"]), meta=meta)
