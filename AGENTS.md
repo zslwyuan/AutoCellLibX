@@ -91,7 +91,14 @@ is only in the code is effectively undocumented.
    "simplify" this by collapsing the expressions into free variables — that
    silently drops every constraint. CoinLpIO also rejects such column names and
    falls back to `x0, x1, …`, disconnecting the whole model, which is why the
-   adapter parses the LP itself instead of calling `Model.read()`.
+   adapter parses the LP itself instead of calling `Model.read()`.  The
+   alternative path (2026-10): with `ASTRAN_MODEL_DUMP=<path>` set, ASTRAN
+   transcodes its own LP into clean JSON (`tools/astran/src/modeldump.cpp`)
+   and the shim builds the python-mip model from that
+   (`tools/gurobi_cl/model_json.py`) — the JSON preserves LP constraint names
+   verbatim and inherits the same rules (definition constraints kept, inf
+   terms dropped).  The legacy LP text path remains the default and must stay
+   byte-compatible.
 
 4. **The solver adapter must treat FEASIBLE as success.** With a relative gap
    tolerance CBC returns `FEASIBLE`, not `OPTIMAL`; requiring `OPTIMAL` makes
@@ -240,9 +247,21 @@ is only in the code is effectively undocumented.
   360's trust list (done manually on the development machine); `Astran.keep`
   and `AstranBackup.zip` next to the binary are restore backups for a
   mid-run quarantine.
-- **`wx-config` from MSYS2 mis-resolves under Git Bash.** The build uses
-  `tools/astran/bin/wx-config`, a shim that reports the MSYS2 wxWidgets 3.2
-  flags directly.
+- **ASTRAN is console-only since 2026-10** (wxWidgets GUI stripped; the
+  binary is ~1 MB, imports only the MinGW runtime DLLs, CLI unchanged:
+  `Astran --shell <script>`).  No wx-config/wxWidgets build prerequisites
+  remain.  The two wx DLLs still in `build/bin/` are there for the vendored
+  helper binaries `Cellgen.exe`/`astranrun.exe`, which still link them —
+  do not prune them from packaging.
+- **Byte-level GDS parity depends on the LP solver, not on ASTRAN.**  ASTRAN
+  itself is deterministic (invariant 8), but the production shim's CP-SAT
+  backend runs 8 workers under a time limit, so `ILPmodel.sol` (and hence the
+  GDS) varies run-to-run — measured old-binary-vs-old-binary at 230–328
+  bytes of difference.  `GUROBI_CL_SOLVER=cbc` is deterministic on a fixed
+  LP, and a single-worker CP-SAT shim (`flow/_stage0_check/gurobi_cl_det.cmd`,
+  test-only) restores byte-identical GDS.  When bisecting a width change or
+  doing binary parity work, pin the solver; do not assume the production
+  default is reproducible.
 - **Mass identifier renames must never touch Qt API calls.** The 633-rename
   snake_case pass (d205c21) also converted Qt method names it did not own —
   `rowCount()→row_count()`, `selectedRows()→selected_rows()` — crashing the

@@ -6,6 +6,8 @@
 
 #include "compaction.h"
 
+#include "modeldump.h"
+
 #include <cctype>
 #include <algorithm>
 #ifdef _WIN32
@@ -648,7 +650,13 @@ int Compaction::solve(string lpSolverFile, int timeLimit) {
         f.flush();
         f.close();
     }
-    
+
+    // AutoCellLibX: optionally export the model this LP file represents as
+    // JSON (tools/gurobi_cl/model_json.py) so the Python shim can stop
+    // parsing the LP text.  No-op unless ASTRAN_MODEL_DUMP=<path> is set;
+    // never throws.
+    astranDumpModelJson( fn );
+
     string solFileName = lp_filename + ".sol";
     
     remove(solFileName.c_str());

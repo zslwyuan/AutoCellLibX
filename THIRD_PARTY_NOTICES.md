@@ -21,8 +21,8 @@ of being assumed.
 | Origin | Universidade Federal do Rio Grande do Sul (UFRGS), Brazil. Upstream: `github.com/aziesemer/astran`. |
 | Copyright (from source headers) | © 2005 Adriel Mota Ziesemer Jr., Cristiano Lazzari; © 2005/2013 Adriel Mota Ziesemer Jr., Renato Hentschke. Contact: `amziesemerj@inf.ufrgs.br`. |
 | License | **No license text is present in the vendored tree** (no LICENSE/COPYING/GPL file). The upstream project is distributed for research/academic use. We therefore document the provenance and headers verbatim (see `tools/astran/LICENSE.md`) and do not claim any license on ASTRAN's behalf. |
-| Modifications | `compaction.cpp` LP writer adapted for open-source solvers, plus solver-facing fixes — full repair record in `doc/AUDIT_REPORT.md`. |
-| Runtime dependency | The binary dynamically links wxWidgets 3.2 runtime DLLs (LGPL-2.1+ with the wxWindows exception; DLLs shipped next to the exe, dynamically loaded). |
+| Modifications | wxWidgets GUI stripped — ASTRAN is rebuilt as a pure console binary with the identical `Astran --shell` CLI (2026-10, full record in `doc/AUDIT_REPORT.md`); `compaction.cpp` LP writer adapted for open-source solvers plus a JSON model dump for the Python shim, and solver-facing fixes. |
+| Runtime dependency | The main `Astran.exe` is console-only and needs no wxWidgets. The vendored helper binaries in the same directory (`Cellgen.exe`, `astranrun.exe`) still dynamically link the wxWidgets 3.2 runtime DLLs (LGPL-2.1+ with the wxWindows exception; DLLs shipped next to the exes, dynamically loaded). |
 | Obligation for users | Redistribution carries the copyright headers (retained in the sources). **Commercial use should be confirmed with the ASTRAN authors**, mirroring the project's own commercial-authorization clause. |
 
 ## 2. LP-solver backbone (shipped wrapper + bundled solver)

@@ -17,7 +17,6 @@
 #include <strstream>
 #include <fstream>
 #include <time.h>
-#include <wx/process.h>
 
 #include "circuit.h"
 #include "gridrouter.h"

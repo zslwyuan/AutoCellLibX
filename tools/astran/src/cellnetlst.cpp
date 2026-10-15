@@ -1,5 +1,6 @@
 #include "cellnetlst.h"
 #include <algorithm>
+#include <cassert>
 
 bool CellNetlst::verifyCnt(int pos){
     if(nets[pos].trans.size()>2) 	// if is connected to more than 2 transistors

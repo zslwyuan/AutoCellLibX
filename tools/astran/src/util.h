@@ -15,9 +15,8 @@
 #include <iostream>
 #include <algorithm>
 #include <map>
-#include <wx/textctrl.h>
-#include <wx/wx.h>
-#include <wx/process.h>
+#include <cmath>	// round() was previously pulled in via the wx headers
+#include <cassert>	// assert() was previously pulled in via the wx headers
 
 #define printme( e ) { cerr << #e << " = " << ( e ) << "\n"; };
 #define VERSION "3.20"
@@ -84,46 +83,7 @@ inline string getPath(const string& fileName){
 	return fileName.substr(0,fileName.find_last_of("/\\")+1);
 }
 
-inline void icpdExecute(const string& exec_cmd){
-#if defined (_MSC_VER)
-	wxExecute(exec_cmd);
-#else
-	wxProcess* process = new wxProcess();
-	process->Open(wxString::From8BitData(exec_cmd.c_str()));
-#endif
-}
-
 static map<string, string> config;
-
-class Redirector : public streambuf {
-private:
-	streambuf *clsOriginalStreamBuffer;
-	ostream * clsOutStream;
-	wxTextCtrl *clsTextBox;
-	bool clsFlush;
-	
-public:
-	Redirector( wxTextCtrl *textbox, ostream &out, bool flush ) {
-		clsFlush=flush;
-		clsOutStream = &out;
-		clsOriginalStreamBuffer = out.rdbuf();
-		clsTextBox = textbox;
-		clsOutStream->rdbuf( this );
-	} // end constructor
-	
-	~Redirector() {
-		clsOutStream->rdbuf( clsOriginalStreamBuffer );
-	} // end destructor
-	
-	int overflow( int ch ) {
-		clsTextBox->WriteText( wxChar( ch ) );
-		if(clsFlush || ch=='\n') {
-			clsTextBox->Update();
-			clsTextBox->SetInsertionPointEnd();			
-		}
-		return ch;
-	} // end overloaed method
-}; // end class
 
 class AstranError{
     string message;

@@ -10,11 +10,10 @@ AutoCellLibX/
 ├── tests/                 # test suite (unit + integration)
 ├── tools/
 │   ├── astran/            # vendored ASTRAN sources + build rules + tech files
-│   │   ├── src/           #   C++ sources
+│   │   ├── src/           #   C++ sources (console-only build, no GUI)
 │   │   ├── nbproject/     #   CodeBlocks makefiles
 │   │   ├── build/Work/    #   technology rules (tech_freePDK45.rul) + samples
 │   │   ├── build/bin/     #   output dir (Astran binary; not in git)
-│   │   ├── bin/wx-config  #   shim pointing at MSYS2's wxWidgets 3.2
 │   │   └── build_astran.sh#   build script -> build/bin/Astran
 │   └── gurobi_cl/         # vendored gurobi_cl-compatible wrapper (python-mip + CBC)
 ├── benchmark/             # BLIF netlists + synthesis scripts
@@ -31,17 +30,20 @@ pip install -r requirements.txt
 
 ## 2. Build ASTRAN
 
-Prerequisites: **MSYS2** at `C:\msys64` with
-`mingw-w64-x86_64-gcc` and `mingw-w64-x86_64-wxwidgets3.2-msw`.
+Prerequisites: **MSYS2** at `C:\msys64` with `mingw-w64-x86_64-gcc`
+(a wxWidgets install is **not** needed — the GUI was removed; ASTRAN builds
+as a pure console binary).
 
 ```bash
 bash tools/astran/build_astran.sh
 # -> tools/astran/build/bin/Astran(.exe)
 ```
 
-The script uses `tools/astran/bin/wx-config` (a shim that reports the MSYS2
-wxWidgets 3.2 flags) so the build does not depend on which shell's `/mingw64`
-is on `PATH`.
+The binary keeps the exact CLI surface of the original GUI-capable build:
+`Astran --shell <script.run>` (plus an interactive stdin shell when started
+with `--shell` and no script).  Its only non-system DLL dependencies are the
+MinGW runtime (`libstdc++-6.dll`, `libgcc_s_seh-1.dll`), resolved via the
+`C:\msys64\mingw64\bin` entry that `flow/astran.py` prepends to `PATH`.
 
 ## 3. Run the flow
 
@@ -118,8 +120,9 @@ Test layout:
 
 ## 5. Toolchain notes (Windows)
 
-- Runtime wxWidgets DLLs are staged into `tools/astran/build/bin/` by the build
-  script; `flow/astran.py` additionally prepends `C:\msys64\mingw64\bin`.
+- ASTRAN is a console binary; its MinGW runtime DLLs (`libstdc++-6.dll`,
+  `libgcc_s_seh-1.dll`) resolve through `C:\msys64\mingw64\bin`, which
+  `flow/astran.py` prepends to `PATH`.
 - If 360 Total Security flags the freshly built `Astran.exe`
   (`HEUR/QVM...Malware.Gen`, caused by its `_popen` usage), add
   `tools/astran/build/bin` to its trust list — this is a known false positive.

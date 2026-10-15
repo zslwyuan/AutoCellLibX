@@ -43,30 +43,23 @@ OBJECTFILES= \
 	${OBJECTDIR}/src/clayout.o \
 	${OBJECTDIR}/src/compaction.o \
 	${OBJECTDIR}/src/designmng.o \
+	${OBJECTDIR}/src/main_console.o \
+	${OBJECTDIR}/src/modeldump.o \
 	${OBJECTDIR}/src/draw.o \
 	${OBJECTDIR}/src/gds.o \
 	${OBJECTDIR}/src/graphrouter.o \
 	${OBJECTDIR}/src/gridrouter.o \
-	${OBJECTDIR}/src/icpdApp.o \
-	${OBJECTDIR}/src/icpdfrm.o \
 	${OBJECTDIR}/src/lef.o \
 	${OBJECTDIR}/src/placer.o \
 	${OBJECTDIR}/src/router.o \
 	${OBJECTDIR}/src/rules.o \
 	${OBJECTDIR}/src/verilog.o \
-	${OBJECTDIR}/src/wxabout.o \
-	${OBJECTDIR}/src/wxautocell.o \
-	${OBJECTDIR}/src/wxcircuit.o \
-	${OBJECTDIR}/src/wxfp.o \
-	${OBJECTDIR}/src/wxinterface.o \
-	${OBJECTDIR}/src/wxpreferences.o \
-	${OBJECTDIR}/src/wxrules.o
 
 # C Compiler Flags
 CFLAGS=
 
 # CC Compiler Flags
-CCFLAGS=`wx-config --cppflags --debug=no` -Wno-deprecated -std=c++11 -fpermissive
+CCFLAGS=-mconsole -Wno-deprecated -std=c++11 -fpermissive
 CXXFLAGS = $(CCFLAGS)
 
 # Fortran Compiler Flags
@@ -76,7 +69,7 @@ FFLAGS =
 ASFLAGS =
 
 # Link Libraries and Options
-LDLIBSOPTIONS = `wx-config --libs`
+LDLIBSOPTIONS =
 
 # Build Targets
 .build-conf: ${BUILD_SUBPROJECTS}
@@ -130,6 +123,17 @@ ${OBJECTDIR}/src/designmng.o: src/designmng.cpp
 	${RM} $@.d
 	$(COMPILE.cc) -MMD -MP -MF $@.d -o ${OBJECTDIR}/src/designmng.o src/designmng.cpp
 
+
+${OBJECTDIR}/src/main_console.o: src/main_console.cpp
+	${MKDIR} -p ${OBJECTDIR}/src
+	${RM} $@.d
+	$(COMPILE.cc) -MMD -MP -MF $@.d -o ${OBJECTDIR}/src/main_console.o src/main_console.cpp
+
+${OBJECTDIR}/src/modeldump.o: src/modeldump.cpp
+	${MKDIR} -p ${OBJECTDIR}/src
+	${RM} $@.d
+	$(COMPILE.cc) -MMD -MP -MF $@.d -o ${OBJECTDIR}/src/modeldump.o src/modeldump.cpp
+
 ${OBJECTDIR}/src/draw.o: src/draw.cpp
 	${MKDIR} -p ${OBJECTDIR}/src
 	${RM} $@.d
@@ -140,15 +144,7 @@ ${OBJECTDIR}/src/gds.o: src/gds.cpp
 	${RM} $@.d
 	$(COMPILE.cc) -MMD -MP -MF $@.d -o ${OBJECTDIR}/src/gds.o src/gds.cpp
 
-${OBJECTDIR}/src/icpdApp.o: src/icpdApp.cpp
-	${MKDIR} -p ${OBJECTDIR}/src
-	${RM} $@.d
-	$(COMPILE.cc) -MMD -MP -MF $@.d -o ${OBJECTDIR}/src/icpdApp.o src/icpdApp.cpp
 
-${OBJECTDIR}/src/icpdfrm.o: src/icpdfrm.cpp
-	${MKDIR} -p ${OBJECTDIR}/src
-	${RM} $@.d
-	$(COMPILE.cc) -MMD -MP -MF $@.d -o ${OBJECTDIR}/src/icpdfrm.o src/icpdfrm.cpp
 
 ${OBJECTDIR}/src/lef.o: src/lef.cpp
 	${MKDIR} -p ${OBJECTDIR}/src
@@ -190,40 +186,12 @@ ${OBJECTDIR}/src/verilog.o: src/verilog.cpp
 	${RM} $@.d
 	$(COMPILE.cc) -MMD -MP -MF $@.d -o ${OBJECTDIR}/src/verilog.o src/verilog.cpp
 
-${OBJECTDIR}/src/wxabout.o: src/wxabout.cpp
-	${MKDIR} -p ${OBJECTDIR}/src
-	${RM} $@.d
-	$(COMPILE.cc) -MMD -MP -MF $@.d -o ${OBJECTDIR}/src/wxabout.o src/wxabout.cpp
 
-${OBJECTDIR}/src/wxautocell.o: src/wxautocell.cpp
-	${MKDIR} -p ${OBJECTDIR}/src
-	${RM} $@.d
-	$(COMPILE.cc) -MMD -MP -MF $@.d -o ${OBJECTDIR}/src/wxautocell.o src/wxautocell.cpp
 
-${OBJECTDIR}/src/wxcircuit.o: src/wxcircuit.cpp
-	${MKDIR} -p ${OBJECTDIR}/src
-	${RM} $@.d
-	$(COMPILE.cc) -MMD -MP -MF $@.d -o ${OBJECTDIR}/src/wxcircuit.o src/wxcircuit.cpp
 
-${OBJECTDIR}/src/wxfp.o: src/wxfp.cpp
-	${MKDIR} -p ${OBJECTDIR}/src
-	${RM} $@.d
-	$(COMPILE.cc) -MMD -MP -MF $@.d -o ${OBJECTDIR}/src/wxfp.o src/wxfp.cpp
 
-${OBJECTDIR}/src/wxinterface.o: src/wxinterface.cpp
-	${MKDIR} -p ${OBJECTDIR}/src
-	${RM} $@.d
-	$(COMPILE.cc) -MMD -MP -MF $@.d -o ${OBJECTDIR}/src/wxinterface.o src/wxinterface.cpp
 
-${OBJECTDIR}/src/wxpreferences.o: src/wxpreferences.cpp
-	${MKDIR} -p ${OBJECTDIR}/src
-	${RM} $@.d
-	$(COMPILE.cc) -MMD -MP -MF $@.d -o ${OBJECTDIR}/src/wxpreferences.o src/wxpreferences.cpp
 
-${OBJECTDIR}/src/wxrules.o: src/wxrules.cpp
-	${MKDIR} -p ${OBJECTDIR}/src
-	${RM} $@.d
-	$(COMPILE.cc) -MMD -MP -MF $@.d -o ${OBJECTDIR}/src/wxrules.o src/wxrules.cpp
 
 ${OBJECTDIR}/src/gridrouter.o: src/gridrouter.cpp
 	${MKDIR} -p ${OBJECTDIR}/src

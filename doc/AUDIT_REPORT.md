@@ -1223,3 +1223,45 @@ verilog2cells 冒烟 1 含面积解析);全量 396 通过(6 个 test_smt_engine
 失败属并行会话在途改动,与本批零依赖)。
 
 **§5.40 勘误（用户质询触发）**：liberty 片段面积原按"实测宽×固定 2.47"计——该系数虽源自 astran 几何常量，但在 geometry 覆盖（GUI/脚本）下会静默失真。已改为**实测宽×实测高**（同一 `Cell Size (W x H)` 日志行解析，队列 CellResult.height 通道，常量仅兜底），默认几何路径数值不变（toy BLK0 仍 10.7939µm²）,并对实测行高偏离 2.47 的运行输出"基线不等高"警告（不变量 10）。
+
+## §5.41 ASTRAN 去 GUI 化（console 化）+ compaction 模型 JSON 通道（2026-10-15）
+
+本节记录 ASTRAN→Python 替换计划的前两个阶段（多 agent 并行落地，集成验收）。
+
+**(1) wxWidgets GUI 全量剥离（阶段 0）**：ASTRAN 从 wxApp 改为纯 console
+二进制。删除 11 个 GUI 文件对（icpdApp/icpdfrm/wxinterface/wxcircuit/
+wxrules/wxabout/wxautocell/wxpreferences/wxfp/wxicons，−6408 行）与
+`bin/wx-config` shim；新增 `src/main_console.cpp` 复刻原 `--shell` CLI 契约
+（含 `astran> read <script>` 序列与 REPL，EOF 退出为唯一有意偏离）；
+`util.h` 的 wxExecute/Redirector、`router.h` 的 wx/process.h 摘除；
+`build_astran.sh` 去 wx 前置，`-mconsole` 链接 + strip 保留。二进制
+1.53→1.04 MB，仅依赖 MinGW 运行时。`Cellgen.exe`/`astranrun.exe` 仍链
+wx DLL，`build/bin` 的两个 wx DLL 必须保留（打包勿清理）。
+
+**对拍方法学与一个重要发现**：新旧二进制在 3 个 cell（AND2X1/INVX1/
+COMPLEX0）上对拍，`ILPmodel.lp` 逐字节一致、日志归一后一致、宽度一致。
+但 **GDS 逐字节一致在生产 shim 下不可达——旧二进制对自己也不可达**：
+生产 CP-SAT 后端 8 线程 + 时限是时序敏感的，`ILPmodel.sol` 逐次漂移
+（旧vs旧实测差 230–328 字节）。这**不是去 wx 引入的**（既有问题，不
+变量 8 在"求解后端"这一层早已不成立）。用钉死 1 线程的测试 shim
+（`flow/_stage0_check/gurobi_cl_det.cmd`，仅测试用）后三 cell 的 .sol 与
+GDS（时间戳归零后）全部逐字节一致；`GUROBI_CL_SOLVER=cbc` 在固定 LP 上
+亦确定。**遗留决策（证据已给、未擅自切换）**：是否把生产后端钉为
+1 线程或默认 cbc——钉死会改变再生成快照的宽度，属全局行为切换，留
+待用户决策。
+
+**(2) compaction 模型 JSON 通道（阶段 1 + 集成）**：见 fd3525c 提交说明。
+集成补齐了 `compaction.cpp` 的调用点（LP 写毕后调 `astranDumpModelJson(fn)`，
+env `ASTRAN_MODEL_DUMP` 门控、永不抛出）与 Makefile 规则，重建二进制后
+e2e 实证：AND2X1 全流程下 dump 出 3774 变量/6430 约束的 model.json，
+shim 消费 JSON 路径（日志出现 "(JSON model path)"），与 legacy 路径
+产出**相同 SHA256 的 .sol**、相同宽度 0.95×2.47；env 未设时行为不变。
+
+**(3) M2 落地 + verilog2cells 引擎选择（阶段 2）**：见 cce34b3 提交说明
+（7-track 域 + M2/vias、4 个引擎缺陷修复、`--engine auto|smt|astran`、
+透明回退、全量 430 绿）。
+
+**(4) 大 cell 引擎设计（阶段 3）**：`doc/STAGE3_BIGCELL_ENGINE.md`
+（SA move set 忠实移植 + Pathfinder 拥塞协商路由 + CP-SAT 窗口分解，
+`--engine` 阶梯中置，~18–22 人周）。其中勘正一处长期误记：项目史料的
+"36T → 3.61 µm" 实际对应 30T 的 COMPLEX1；36T 的 COMPLEX10 为 4.37 µm。

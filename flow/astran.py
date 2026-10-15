@@ -2,13 +2,14 @@ import os
 import subprocess
 import sys
 
-# ASTRAN needs the MSYS2 runtime DLLs (wxWidgets, libstdc++...) on PATH, and its
-# LP-solver wrapper (tools/gurobi_cl/gurobi_cl.cmd) calls bare `python`, which
-# must be the interpreter that has python-mip installed -- i.e. the one this
-# flow itself runs on.  MSYS2 also ships its own python.exe in mingw64/bin
-# (pulled in by unrelated mingw packages), so the flow's interpreter must come
-# FIRST or the solver wrapper resolves the wrong python and dies with
-# "No module named 'mip'".
+# ASTRAN is a console binary and needs only the MSYS2 MinGW runtime DLLs
+# (libstdc++, libgcc, winpthread) on PATH, and its LP-solver wrapper
+# (tools/gurobi_cl/gurobi_cl.cmd) calls bare `python`, which must be the
+# interpreter that has python-mip installed -- i.e. the one this flow itself
+# runs on.  MSYS2 also ships its own python.exe in mingw64/bin (pulled in by
+# unrelated mingw packages), so the flow's interpreter must come FIRST or the
+# solver wrapper resolves the wrong python and dies with "No module named
+# 'mip'".
 if ("PATH" in os.environ):
     os.environ["PATH"] = os.path.dirname(sys.executable) + ";" + \
         "C:\\msys64\\mingw64\\bin;" + os.environ["PATH"]
