@@ -1265,3 +1265,45 @@ shim 消费 JSON 路径（日志出现 "(JSON model path)"），与 legacy 路�
 （SA move set 忠实移植 + Pathfinder 拥塞协商路由 + CP-SAT 窗口分解，
 `--engine` 阶梯中置，~18–22 人周）。其中勘正一处长期误记：项目史料的
 "36T → 3.61 µm" 实际对应 30T 的 COMPLEX1；36T 的 COMPLEX10 为 4.37 µm。
+
+## §5.42 bigcell 引擎三轮迭代：槽位几何模型 + 介面视图（2026-10-16）
+
+阶段 3 实施进入"测试→验证→替换"循环。第一轮 17-cell 全量基准
+（100 分钟，flow/_stage3_check/bench_int1）只关闭 2/17（精确档小
+cell），但失败全部收敛为具体缺陷：
+
+**(1) verify 镜像假阳性（f3ece2c 修复）**：place_sa 的 mirror_block
+翻转块的暴露端（成员反转+左右交换，电学等价），place_row 按镜像朝向
+正确共享 VCC 而省断列，但 verify 的 _nets_touch 从网表重建未镜像的
+基础块——每个镜像对都误报"diffusion break missing"。verify_cell 增
+可选 blocks 视图参数（默认行为不变），engine 传入 SA 精炼排序的朝向
+感知块列表。**教训：镜像状态是布局的事实，任何从网表重建朝向的消费方
+都是过时视图。**
+
+**(2) route_grid 两缺陷根修（07364ae）**：宽度<b 布局宽实为路由失败后
+返回 0 宽空壳而 verify 按布局取列——failed_result 携带真实宽度；终端
+冲突在 build 期就发生：_build 用朝向盲的基础分解导出访问点，镜像块被
+外推进邻块的列并在 cl0#Y 的扩散上预建了 VCC 电源条（ctrl/COMPLEX0 上
+是"通过 verify 的潜伏短路"）。_die_orientation 从布局重建介面视图
+（多成员块按 start_cols 降序判镜像；单成员翻转由 place_row 邻接间隙
+不动点恢复；不可分辨处回退 pristine）。adder/COMPLEX0 修复后 FEASIBLE。
+
+**(3) rung 2 停滞定性为 (a) 类——决定性证据**：冲突 plateau 不是调
+参问题：CP-SAT solve_routing 在全部四个精确布局上证明 INFEASIBLE，
+即不存在词汇合法的布线；移植代码对 graphrouter.cpp:92-434 审计忠实。
+remedy 在布局链——槽位模型（下一节）正是为此。
+
+**(4) 槽位几何模型（c0017a1，宽度对拍门达标）**：从 ASTRAN 自己的
+GDS 逆向（gdstk，16.5 单位/µm 校准，prBoundary 与日志逐 cell 吻合）
+并经 autocell2.cpp:1103 等源码锚定：W 画纵向（有源条 y 高 = W，1.2µm
+行半预算），水平占位为槽位序列（一列 = 触点|栅|触点三元组，触点在列
+边、栅在列心），相邻块面对网络相等共享触点槽，宽度 = 列数×0.19 +
+0.385。旧 IR 把 W 画横向列是 ~3× 宽度差的根源。规则与实测在
+doc/BIGCELL_SLOT_GEOMETRY.md。14 个有 GDS 基线的 cell 宽度比全部
+落入 [0.80, 1.26]（半数 1.00-1.01），GDS 跨进程字节级一致，
+layout_sanity 全清。
+
+**待办**：verify 的 diffusion_access_points 仍从基础分解导出（镜像
+cell 的访问点假阳性未清）；route_grid 需设计笔记 §8 四项槽位适配
+（边列访问点/多槽暴露/介帧偏移/W+2 横向列）才能关闭槽位 cell——
+两者在 die-view-router 轮处理。全量 542 绿 + 1 诚实 skip。
