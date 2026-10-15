@@ -32,6 +32,20 @@ per-column occupancy is *solidified* (filled contiguously per slot) so the
 emitted stripe interval equals the occupied set, matching the bar-coverage
 semantics of smt_engine.verify's BFS exactly.
 
+Diffusion access points are derived **orientation-aware** (_die_orientation
++ _oriented_diffusion_access_points): the heuristic placement mirrors
+diffusion blocks (netlist_ext.mirror_block -- members reversed, each
+member's edge nets swapped), and the base smt_engine.netlist walk
+extrapolates a mirrored block from its base-first member's column, which
+scrambles net->column and once built power stripes on columns where other
+signals' diffusions actually sit ("terminal clash at ('M1', 4, 8): cl0#Y
+and VCC").  A block is mirrored exactly when its members' placement
+start_cols descend in the block's own member order; a single-member
+block's flip is recovered from place_row's abutment gaps (gap 0 <=> the
+facing end nets are equal, one break column <=> they differ), defaulting
+to pristine when no constraint pins it -- the one case the die cannot
+distinguish, where the base walk (verify's view) assumes pristine too.
+
 Per column there are also: a poly node per gate stripe (contacted by M1
 crossings, merged by poly jumps), a 0-cost ``inoutCnt`` hub wired to every
 track (autocell2.cpp:58-62) feeding one pin node per external signal net,
@@ -74,10 +88,13 @@ smt_engine/verify.py and smt_engine/gds.py unchanged.
 """
 
 import heapq
+import itertools
 
+from bigcell_engine.geometry import BREAK_GAP_COLS
 from smt_engine.gds import (CONTACT_S, POLY_OVERHANG, row_geometry,
                             track_geometry)
-from smt_engine.netlist import diffusion_access_points, gate_access_points
+from smt_engine.netlist import (build_diffusion_blocks, exposed_net_set,
+                                gate_access_points)
 from smt_engine.route_model import (BAR_LEVELS, BOUNDARY_T, N_TRACKS,
                                     ROW_TRACK, ROW_TRACKS, RouteResult,
                                     device_rail)
@@ -141,6 +158,160 @@ def _row_track_ranges(height_um, grid_um):
             for key, (y0, y1) in rows.items()}
 
 
+def _die_orientation(netlist, placement, break_cols=BREAK_GAP_COLS):
+    """Per-device die orientation: {device name: (left_net, right_net)}.
+
+    The heuristic placement realizes mirrors with netlist_ext.mirror_block:
+    place_row always lays a block's members out in the block's own member
+    list order, and a mirrored block CARRIES the reversed list with every
+    member's left/right nets swapped.  A multi-member block is therefore
+    mirrored exactly when its members' placement start_cols descend in the
+    block's own member order.
+
+    A single-member block's flip is invisible in the column order, so it is
+    recovered from the abutment constraints geometry.place_row encoded into
+    the inter-block gaps of each row: gap 0 <=> the facing end nets are
+    equal, gap == break_cols <=> they differ.  Orientations propagate to a
+    fixpoint (constraints visited in a fixed sorted order; every pin is
+    permanent); a single no constraint pins keeps the pristine orientation
+    -- the one case the die cannot distinguish, where the base-view walk
+    (verify's) makes the same assumption.
+
+    Pure and deterministic (invariant 9).
+    """
+    blocks = build_diffusion_blocks(netlist)
+    flipped = []                      # block index -> True / False / None
+    die_members = []                  # block index -> members in die order
+    for blk in blocks:
+        starts = [placement[m.device].start_col for m in blk.members]
+        die = sorted(blk.members,
+                     key=lambda m: (placement[m.device].start_col,
+                                    m.device.name))
+        die_starts = [placement[m.device].start_col for m in die]
+        die_members.append(die)
+        if (len(blk.members) == 1):
+            flipped.append(None)
+        elif (die_starts == starts):
+            flipped.append(False)
+        elif (die_starts == starts[::-1]):
+            flipped.append(True)
+        else:
+            flipped.append(None)      # illegal placement: leave to defaults
+
+    def end_nets(idx, flip):
+        """(die_left, die_right) end nets of block idx under flip."""
+        blk = blocks[idx]
+        left = blk.members[0].left_net
+        right = blk.members[-1].right_net
+        return (right, left) if flip else (left, right)
+
+    # per-row die sequences and the gap constraints between neighbours
+    rows = {}
+    for idx, die in enumerate(die_members):
+        rows.setdefault(placement[die[0].device].row, []).append(idx)
+    constraints = []
+    for row in sorted(rows):
+        seq = sorted(rows[row],
+                     key=lambda i: placement[die_members[i][0].device]
+                     .start_col)
+        for a, b in zip(seq, seq[1:]):
+            gap = (placement[die_members[b][0].device].start_col
+                   - placement[die_members[a][-1].device].end_col)
+            if (gap == 0 or gap == break_cols):
+                constraints.append((a, b, gap == 0))
+
+    def satisfied(ia, ib, equal, flips):
+        """Whether the constraint holds under the given orientations."""
+        need = end_nets(ia, flips[ia])[1]             # a's die_right
+        return (end_nets(ib, flips[ib])[0] == need) == equal
+
+    # 1) propagate pinned blocks into unknown singles (fixpoint)
+    changed = True
+    while (changed):
+        changed = False
+        for ia, ib, equal in constraints:
+            for x, y in ((ia, ib), (ib, ia)):
+                if (flipped[x] is None or flipped[y] is not None):
+                    continue
+                ok = []
+                for cand in (False, True):
+                    trial = {ia: flipped[ia], ib: flipped[ib]}
+                    trial[y] = cand
+                    if (satisfied(ia, ib, equal, trial)):
+                        ok.append(cand)
+                if (len(ok) == 1):
+                    flipped[y] = ok[0]
+                    changed = True
+
+    # 2) remaining unknowns that any constraint touches: the die cannot
+    # pin them one at a time (e.g. two abutting singles), so enumerate
+    # their joint assignments deterministically -- pristine first, per
+    # block index order -- and take the first vector that satisfies every
+    # constraint whose both sides resolve
+    unknown = sorted(i for i, f in enumerate(flipped) if f is None
+                     and any(i in c[:2] for c in constraints))
+    if (unknown and len(unknown) <= 16):
+        for vector in itertools.product((False, True), repeat=len(unknown)):
+            trial = dict(zip(unknown, vector))
+            ok = True
+            for ia, ib, equal in constraints:
+                fa = trial.get(ia, flipped[ia])
+                fb = trial.get(ib, flipped[ib])
+                if (fa is None or fb is None):
+                    continue              # touches an unpinned outsider
+                if ((end_nets(ia, fa)[1] == end_nets(ib, fb)[0]) != equal):
+                    ok = False
+                    break
+            if (ok):
+                for i, f in zip(unknown, vector):
+                    flipped[i] = f
+                break
+    # 3) anything still unknown is orientation-invisible in the die:
+    # pristine (the base view's own assumption)
+    orientation = {}
+    for idx, blk in enumerate(blocks):
+        flip = flipped[idx] is True
+        for m in blk.members:
+            orientation[m.device.name] = \
+                (m.right_net, m.left_net) if flip \
+                else (m.left_net, m.right_net)
+    return orientation
+
+
+def _oriented_diffusion_access_points(netlist, placement, orientation):
+    """(signal, power) diffusion access points on the DIE orientation.
+
+    diffusion_access_points' exact contract (same exposed-net filter, same
+    sort), but walked in each block's DIE member order with the die edge
+    nets.  The base walk starts at the base-first member's column and
+    accumulates widths in base member order, so a mirrored block's nets
+    are extrapolated onto the columns where the *next* block's diffusions
+    actually sit -- the scrambled view that once pre-built power stripes
+    on foreign signal columns ("terminal clash").  For pristine blocks
+    (the exact-engine placements) the two walks coincide.
+    """
+    exposed = exposed_net_set(netlist)
+    signal = {}
+    power = {}
+    powerNames = ("VCC", "GND", "VDD", "VSS")
+    for block in build_diffusion_blocks(netlist):
+        die = sorted(block.members,
+                     key=lambda m: (placement[m.device].start_col,
+                                    m.device.name))
+        for member in die:
+            p = placement[member.device]
+            width = p.legs * p.leg_width_cols
+            lnet, rnet = orientation[member.device.name]
+            for net, col in ((lnet, p.start_col),
+                             (rnet, p.start_col + width - 1)):
+                if (net in exposed):
+                    dst = power if net in powerNames else signal
+                    dst.setdefault(net, []).append((col, member.device))
+    key = lambda t: (t[0], t[1].name)
+    return ({n: sorted(set(pts), key=key) for n, pts in signal.items()},
+            {n: sorted(set(pts), key=key) for n, pts in power.items()})
+
+
 class _Node(object):
     __slots__ = ("kind", "net", "nr_nets", "history", "source", "arcs")
 
@@ -195,6 +366,7 @@ class _RouteGrid(object):
         self._label = 0
         self._final_label = 0
         self.attempts_used = 0
+        self.conflict_trace = []    # (attempt, conflicts, conflicted names)
         self._build()
 
     # ---------------- graph construction ----------------
@@ -270,7 +442,9 @@ class _RouteGrid(object):
         # (internal) diffusion edges is electrically complete through the
         # shared diffusion and needs no wire (netlist.exposed_net_set).
         signal = [n for n in netlist.nets if n not in POWER_NAMES]
-        diff_sig, diff_pow = diffusion_access_points(netlist, placement)
+        orientation = _die_orientation(netlist, placement)
+        diff_sig, diff_pow = _oriented_diffusion_access_points(
+            netlist, placement, orientation)
         gate_pts = gate_access_points(netlist, placement)
         routed = sorted(n for n in signal
                         if diff_sig.get(n) or gate_pts.get(n))
@@ -1094,6 +1268,11 @@ class _RouteGrid(object):
                 net = self._net_by_index(index)
                 if (net is not None):
                     net.conflict = True
+            # per-attempt diagnosis record (stagnation analysis): the
+            # conflict total and the nets the next attempt will rip up
+            self.conflict_trace.append((
+                attempt, conflicts,
+                tuple(net.name for net in self.nets if net.conflict)))
             if (conflicts < min_conflict or cnt_conflict == -1):
                 cnt_conflict = 0
                 min_conflict = conflicts
@@ -1105,6 +1284,15 @@ class _RouteGrid(object):
                 break
         self.attempts_used = attempt
         if (ok == -1 or conflicts):
+            if (ok != -1 and conflicts and self._fail_note is None):
+                # honest stagnation note: the negotiation plateaued
+                best = min(self.conflict_trace,
+                           key=lambda t: (t[1], t[0]))
+                self._fail_note = (
+                    "no conflict-free routing after %d attempts (best %d "
+                    "conflicts at attempt %d; unresolved: %s)"
+                    % (attempt, best[1], best[0],
+                       ", ".join(best[2]) if best[2] else "-"))
             return False
         # arcs of solved nets become the final solution's arcs
         # (graphrouter.cpp:169-171)
@@ -1233,9 +1421,24 @@ class _RouteGrid(object):
         return result
 
     def failed_result(self):
-        """RouteResult-shaped failure, mirroring solve_routing's."""
-        result = RouteResult("UNKNOWN", [], [], [], [], [], [],
-                             {}, {}, {}, {}, [], [], 0, 0, 0, 0, 0, 0)
+        """RouteResult-shaped failure, mirroring solve_routing's.
+
+        Unlike solve_routing's empty-shell failure the width is the real
+        placement width: verify and the benchmark derive access columns
+        from the PLACEMENT, so a 0-width result crashes them with an
+        IndexError instead of letting them report the honest violations
+        (route_model RouteResult.stripes indexes col_owner_n[c]).  Every
+        column is reported unrouted (no stripes, no segments).
+        """
+        width = self.width_cols
+        result = RouteResult(
+            "UNKNOWN",
+            [None] * width, [None] * width,
+            [0] * width, [0] * width,
+            [BAR_LEVELS - 1] * width, [BAR_LEVELS - 1] * width,
+            {}, {}, {}, {},
+            [False] * width, [False] * width,
+            width, 0, 0, 0, 0, 0)
         result.fail_note = self._fail_note
         result.attempts_used = getattr(self, "attempts_used", 0)
         return result
@@ -1250,8 +1453,18 @@ def route_cell(netlist, placement, width_cols, leg_widths=None,
     placement width in 0.19 um columns and ``leg_widths`` the fold map
     (device name -> (legs, leg_width_cols)); the fold is already realized
     in the placement, so the router consumes it for provenance only.
+
+    Invariant: the returned RouteResult always covers every placement
+    column -- ``width_cols >= max(p.end_col for p in placement.values())``
+    -- success and failure alike, so consumers deriving columns from the
+    placement (verify_cell, the benchmark) never index past the result.
     """
     del leg_widths                        # the fold lives in the placement
+    # the route must cover every placement column (verify derives its
+    # access columns from the placement): never route on a narrower grid
+    # than the widest device end
+    width_cols = max(width_cols,
+                     max((p.end_col for p in placement.values()), default=0))
     grid = _RouteGrid(netlist, placement, width_cols,
                       height_um=height_um, grid_um=grid_um)
     if (grid.route(max_attempts=max_attempts)):
