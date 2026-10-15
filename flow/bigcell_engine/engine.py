@@ -67,9 +67,14 @@ def _default_grid_router():
 def _heuristic_placement(netlist):
     """Rung-3 placement: fold -> blocks -> seeds -> euler -> SA -> columns.
 
-    Returns (netlist3, placements, width_cols, leg_widths) where
+    Returns (netlist3, placements, width_cols, leg_widths, blocks) where
     ``netlist3`` is the (possibly fold-expanded) netlist the placement is
-    expressed against.  Deterministic; raises on structural failure.
+    expressed against and ``blocks`` is the ORIENTATION-AWARE block view
+    the placement was built from: the refined orderings' blocks, whose
+    members carry the SA mirror state.  verify_cell must consult these
+    (not build_bigcell_blocks' pristine list) or every mirrored block
+    pair reads as a missing diffusion break.
+    Deterministic; raises on structural failure.
     """
     from . import geometry
     from .netlist_ext import (build_bigcell_blocks, fold_devices,
@@ -85,7 +90,8 @@ def _heuristic_placement(netlist):
         ordering_p, ordering_n, netlist3, leg_widths)
     placements, width_cols = geometry.layout_cell(
         ordering_p, ordering_n, leg_widths)
-    return netlist3, placements, width_cols, leg_widths
+    blocks_view = list(ordering_p) + list(ordering_n)
+    return netlist3, placements, width_cols, leg_widths, blocks_view
 
 
 class UnsupportedCell(Exception):
@@ -334,7 +340,7 @@ def synth_cell(netlist, exact_budget_s=60.0, grid_budget_s=120.0,
     # --- rung 3: heuristic placement chain + the grid router ------------
     t0 = time.time()
     try:
-        netlist3, placements3, width3, leg_widths3 = \
+        netlist3, placements3, width3, leg_widths3, blocks3 = \
             _heuristic_placement(netlist)
     except Exception as exc:                       # noqa: BLE001
         _attempt(meta, 3, _ENG_FULL, False, status="ERROR", stage="placement",
@@ -346,6 +352,7 @@ def synth_cell(netlist, exact_budget_s=60.0, grid_budget_s=120.0,
              note="width %d cols" % width3, seconds=time.time() - t0)
     meta["folded"] = netlist3 is not netlist
     meta["cell_netlist"] = netlist3
+    meta["blocks"] = blocks3
 
     t0 = time.time()
     try:
@@ -362,7 +369,8 @@ def synth_cell(netlist, exact_budget_s=60.0, grid_budget_s=120.0,
         route3 = None
     if (route3 is not None and getattr(route3, "ok", True)):
         try:
-            report3 = verify_cell(netlist3, placements3, route3)
+            report3 = verify_cell(netlist3, placements3, route3,
+                                  blocks=blocks3)
         except Exception as exc:                   # noqa: BLE001
             report3 = None
             vnote = "verify raised %s: %s" % (type(exc).__name__, exc)

@@ -85,8 +85,17 @@ def _field_map(netlist, placement, width_cols):
 
 
 def verify_cell(netlist, placement, route, grid_um=0.19, height_um=2.47,
-                break_um=0.19):
-    """Structural verification; returns VerifyReport."""
+                break_um=0.19, blocks=None):
+    """Structural verification; returns VerifyReport.
+
+    ``blocks`` optionally supplies the diffusion-block view the placement
+    was built from (an iterable of DiffusionBlock-compatible objects with
+    members/first/last/kind).  bigcell_engine's tree-block decomposition
+    keeps coupled degree-3 units in ONE block; verifying such a placement
+    against the base build_diffusion_blocks view would split the unit and
+    report a false "diffusion break missing".  Default (None) keeps the
+    historical base-decomposition behaviour.
+    """
     violations = []
     trackY, barY = track_geometry(height_um, grid_um)
     width_cols = route.width_cols
@@ -120,18 +129,22 @@ def verify_cell(netlist, placement, route, grid_um=0.19, height_um=2.47,
         return "M1"
 
     # ---- layout invariants ----
-    for block in build_diffusion_blocks(netlist):
+    if blocks is None:
+        blocks = build_diffusion_blocks(netlist)
+    block_objs = blocks          # kept for orientation-aware _nets_touch
+    for block in blocks:
         for a, b in zip(block.members, block.members[1:]):
             pa, pb = placement[a.device], placement[b.device]
             if (pa.row != pb.row or pa.end_col != pb.start_col):
                 violations.append("block %s: %s and %s do not abut"
                                   % (block.kind, a.name, b.name))
-    blocks = []
-    for block in build_diffusion_blocks(netlist):
+    rects = []
+    for block in blocks:
         p = placement[block.first]
         end = placement[block.last].end_col
-        blocks.append((block.first.is_p, p.row, p.start_col, end,
-                       block.first.name))
+        rects.append((block.first.is_p, p.row, p.start_col, end,
+                      block.first.name))
+    blocks = rects
     for i in range(len(blocks)):
         for j in range(i + 1, len(blocks)):
             a, b = blocks[i], blocks[j]
@@ -148,7 +161,8 @@ def verify_cell(netlist, placement, route, grid_um=0.19, height_um=2.47,
                 continue
             if (b[2] < a[3]):
                 a, b = b, a
-            if (a[3] + breakCols > b[2] and not _nets_touch(netlist, a, b)):
+            if (a[3] + breakCols > b[2]
+                    and not _nets_touch(netlist, a, b, block_objs)):
                 violations.append("diffusion break missing: %s|%s"
                                   % (a[4], b[4]))
 
@@ -347,11 +361,19 @@ def _touches_gate(spans, net, c, t, trackY):
     return gy0 + CONTACT_S / 2 <= trackY[t] <= gy1 - CONTACT_S / 2
 
 
-def _nets_touch(netlist, a, b):
-    blocks = build_diffusion_blocks(netlist)
+def _nets_touch(netlist, a, b, blocks=None):
+    """Whether rect a's right edge shares its net with rect b's left edge.
+
+    Orientation matters: bigcell's SA mirrors blocks (swapping which net
+    faces which side), so the answer must come from the block view the
+    placement was built from when one is supplied.  Default (None) keeps
+    the historical base-decomposition behaviour (fixed orientations).
+    """
+    if blocks is None:
+        blocks = build_diffusion_blocks(netlist)
     byName = {blk.first.name: blk for blk in blocks}
     blkA, blkB = byName[a[4]], byName[b[4]]
-    return blkA.right_net == blkB.left_net
+    return blkA.members[-1].right_net == blkB.members[0].left_net
 
 
 def _net_connected_exact(netlist, placement, route, net, diffPts, gateCols,

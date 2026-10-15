@@ -458,11 +458,17 @@ def run_benchmark(cells, out_dir, exact_budget_s=60.0, grid_budget_s=120.0,
             continue
         synth_calls += 1
 
+        # rung 3 places against the (possibly fold/tree-expanded) netlist:
+        # the artifacts and verify must use the engine's own view.
+        layout_nl = meta.get("cell_netlist") or cell.netlist
+        layout_blocks = meta.get("blocks")
+        vkw = {"blocks": layout_blocks} if layout_blocks is not None else {}
+
         os.makedirs(os.path.dirname(gds_path), exist_ok=True)
-        gds_writer(gds_path, cell.netlist, placement, route)
+        gds_writer(gds_path, layout_nl, placement, route)
         try:
             record["verdicts"]["verify"] = _verdict(
-                verify_fn(cell.netlist, placement, route))
+                verify_fn(layout_nl, placement, route, **vkw))
         except Exception as exc:                   # noqa: BLE001
             record["verdicts"]["verify"] = {
                 "ok": None,
