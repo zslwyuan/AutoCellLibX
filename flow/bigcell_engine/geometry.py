@@ -44,7 +44,7 @@ def default_leg_widths(devices):
     out = {}
     for dev in devices:
         cols = max(DEFAULT_LEG_WIDTHS_MIN_COLS,
-                   int(math.ceil(float(dev.width) / GRID_UM)))
+                   int(math.ceil(float(dev.width_um) / GRID_UM)))
         out[dev.name] = (1, cols)
     return out
 
