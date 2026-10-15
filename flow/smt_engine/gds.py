@@ -6,8 +6,9 @@ routing grid, poly stripes are vertical at the leg centres, diffusion
 blocks fill the (row, column) rectangle, M1 stripes are vertical in
 columns / horizontal on rails, power rails run along the row edges.
 Layer/stream numbers match tech_freePDK45.rul (active 1, poly 9, contact
-10, metal1 49, nwell 3, pwell 2, prBoundary 235) so the output is
-consumable by the existing sanity and pin-accessibility checkers.
+10, metal1 49, via1 50, metal2 51, nwell 3, pwell 2, prBoundary 235) so
+the output is consumable by the existing sanity and pin-accessibility
+checkers.
 
 The GDS header is honest (1 um user units, 1 nm precision): unlike
 ASTRAN's bogus UNITS record there is nothing to calibrate around -- the
@@ -19,6 +20,8 @@ Geometry (all um):
     N rows = [railW, H/2), P rows = [H/2, H - railW), two rows each
     poly   = 0.05 wide vertical stripe, centred on the leg column
     M1     = 0.07 wide stripes / 0.07 tall segments
+    M2     = 0.07 tall escape segments above M1; a via1 squares the
+             M1<->M2 junction at the segment boundary
     contact= 0.07 x 0.07 squares
 """
 
@@ -28,11 +31,13 @@ import gdstk
 
 LAYER = {
     "active": 1, "pwell": 2, "nwell": 3, "poly": 9, "contact": 10,
-    "metal1": 49, "prBoundary": 235,
+    "metal1": 49, "via1": 50, "metal2": 51, "prBoundary": 235,
 }
 
 POLY_W = 0.05
 M1_W = 0.07
+M2_W = 0.07
+VIA_S = 0.06
 CONTACT_S = 0.07
 RAIL_W = 0.13
 POLY_OVERHANG = 0.05        # poly sticks past the diffusion edge
@@ -68,6 +73,20 @@ def row_geometry(height_um, grid_um, rail_w=RAIL_W):
     return railY, rows
 
 
+def track_geometry(height_um, grid_um, rail_w=RAIL_W):
+    """(trackY, barY): y-centres of the 7 routing tracks (the four row
+    centres, the two row edges and the well-boundary corridor) and the 9
+    bar-domain levels [GND, T0..T6, VCC].  barY = [GND] + trackY + [VCC],
+    so a bar's (lo, hi) covers track t iff lo <= t+1 <= hi (one sorted
+    list -- no inverted ranges)."""
+    railY, rows = row_geometry(height_um, grid_um, rail_w)
+    trackY = [railY[0], rows[(False, 0)][1], railY[1],
+              height_um / 2.0,
+              railY[2], rows[(True, 0)][1], railY[3]]
+    barY = [railY[GND_RAIL]] + trackY + [railY[VCC_RAIL]]
+    return trackY, barY
+
+
 def _track_x(col, grid_um):
     """x of the routing track in column col (column edge: c*g)."""
     return col * grid_um
@@ -88,6 +107,7 @@ def cell_gds(netlist, placement, route, grid_um=0.19, height_um=2.47,
     if (not route.ok):
         raise ValueError("cannot emit GDS: route status %s" % route.status_name)
     railY, rows = row_geometry(height_um, grid_um, rail_w)
+    trackY, barY = track_geometry(height_um, grid_um, rail_w)
     width_um = route.width_cols * grid_um
     cell = gdstk.Cell("SYNTH")
     g = grid_um
@@ -127,34 +147,47 @@ def cell_gds(netlist, placement, route, grid_um=0.19, height_um=2.47,
 
     # --- vertical M1 stripes (one per occupied slot: N and P halves can
     # share a column because their y-ranges do not overlap; a same-net
-    # pair merges when both bars reach the well boundary) ---
-    bY = height_um / 2.0
+    # pair merges when both bars reach the boundary -- the reach is the
+    # bar endpoint itself in the y-sorted bar domain) ---
     for c in range(route.width_cols):
         for net, lo, hi, slot in route.stripes(c):
             xc = _track_x(c, g)
-            # rail indices are not y-ordered (GND rail 4 sits below N
-            # rows): the stripe spans the min..max rail centre
-            ya, yb = railY[lo], railY[hi]
-            y0 = min(ya, yb) - M1_W / 2
-            y1 = max(ya, yb) + M1_W / 2
-            if (slot == "N" and route.reachB_n[c]):
-                y1 = max(y1, bY + M1_W / 2)
-            if (slot == "P" and route.reachB_p[c]):
-                y0 = min(y0, bY - M1_W / 2)
+            y0 = barY[lo] - M1_W / 2
+            y1 = barY[hi] + M1_W / 2
             rect(xc - M1_W / 2, y0, xc + M1_W / 2, y1, LAYER["metal1"])
 
-    # --- horizontal M1 segments ---
+    # --- horizontal M1 segments (M2 segments are drawn on metal2) ---
+    route_m2 = getattr(route, "m2", {}) or {}
+    route_via = getattr(route, "via", {}) or {}
     for (t, c), net in sorted(route.hseg.items()):
-        rect(c * g, railY[t] - M1_W / 2, (c + 1) * g, railY[t] + M1_W / 2,
-             LAYER["metal1"])
+        if (route_m2.get((t, c))):
+            continue
+        rect(c * g, trackY[t] - M1_W / 2, (c + 1) * g,
+             trackY[t] + M1_W / 2, LAYER["metal1"])
 
-    # --- poly jumps: horizontal poly wires on the rails (they cross
+    # --- M2 escape segments: horizontal metal2 wires on the tracks,
+    # crossing foreign M1 stripes without a short ---
+    for (t, c), net in sorted(route.hseg.items()):
+        if (not route_m2.get((t, c))):
+            continue
+        rect(c * g, trackY[t] - M2_W / 2, (c + 1) * g,
+             trackY[t] + M2_W / 2, LAYER["metal2"])
+
+    # --- vias: an M1<->M2 connection at the boundary between two
+    # adjacent segments (t, c-1) and (t, c) ---
+    for (t, c), on in sorted(route_via.items()):
+        if (not on):
+            continue
+        rect(c * g - VIA_S / 2, trackY[t] - VIA_S / 2,
+             c * g + VIA_S / 2, trackY[t] + VIA_S / 2, LAYER["via1"])
+
+    # --- poly jumps: horizontal poly wires on the row tracks (they cross
     # foreign M1 stripes in a different layer and merge with same-net
     # gate stripes) ---
     for (t, c), net in sorted(route.pj.items()):
         if (net and route.hseg.get((t, c)) is not None):
-            rect(c * g, railY[t] - POLY_W / 2, (c + 1) * g,
-                 railY[t] + POLY_W / 2, LAYER["poly"])
+            rect(c * g, trackY[t] - POLY_W / 2, (c + 1) * g,
+                 trackY[t] + POLY_W / 2, LAYER["poly"])
 
     # --- contacts: diffusion access points, power ends, gate crossings ---
     for dev in netlist.devices:
@@ -169,12 +202,13 @@ def cell_gds(netlist, placement, route, grid_um=0.19, height_um=2.47,
             # floating); a poly jump crossing merges directly (no contact)
             gateNet = dev.gate
             touched = False
-            for t in range(4):
+            for t in range(len(trackY)):
                 right = route.hseg.get((t, c)) if c <= route.width_cols - 2 \
                     else None
-                if (right == gateNet and not route.pj.get((t, c))):
-                    rect(xc - CONTACT_S / 2, railY[t] - CONTACT_S / 2,
-                         xc + CONTACT_S / 2, railY[t] + CONTACT_S / 2,
+                if (right == gateNet and not route.pj.get((t, c))
+                        and not route_m2.get((t, c))):
+                    rect(xc - CONTACT_S / 2, trackY[t] - CONTACT_S / 2,
+                         xc + CONTACT_S / 2, trackY[t] + CONTACT_S / 2,
                          LAYER["contact"])
                     touched = True
                     break
@@ -182,7 +216,7 @@ def cell_gds(netlist, placement, route, grid_um=0.19, height_um=2.47,
                 # poly-only gate connection: the jump merges with the gate
                 # stripe (same layer); no contact is drawn.  The model
                 # guarantees an M1 or poly crossing for every gate.
-                for t in range(4):
+                for t in range(len(trackY)):
                     right = route.hseg.get((t, c)) \
                         if c <= route.width_cols - 2 else None
                     if (right == gateNet and route.pj.get((t, c))):
@@ -222,7 +256,7 @@ def cell_gds(netlist, placement, route, grid_um=0.19, height_um=2.47,
             if (lo is not None):
                 break
         xc = _track_x(c, g)
-        y = railY[lo] if lo is not None else height_um / 2
+        y = barY[lo] if lo is not None else height_um / 2
         pin_labels.append((xc, y, net))
         cell.add(gdstk.Label(net, origin=(xc, y), layer=LAYER["metal1"]))
     for net in ("VCC", "VDD", "GND", "VSS"):
@@ -241,16 +275,12 @@ def cell_gds(netlist, placement, route, grid_um=0.19, height_um=2.47,
         # label the stripe, not the rail: the checker resolves the pin
         # bbox from the metal around the label, and a rail label picks up
         # the whole rail (and any poly crossing it)
-        y = railY[lo]
+        y = barY[lo]
         pin_labels.append((xc, y, net))
         cell.add(gdstk.Label(net, origin=(xc, y), layer=LAYER["metal1"]))
     lib = gdstk.Library("SYNTH", unit=1e-6, precision=1e-9)
     lib.add(cell)
     return lib, pin_labels
-
-
-def lo_hi_inverted(route, c):
-    return route.lo[c] > route.hi[c]
 
 
 def write_cell_gds(path, netlist, placement, route, **kw):

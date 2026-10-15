@@ -29,6 +29,7 @@ from ortools.sat.python import cp_model
 from .netlist import build_diffusion_blocks
 
 DEFAULT_GRID_UM = 0.19
+DEFAULT_HEIGHT_UM = 2.47     # 13 v-grids -- the GSCL45 CoreSite height
 MIN_LEG_UM = 0.4
 MAX_LEG_UM = 1.0
 DIFF_BREAK_UM = 0.19          # diffusion-break gap (one grid column)
@@ -191,6 +192,7 @@ def build_layout_model(netlist, grid_um=DEFAULT_GRID_UM,
     # boundary separates them), which is exactly how the real GSCL45
     # NAND2X1 packs P and N ends into the same columns.
     spots = []
+    gate_spots = []                # (centre expr, jlt) for the width rule
     for block in blocks:
         zone = "P" if block.first.is_p else "N"
         spots.append((dev_vars[block.first][0], block.left_net, None,
@@ -220,7 +222,9 @@ def build_layout_model(netlist, grid_um=DEFAULT_GRID_UM,
             jlt = model.NewBoolVar("jlt_%s_%d" % (dev.name, j))
             model.Add(k >= j + 1).OnlyEnforceIf(jlt)
             model.Add(k <= j).OnlyEnforceIf(jlt.Not())
-            spots.append((start + j * legw + half, dev.gate, jlt, dev, "G"))
+            centre = start + j * legw + half
+            spots.append((centre, dev.gate, jlt, dev, "G"))
+            gate_spots.append((centre, jlt))
     for i in range(len(spots)):
         for j2 in range(i + 1, len(spots)):
             a, b = spots[i], spots[j2]
@@ -290,6 +294,16 @@ def build_layout_model(netlist, grid_um=DEFAULT_GRID_UM,
 
     width = model.NewIntVar(1, width_ub + 1, "width")
     model.AddMaxEquality(width, end_vars)
+    # a gate centre at the LAST column can never be contacted: a
+    # horizontal segment spans [c*g, (c+1)*g] and the last segment ends
+    # at (width-1)*g, short of the stripe at (width-0.5)*g -- the route
+    # stage would be unsatisfiable, so the placement must not produce
+    # one (a 2-col device ending at the cell edge put its gate exactly
+    # there, which is what unravelled the mixed-width INV).  n.b. this
+    # makes a cell whose every arrangement leaves a gate on the last
+    # column (e.g. a lone 2-col transistor) genuinely infeasible.
+    for centre, jlt in gate_spots:
+        model.Add(centre <= width - 2).OnlyEnforceIf(jlt)
     totalLegs = model.NewIntVar(1, sum(
         max(1, int(math.ceil(w_cols[dev] / min_leg_cols)))
         for dev in netlist.devices), "totalLegs")

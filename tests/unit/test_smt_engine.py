@@ -101,9 +101,16 @@ def test_power_ends_reach_power_rails():
     for c in range(rt.width_cols):
         for net, lo, hi, slot in rt.stripes(c):
             if (net in ("VCC", "VDD")):
-                assert hi == 5
+                assert hi == 8        # bar domain: the VCC rail is 8
             if (net in ("GND", "VSS")):
-                assert hi == 4
+                assert lo == 0        # bar domain: the GND rail is 0
+            if (net not in ("VCC", "VDD", "GND", "VSS")):
+                # signal bars must stay clear of the power rails (a bar
+                # drawn to the power end would overlap the rail metal)
+                if (slot == "N"):
+                    assert lo >= 1
+                else:
+                    assert hi <= 7
 
 
 def test_pn_stripes_may_share_a_column():
@@ -151,20 +158,32 @@ Mn n1 B GND GND NMOS W=1.0u L=0.05u
                 and r.report is None))
 
 
-def test_pn_halves_join_at_a_dual_column():
+def test_pn_halves_join_across_the_boundary():
     """NAND2's Y (P ends + N ends) must be one electrically continuous
-    net: the solver picks a dual column whose two bars both reach the
-    well boundary, and the exact connectivity check passes."""
+    net.  On the 7-track model the halves join through the T3 boundary
+    corridor: Y owns a bar reaching T3 in each half with same-net T3
+    segments between them (a same-net dual column is the special case
+    where both bars sit in one column).  The exact connectivity check
+    passes either way."""
     nl = CellNetlist(parse_spice_subckt(NAND2))
     sol = solve_layout(nl, time_limit_s=15)
     rt = solve_routing(nl, sol.devices, time_limit_s=25)
     assert rt.ok
     duals = [c for c in range(rt.width_cols)
-             if rt.col_owner_n[c] is not None
-             and rt.col_owner_n[c] == rt.col_owner_p[c]]
-    assert duals, "expected a same-net dual column"
-    for c in duals:
-        assert rt.reachB_n[c] and rt.reachB_p[c]
+             if rt.col_owner_n[c] == "Y" and rt.col_owner_p[c] == "Y"]
+    if (duals):
+        for c in duals:
+            assert rt.reachB_n[c] and rt.reachB_p[c]
+    else:
+        nReach = [c for c in range(rt.width_cols)
+                  if rt.col_owner_n[c] == "Y" and rt.reachB_n[c]]
+        pReach = [c for c in range(rt.width_cols)
+                  if rt.col_owner_p[c] == "Y" and rt.reachB_p[c]]
+        assert nReach, "Y must reach the boundary from the N half"
+        assert pReach, "Y must reach the boundary from the P half"
+        t3segs = [c for (t, c), n2 in rt.hseg.items()
+                  if t == 3 and n2 == "Y" and not rt.m2.get((t, c))]
+        assert t3segs, "Y must route the T3 corridor between its halves"
     from smt_engine.verify import verify_cell
     report = verify_cell(nl, sol.devices, rt)
     assert report.ok(), report.violations
@@ -186,9 +205,10 @@ def test_cross_net_dual_bars_must_not_both_reach_boundary():
     from smt_engine.route_model import RouteResult
     broken = RouteResult(rt.status_name, rt.col_owner_n, rt.col_owner_p,
                          rt.lo_n, rt.hi_n, rt.lo_p, rt.hi_p, rt.hseg, rt.pj,
+                         rt.m2, rt.via,
                          [True] * rt.width_cols, [True] * rt.width_cols,
                          rt.width_cols, rt.hseg_count, rt.vseg_count,
-                         rt.pj_count)
+                         rt.pj_count, rt.m2_count, rt.via_count)
     from smt_engine.verify import verify_cell
     report = verify_cell(nl, sol.devices, broken)
     assert not report.ok()
@@ -209,41 +229,43 @@ def test_poly_jump_legality_checks():
     from smt_engine.verify import verify_cell
 
     def with_pj(pj):
-        return RouteResult(*(base + (rt.hseg, pj, rt.reachB_n,
-                                     rt.reachB_p, rt.width_cols,
-                                     rt.hseg_count, rt.vseg_count,
-                                     len(pj))))
+        return RouteResult(*(base + (rt.hseg, pj, rt.m2, rt.via,
+                                     rt.reachB_n, rt.reachB_p,
+                                     rt.width_cols, rt.hseg_count,
+                                     rt.vseg_count, len(pj),
+                                     rt.m2_count, rt.via_count)))
 
-    # rail 1 and rail 3 are empty rows in NAND2 (all devices sit in row
-    # 0): a poly jump on rail 1 crossing the A gate at column 1 is legal.
-    # The same-net M1 segment at (1,0) must go: a layer switch without a
-    # gate junction breaks the wire (the E5 rule).
+    # track 2 is N row 1, empty in NAND2 (all devices sit in row 0): a
+    # poly jump on track 2 crossing the A gate at column 1 is legal.
+    # A same-net M1 segment at (2,0) must NOT be there: a layer switch
+    # without a gate junction breaks the wire (the E5 rule).
     hseg = dict(rt.hseg)
-    if (hseg.get((1, 0)) == "A"):
-        del hseg[(1, 0)]
-    hseg[(1, 1)] = "A"
+    if (hseg.get((2, 0)) == "A"):
+        del hseg[(2, 0)]
+    hseg[(2, 1)] = "A"
     legal = dict(rt.pj)
-    legal[(1, 1)] = True
-    r = RouteResult(*(base + (hseg, legal, rt.reachB_n, rt.reachB_p,
-                              rt.width_cols, len(hseg),
-                              rt.vseg_count, 1)))
+    legal[(2, 1)] = True
+    r = RouteResult(*(base + (hseg, legal, rt.m2, rt.via, rt.reachB_n,
+                              rt.reachB_p, rt.width_cols, len(hseg),
+                              rt.vseg_count, 1, rt.m2_count,
+                              rt.via_count)))
     report = verify_cell(nl, sol.devices, r)
     assert report.ok(), report.violations
-    # over active: rail 0 at columns 1..2 carries MnA's diffusion
+    # over active: track 0 at columns 1..2 carries MnA's diffusion
     bad1 = with_pj({(0, 1): True})
     bad1.hseg[(0, 1)] = "Y"
     report = verify_cell(nl, sol.devices, bad1)
     assert not report.ok()
     assert any("crosses active" in v for v in report.violations)
     # foreign gate: a Y jump crossing the A gate at column 1
-    bad2 = with_pj({(1, 1): True})
-    bad2.hseg[(1, 1)] = "Y"
+    bad2 = with_pj({(2, 1): True})
+    bad2.hseg[(2, 1)] = "Y"
     report = verify_cell(nl, sol.devices, bad2)
     assert not report.ok()
     assert any("foreign gate" in v for v in report.violations)
     # floating run: a poly jump with no same-net gate in its run
-    bad3 = with_pj({(1, 2): True})
-    bad3.hseg[(1, 2)] = "Y"
+    bad3 = with_pj({(2, 2): True})
+    bad3.hseg[(2, 2)] = "Y"
     report = verify_cell(nl, sol.devices, bad3)
     assert not report.ok()
     assert any("no gate" in v for v in report.violations)
@@ -319,43 +341,106 @@ def test_gate_contact_must_cross_the_column():
                 hseg.pop((t, c), None)
     broken = RouteResult(rt.status_name, rt.col_owner_n, rt.col_owner_p,
                          rt.lo_n, rt.hi_n, rt.lo_p, rt.hi_p, hseg, rt.pj,
+                         rt.m2, rt.via,
                          rt.reachB_n, rt.reachB_p, rt.width_cols,
-                         len(hseg), rt.vseg_count, rt.pj_count)
+                         len(hseg), rt.vseg_count, rt.pj_count,
+                         rt.m2_count, rt.via_count)
     report = verify_cell(nl, sol.devices, broken)
     assert not report.ok()
     assert any("no segment crosses" in v for v in report.violations)
 
 
-PJ_REQUIRED = """\
-.subckt T VCC Y Z Q A GND
-MnL Y A GND GND NMOS W=0.5u L=0.05u
-MpX Q A VCC VCC PMOS W=0.5u L=0.05u
-MpR Z A VCC VCC PMOS W=0.5u L=0.05u
+WALL_SP = """\
+.subckt T VCC Y Z3 A B C GND
+MnY  Y   B GND GND NMOS
+MpY  Y   C VCC VCC PMOS
+MnA1 GND A GND GND NMOS
+MnA2 GND A Z3  GND NMOS
+MpA2 VCC A VCC VCC PMOS
 .end
 """
 
 
-def test_poly_jump_required_cell_routes():
-    """A gate net (A) whose M1 path is blocked on all four rails (GND and
-    VCC stripes both at column 2) can still route: a poly jump leaves the
-    N gate at the device edge, crosses the power stripes over field oxide
-    (row 0 is empty), and merges with the P gate -- the exact real-world
-    poly-jump use.  M1-only is infeasible."""
+def _wall_placement(nl):
+    """Placement whose column 4 walls M1 completely: MnY (N row 0) and
+    MpY (P row 1) both end at column 4, so net Y forms a dual column
+    there -- both bars reach T3, the N bar covering T0..T3 and the P bar
+    T3..T6.  Every track is therefore blocked for foreign M1 segments at
+    (t,3)/(t,4).  A's gates sit at columns 1 and 8 on stripes spanning
+    track 2 (N row 1, empty), so track 2 is the escape lane."""
     from smt_engine.layout_model import PlacedTransistor
-    from smt_engine.verify import verify_cell
-    nl = CellNetlist(parse_spice_subckt(PJ_REQUIRED))
     byName = {d.name: d for d in nl.devices}
-    placement = {
-        byName["MnL"]: PlacedTransistor(1, 0, 3, 1),   # row 1, cols 0..3
-        byName["MpX"]: PlacedTransistor(0, 0, 1, 3),   # row 0, cols 0..3
-        byName["MpR"]: PlacedTransistor(1, 6, 1, 3),   # row 1, cols 6..9
+    return {
+        byName["MnY"]:  PlacedTransistor(0, 0, 1, 5),   # N row 0, cols 0..4
+        byName["MpY"]:  PlacedTransistor(1, 0, 1, 5),   # P row 1, cols 0..4
+        byName["MnA1"]: PlacedTransistor(1, 0, 1, 2),   # N row 1, cols 0..1
+        byName["MnA2"]: PlacedTransistor(0, 7, 1, 2),   # N row 0, cols 7..8
+        byName["MpA2"]: PlacedTransistor(1, 7, 1, 2),   # P row 1, cols 7..8
     }
-    with_jumps = solve_routing(nl, placement, poly_jumps=True,
+
+
+def test_poly_jump_required_cell_routes():
+    """A gate net (A) whose M1 path is walled by Y's dual column (all 7
+    tracks blocked at column 4) can still route: a poly jump leaves the
+    N gate at column 1, crosses the wall over field oxide (N row 1 is
+    empty) and merges with the P gate at column 8 -- the exact real-world
+    poly-jump use.  M1-only is infeasible."""
+    from smt_engine.verify import verify_cell
+    nl = CellNetlist(parse_spice_subckt(WALL_SP))
+    placement = _wall_placement(nl)
+    with_jumps = solve_routing(nl, placement, width_cols=10,
+                               poly_jumps=True, metal2=False,
                                time_limit_s=25)
-    without = solve_routing(nl, placement, poly_jumps=False,
+    without = solve_routing(nl, placement, width_cols=10,
+                            poly_jumps=False, metal2=False,
                             time_limit_s=25)
-    assert not without.ok            # M1 cannot cross the stripes
+    assert not without.ok            # M1 cannot cross the wall
     assert with_jumps.ok
     assert with_jumps.pj_count > 0   # the poly jump is actually used
     report = verify_cell(nl, placement, with_jumps)
     assert report.ok(), report.violations
+
+
+def test_m2_escape_routes_when_m1_blocked():
+    """Same walled cell, poly disabled: with the M2 layer enabled the
+    solver escapes -- M2 segments cross the wall in a different layer and
+    join the M1 wire through forced vias at both run ends -- the exact
+    verify stays clean."""
+    from smt_engine.verify import verify_cell
+    nl = CellNetlist(parse_spice_subckt(WALL_SP))
+    placement = _wall_placement(nl)
+    without = solve_routing(nl, placement, width_cols=10,
+                            poly_jumps=False, metal2=False,
+                            time_limit_s=25)
+    assert not without.ok            # M1 cannot cross the wall
+    with_m2 = solve_routing(nl, placement, width_cols=10,
+                            poly_jumps=False, metal2=True,
+                            time_limit_s=25)
+    assert with_m2.ok
+    assert with_m2.m2_count > 0      # the M2 escape is actually used
+    assert with_m2.via_count > 0
+    report = verify_cell(nl, placement, with_m2)
+    assert report.ok(), report.violations
+
+
+def test_m2_run_without_via_fails_verify():
+    """Every maximal M2 run must end in a via on both sides (an M2
+    segment never touches bars or gates -- the via is its only junction).
+    Dropping one via from a verified M2 route must break it."""
+    from smt_engine.route_model import RouteResult
+    from smt_engine.verify import verify_cell
+    nl = CellNetlist(parse_spice_subckt(WALL_SP))
+    placement = _wall_placement(nl)
+    rt = solve_routing(nl, placement, width_cols=10, poly_jumps=False,
+                       metal2=True, time_limit_s=25)
+    assert rt.ok and rt.via_count > 0
+    via = dict(rt.via)
+    victim = next(k for k, on in via.items() if on)
+    via[victim] = False
+    broken = RouteResult(rt.status_name, rt.col_owner_n, rt.col_owner_p,
+                         rt.lo_n, rt.hi_n, rt.lo_p, rt.hi_p, rt.hseg,
+                         rt.pj, rt.m2, via, rt.reachB_n, rt.reachB_p,
+                         rt.width_cols, rt.hseg_count, rt.vseg_count,
+                         rt.pj_count, rt.m2_count, rt.via_count - 1)
+    report = verify_cell(nl, placement, broken)
+    assert not report.ok()

@@ -12,7 +12,15 @@ Wraps the steps that used to be done by hand:
 Usage:
     python verilog2cells.py module.v [--top NAME] [--out DIR]
         [--max-transistors 36] [--jobs N] [--resume]
-        [--skip-verify] [--skip-astran] [--no-png]
+        [--engine auto|smt|astran] [--skip-verify] [--skip-astran]
+        [--no-png]
+
+``--engine`` picks the layout engine per cell.  ``auto`` (default) offers
+small conservatively-shaped cells (<= --smt-max-transistors transistors,
+literal PMOS/NMOS models, numeric W/L -- the astran_lint checks plus an
+SMT budget) to the pure-Python engine in flow/smt_engine and falls back
+to ASTRAN on any failure; every cell's engine is recorded in the report.
+``astran`` is exactly the historical behaviour.
 
 Defaults follow the repo conventions: gscl45nm liberty, the
 ASTRAN-friendly transistor library, row height 13*0.19 = 2.47 um.
@@ -198,7 +206,7 @@ def rank_partitions(insts, lib_sp, areas, budgets, cells_spice_path):
     return best, ranking, report
 
 
-def main(argv=None, on_note=None, should_cancel=None):
+def _build_parser():
     parser = argparse.ArgumentParser(
         description=__doc__.splitlines()[0],
         formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -220,9 +228,24 @@ def main(argv=None, on_note=None, should_cancel=None):
                              "(falls back to --max-transistors when the "
                              "proxy corpus is too small)")
     parser.add_argument("--jobs", type=int, default=1,
-                        help="parallel ASTRAN workers")
+                        help="parallel layout workers")
     parser.add_argument("--resume", action="store_true",
                         help="skip cells whose .sp is unchanged")
+    parser.add_argument("--engine", choices=("auto", "smt", "astran"),
+                        default="auto",
+                        help="layout engine per cell: auto = the pure-"
+                             "Python SMT engine for eligible cells "
+                             "(small, literal PMOS/NMOS, numeric W/L) "
+                             "with transparent ASTRAN fallback; smt = "
+                             "Python only (ineligible cells are a hard "
+                             "error); astran = ASTRAN for everything "
+                             "(the historical behaviour)")
+    parser.add_argument("--smt-budget", type=float, default=120.0,
+                        help="total CP-SAT seconds per cell for the SMT "
+                             "engine (auto/smt engines only)")
+    parser.add_argument("--smt-max-transistors", type=int, default=8,
+                        help="transistor budget for offering a cell to "
+                             "the SMT engine (auto/smt engines only)")
     parser.add_argument("--skip-verify", action="store_true")
     parser.add_argument("--skip-astran", action="store_true")
     parser.add_argument("--no-png", action="store_true")
@@ -231,7 +254,23 @@ def main(argv=None, on_note=None, should_cancel=None):
                              "and re-map the design with the extended "
                              "library (abc) for a design-level benefit "
                              "number; needs measured widths")
-    args = parser.parse_args(argv)
+    return parser
+
+
+def engine_summary(results):
+    """{engine: count} over the queue results (sorted-key ready).
+
+    This is what the driver reports as the per-cell engine split -- the
+    record of which engine produced each layout.
+    """
+    used = {}
+    for r in results:
+        used[r.engine] = used.get(r.engine, 0) + 1
+    return used
+
+
+def main(argv=None, on_note=None, should_cancel=None):
+    args = _build_parser().parse_args(argv)
 
     stem = os.path.splitext(os.path.basename(args.verilog))[0]
     outdir = os.path.abspath(args.out or (stem + "_cells"))
@@ -336,14 +375,24 @@ def main(argv=None, on_note=None, should_cancel=None):
     if args.skip_astran:
         note("layout skipped (--skip-astran)")
     else:
-        note("running ASTRAN queue (jobs=%d) ..." % args.jobs)
+        note("running layout queue (engine=%s, jobs=%d) ..."
+             % (args.engine, args.jobs))
         results = run_queue(sorted(flat), outdir, jobs=args.jobs,
                             resume=args.resume,
-                            should_cancel=should_cancel)
+                            should_cancel=should_cancel,
+                            engine=args.engine,
+                            smt_budget_s=args.smt_budget,
+                            smt_max_transistors=args.smt_max_transistors)
         for r in results:
-            note("%s: %s" % (r.name,
-                             ("width %.2f um (%.0fs)" % (r.width, r.seconds))
-                             if r.ok else "FAILED: " + r.note))
+            note("%s [%s]: %s" % (
+                r.name, r.engine,
+                ("width %.2f um (%.0fs)%s" % (
+                    r.width, r.seconds,
+                    " -- " + r.note if r.note and not r.ok else
+                    (" (%s)" % r.note if r.note else "")))
+                if r.ok else "FAILED: " + r.note))
+        note("engines used: %s" % ", ".join(
+            "%s x%d" % kv for kv in sorted(engine_summary(results).items())))
 
     # ---- 6. report ---------------------------------------------------------
     counts = gf.library_transistor_counts(lib_sp)
@@ -450,9 +499,10 @@ def main(argv=None, on_note=None, should_cancel=None):
                     ", ".join("%sx%d" % kv for kv in
                               sorted(cell_hist.items())),
                     baseline_area, baseline_width))
+        engine_by_block = {r.name: r.engine for r in results}
         fh.write("## Blocks\n\n")
-        fh.write("| block | members | T | discrete um | custom um | "
-                 "saving | layout |\n|---|---|---|---|---|---|\n")
+        fh.write("| block | members | T | engine | discrete um | custom um | "
+                 "saving | layout |\n|---|---|---|---|---|---|---|---|\n")
         for name in sorted(flat):
             members = block_members[name]
             member_types = sorted({next(i for i in insts if i.name == m)
@@ -463,17 +513,24 @@ def main(argv=None, on_note=None, should_cancel=None):
                       if custom else "--")
             png = ("[png](png/%s.png)" % name if any(
                 p.endswith(name + ".png") for p in pngs) else "")
-            fh.write("| %s | %dx (%s) | %d | %.2f | %s | %s | %s |\n"
+            fh.write("| %s | %dx (%s) | %d | %s | %.2f | %s | %s | %s |\n"
                      % (name, len(members), "+".join(member_types),
-                        flat[name][1], disc,
+                        flat[name][1], engine_by_block.get(name, "--"),
+                        disc,
                         ("%.2f" % custom) if custom else "--", saving, png))
-        fh.write("| **total** | %d | %d | **%.2f** | **%s** | %s | |\n"
+        used = engine_summary(results)
+        fh.write("| **total** | %d | %d | %s | **%.2f** | **%s** | %s | |\n"
                  % (len(insts), sum(t for _, t in flat.values()),
+                    ", ".join("%s x%d" % kv for kv in sorted(used.items())),
                     discrete_total,
                     ("%.2f" % custom_total) if custom_total else "--",
                     ("%.1f%%" % ((discrete_total - custom_total)
                                  / discrete_total * 100))
                     if custom_total else "--"))
+        if used.get("smt"):
+            fh.write("\n%d cell(s) laid out by the pure-Python SMT engine "
+                     "(verify + layout-sanity clean); the rest by ASTRAN.\n"
+                     % used["smt"])
         if ranking:
             fh.write("\n## Partition search (width-proxy predictions)\n\n")
             fh.write("| budget (T) | blocks | predicted width (um) |"
