@@ -1307,3 +1307,36 @@ layout_sanity 全清。
 cell 的访问点假阳性未清）；route_grid 需设计笔记 §8 四项槽位适配
 （边列访问点/多槽暴露/介帧偏移/W+2 横向列）才能关闭槽位 cell——
 两者在 die-view-router 轮处理。全量 542 绿 + 1 诚实 skip。
+
+## §5.43 speculate 环 + 槽位路由器：首个 ASTRAN 同口径 Python cell（2026-10-16）
+
+**(1) speculate 朝向选择（bbd4535）**：bd3fda4 证明库 NAND2X1 的纯代价
+最优朝向结构性不可布（双电源访问挤在输入栅边 0，唯一合法交叉节点即输
+出 Y 的 P/N 合并点）而镜像朝向 1 次尝试即布通。据此落地 doc §2.2 的
+speculate 环：确定性 top-K 候选池（SA 最优/flip-both/flip-P/N/介面镜
+像/euler 种子/代价排序的逐块翻转组合，1024 上限，内容键去重）→ 300 次
+预算试布 → 首 FEASIBLE 胜出，否则最低 (冲突, 代价) 兜底。sa_refine 本
+体零改动；NAND2X1 端到端闭合（FEASIBLE + verify 清 + 0.765µm
+GDS/sanity 清），INVX1/NAND2 无回归，8T 全链 19.2s。
+
+**(2) GDS 写侧两缺口（8f9c35d）**：T3 走廊栅接触方块（规则与路由器逐
+项一致，几何诚实性有证明）+ 门-only 网络引脚标签。GDS 文件按 1nm 数据
+库单位存坐标，测试断言须用 5.01e-4µm 容差 + 条带包含而非 1e-9 中心相
+等——记入坑清单。
+
+**(3) 共享介面视图 + 路由器槽位适配（bd3fda4）**：die_view.py 成为
+smt_engine 一等公民（route_grid 与 verify 消费同一推导）；路由器按设
+计笔记 §8 适配槽位模型（边轴网格 x=0.2375+c·0.19、W 高条带覆盖、门-only
+网络无幻影引脚端子）。
+
+**(4) 第三轮 17-cell 基准（77 分钟，bench_int3）**：链条全程工作——
+rung3 槽位布局把 ctrl/COMPLEX0 从 12 列压到 6 列（同口径），路由失败
+为诚实 plateau（最优 3 冲突：cl0#B/cl0#Y/cl1#Y 走廊/电源墙类，镜像组
+合穷尽）。**能闭合的库 cell 不在基准集内**（基准只走 outputs/，INVX1/
+NAND2X1 在 std_celllib）——基准集需补入库 cell。COMPLEX 系的残余冲突
+类是下一轮目标：路由器轨道模型升级 / 分解变体 / 精确窗口修复
+（doc §2.4 rung-1-as-window-fixer）。
+
+**当前替换快照**：INVX1（0.575µm）、NAND2X1（0.765µm）、NAND2-inline、
+INV-inline 四个 cell 纯 Python 闭环（verify+sanity 清，宽度比 ~1.0）；
+宽度对拍 14/14 带内 [0.80, 1.26]；全量 586 绿 + 1 诚实 skip。
