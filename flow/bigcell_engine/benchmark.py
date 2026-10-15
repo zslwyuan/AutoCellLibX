@@ -39,6 +39,7 @@ from smt_engine.netlist import CellNetlist
 from smt_engine.verify import verify_cell
 
 from .engine import GRID_UM, UnsupportedCell, synth_cell
+from . import gds_cells
 
 BENCHMARK_GLOBS = ("original_astran_cells/*.sp", "outputs/*/*.sp")
 
@@ -465,7 +466,16 @@ def run_benchmark(cells, out_dir, exact_budget_s=60.0, grid_budget_s=120.0,
         vkw = {"blocks": layout_blocks} if layout_blocks is not None else {}
 
         os.makedirs(os.path.dirname(gds_path), exist_ok=True)
-        gds_writer(gds_path, layout_nl, placement, route)
+        if (meta.get("slot_emit") is not None):
+            # slot-model cell: the ASTRAN-style emitter needs the
+            # orderings + leg widths, not just the placement IR
+            se = meta["slot_emit"]
+            gds_cells.write_cell_gds(
+                gds_path, layout_nl, placement, se["width_cols"],
+                se["ordering_p"], se["ordering_n"], se["leg_widths"],
+                route=route)
+        else:
+            gds_writer(gds_path, layout_nl, placement, route)
         try:
             record["verdicts"]["verify"] = _verdict(
                 verify_fn(layout_nl, placement, route, **vkw))

@@ -67,13 +67,15 @@ def _default_grid_router():
 def _heuristic_placement(netlist):
     """Rung-3 placement: fold -> blocks -> seeds -> euler -> SA -> columns.
 
-    Returns (netlist3, placements, width_cols, leg_widths, blocks) where
-    ``netlist3`` is the (possibly fold-expanded) netlist the placement is
-    expressed against and ``blocks`` is the ORIENTATION-AWARE block view
-    the placement was built from: the refined orderings' blocks, whose
-    members carry the SA mirror state.  verify_cell must consult these
-    (not build_bigcell_blocks' pristine list) or every mirrored block
-    pair reads as a missing diffusion break.
+    Returns (netlist3, placements, width_cols, leg_widths, blocks,
+    orderings) where ``netlist3`` is the (possibly fold-expanded) netlist
+    the placement is expressed against, ``blocks`` is the ORIENTATION-
+    AWARE block view the placement was built from (the refined orderings'
+    blocks, whose members carry the SA mirror state -- verify_cell must
+    consult these, not build_bigcell_blocks' pristine list, or every
+    mirrored block pair reads as a missing diffusion break), and
+    ``orderings`` is the (ordering_p, ordering_n) tuple the GDS slot
+    emitter needs.
     Deterministic; raises on structural failure.
     """
     from . import geometry
@@ -91,7 +93,8 @@ def _heuristic_placement(netlist):
     placements, width_cols = geometry.layout_cell(
         ordering_p, ordering_n, leg_widths)
     blocks_view = list(ordering_p) + list(ordering_n)
-    return netlist3, placements, width_cols, leg_widths, blocks_view
+    return (netlist3, placements, width_cols, leg_widths, blocks_view,
+            (ordering_p, ordering_n))
 
 
 class UnsupportedCell(Exception):
@@ -340,7 +343,7 @@ def synth_cell(netlist, exact_budget_s=60.0, grid_budget_s=120.0,
     # --- rung 3: heuristic placement chain + the grid router ------------
     t0 = time.time()
     try:
-        netlist3, placements3, width3, leg_widths3, blocks3 = \
+        netlist3, placements3, width3, leg_widths3, blocks3, orderings3 = \
             _heuristic_placement(netlist)
     except Exception as exc:                       # noqa: BLE001
         _attempt(meta, 3, _ENG_FULL, False, status="ERROR", stage="placement",
@@ -384,6 +387,10 @@ def synth_cell(netlist, exact_budget_s=60.0, grid_budget_s=120.0,
             meta["engine"] = _ENG_FULL
             meta["width_cols"] = width3
             meta["width_um"] = width3 * GRID_UM
+            meta["slot_emit"] = {"width_cols": width3,
+                                 "ordering_p": orderings3[0],
+                                 "ordering_n": orderings3[1],
+                                 "leg_widths": leg_widths3}
             return placements3, route3, meta
         _attempt(meta, 3, _ENG_FULL, False,
                  status=getattr(route3, "status_name", "UNKNOWN"),
