@@ -736,3 +736,141 @@ def test_stagnation_fails_with_an_honest_note():
     assert "no conflict-free routing" in r.fail_note
     assert "best" in r.fail_note and "unresolved" in r.fail_note
     assert r.width_cols >= max(p.end_col for p in placement.values())
+
+
+# ---------------- slot geometry closure (design note section 8) ----------
+
+INVX1_SP = """\
+.subckt INVX1 VCC Y A GND
+M0 Y A VCC VCC PMOS W=0.5u L=0.05u
+M1 Y A GND GND NMOS W=0.25u L=0.05u
+.ends INVX1
+"""
+
+INLINE_NAND2_SP = """\
+.subckt NAND2 VCC Y A B GND
+MpA Y A VCC VCC PMOS W=0.5u L=0.05u
+MpB VCC B Y VCC PMOS W=0.5u L=0.05u
+MnA Y A n1 GND NMOS W=0.5u L=0.05u
+MnB n1 B GND GND NMOS W=0.5u L=0.05u
+.ends NAND2
+"""
+
+# the cellsAstranFriendly.sp NAND2X1: its SA orientation puts BOTH power
+# rails' accesses on the gate column (edge 0), leaving the well-boundary
+# corridor track T3 as the input gate's only crossing -- whose right
+# endpoint is also the forced node where the output's P-half and N-half
+# stripes must meet.  One node, two nets, no alternative: the negotiation
+# plateau is structural, not a search failure (see the rung3_closure
+# scratch driver for the mirrored-orientation demonstration).
+LIB_NAND2X1_CELL = "NAND2X1"
+
+
+def _slot_state(sp):
+    """(netlist3, placement, width, leg_widths, blocks) via rung 3."""
+    from bigcell_engine.engine import _heuristic_placement
+    nl = CellNetlist(parse_spice_subckt(sp))
+    return _heuristic_placement(nl)
+
+
+def _lib_subckt(cell, flow_dir):
+    import os
+    import re
+    path = os.path.join(flow_dir, "..", "std_celllib",
+                        "cellsAstranFriendly.sp")
+    text = open(path, errors="ignore").read()
+    return next(m.group(0) for m in re.finditer(
+        r"\.subckt\s+%s\b.*?\.ends" % cell, text, re.S | re.I))
+
+
+@pytest.mark.parametrize("sp,label", [
+    (INVX1_SP, "INVX1"), (INLINE_NAND2_SP, "NAND2")])
+def test_slot_cells_route_and_verify_clean(sp, label):
+    nl3, pl, w, lws, blocks = _slot_state(sp)
+    r = route_cell(nl3, pl, w, lws)
+    assert r.ok, (r.status_name, r.fail_note)
+    rep = verify_cell(nl3, pl, r, blocks=blocks)
+    assert rep.ok(), "%s: %s" % (label, rep.violations)
+
+
+def test_slot_route_end_to_end_gds_and_sanity(tmp_path):
+    """The full closed loop on the slot model: place -> route FEASIBLE ->
+    verify clean -> gds_cells.write_cell_gds -> layout_sanity clean."""
+    from layout_sanity import check_layout
+    from bigcell_engine.gds_cells import write_cell_gds
+    nl3, pl, w, lws, blocks = _slot_state(INVX1_SP)
+    r = route_cell(nl3, pl, w, lws)
+    assert r.ok, (r.status_name, r.fail_note)
+    rep = verify_cell(nl3, pl, r, blocks=blocks)
+    assert rep.ok(), rep.violations
+    ordering_p = [b for b in blocks if b.first.is_p]
+    ordering_n = [b for b in blocks if not b.first.is_p]
+    assert ordering_p and ordering_n
+    gds = str(tmp_path / "INVX1.gds")
+    write_cell_gds(gds, nl3, pl, w, ordering_p, ordering_n, lws,
+                   route=r, cell_name="INVX1")
+    sanity = check_layout(gds, units_per_um=1.0)
+    assert sanity.ok(), sanity.violations
+
+
+def test_slot_route_is_byte_stable_in_process():
+    nl3, pl, w, lws, _blocks = _slot_state(INLINE_NAND2_SP)
+    sigs = set()
+    for _run in range(2):
+        r = route_cell(nl3, pl, w, lws)
+        assert r.ok, (r.status_name, r.fail_note)
+        sigs.add(hashlib.sha256(route_signature(r).encode()).hexdigest())
+    assert len(sigs) == 1
+
+
+_SLOT_HASH_HELPER = """\
+import hashlib, os, sys
+sys.path.insert(0, os.getcwd())
+from smt_cell_placer import parse_spice_subckt
+from smt_engine.netlist import CellNetlist
+from bigcell_engine.engine import _heuristic_placement
+from bigcell_engine.route_grid import route_cell, route_signature
+
+SP = %r
+
+nl = CellNetlist(parse_spice_subckt(SP))
+nl3, pl, w, lws, _blocks = _heuristic_placement(nl)
+r = route_cell(nl3, pl, w, lws)
+assert r.ok, (r.status_name, r.fail_note)
+print(hashlib.sha256(route_signature(r).encode()).hexdigest())
+""" % (INLINE_NAND2_SP,)
+
+
+def test_slot_route_is_byte_stable_across_processes(flow_dir, tmp_path):
+    """Cross-process determinism (invariant 9): identical route under
+    different PYTHONHASHSEED values on a slot-model cell."""
+    import os
+    import subprocess
+    helper = tmp_path / "slot_route_hash_helper.py"
+    helper.write_text(_SLOT_HASH_HELPER)
+    digests = set()
+    for seed in ("0", "1"):
+        env = dict(os.environ, PYTHONHASHSEED=seed)
+        proc = subprocess.run([sys.executable, str(helper)], cwd=flow_dir,
+                              env=env, capture_output=True, text=True,
+                              check=True)
+        digests.add(proc.stdout.strip().splitlines()[-1])
+    assert len(digests) == 1, digests
+
+
+def test_lib_nand2x1_slot_route_plateaus_honestly(flow_dir):
+    """The library NAND2X1's SA orientation double-walls the gate column
+    (both power accesses on edge 0): the input gate's only crossing is
+    the corridor track whose right endpoint is also the output's forced
+    P<->N tie node -- one node, two nets, no alternative.  The router
+    must fail HONESTLY (plateau note, no bogus clash, width invariant)
+    and never report a success it cannot draw."""
+    nl3, pl, w, lws, _blocks = _slot_state(_lib_subckt(LIB_NAND2X1_CELL,
+                                                       flow_dir))
+    r = route_cell(nl3, pl, w, lws)
+    assert not r.ok and r.status_name == "UNKNOWN"
+    note = getattr(r, "fail_note", None) or ""
+    assert "no conflict-free routing" in note
+    assert "unresolved: A" in note
+    assert "terminal clash" not in note
+    assert r.width_cols >= max(p.end_col for p in pl.values())

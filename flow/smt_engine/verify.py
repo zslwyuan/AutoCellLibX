@@ -30,6 +30,7 @@ a solver bug cannot silently ship a bad cell:
 Deterministic and pure: no solver, no randomness.
 """
 
+from . import die_view
 from .netlist import (build_diffusion_blocks, diffusion_access_points,
                       gate_access_points)
 from .route_model import (BOUNDARY_T, N_TRACKS, ROW_TRACK, ROW_TRACKS,
@@ -97,13 +98,15 @@ def verify_cell(netlist, placement, route, grid_um=0.19, height_um=2.47,
     historical base-decomposition behaviour.
 
     ``slot_model`` switches the diffusion access-point derivation to the
-    bigcell slot model (doc/BIGCELL_SLOT_GEOMETRY.md): member terminals
-    sit on the member's EDGE columns (the exact engine insets a
-    width-1 leg's right access into its own column), multi-region nets
+    shared slot-model die view (doc/BIGCELL_SLOT_GEOMETRY.md): member
+    terminals sit on the member's EDGE columns (the exact engine insets a
+    width-1 leg's right access into its own column) and multi-region nets
     (one net occupying several edge slots of a row) are access points
-    everywhere so their regions stay tied, and the orientation-aware
-    block view is required -- pass ``blocks`` with it.  Additive only:
-    the default path is byte-identical to the historical behaviour.
+    everywhere so their regions stay tied.  The derivation is the shared
+    smt_engine.die_view reconstruction, so it also activates implicitly
+    whenever ``blocks`` (the orientation-aware view bigcell passes) is
+    supplied for a slot-model placement -- the default path stays
+    byte-identical to the historical behaviour.
     """
     violations = []
     trackY, barY = track_geometry(height_um, grid_um)
@@ -176,19 +179,24 @@ def verify_cell(netlist, placement, route, grid_um=0.19, height_um=2.47,
                                   % (a[4], b[4]))
 
     # ---- routing invariants ----
-    if slot_model:
-        # the bigcell slot model's access derivation (lazy import: keeps
-        # smt_engine importable without bigcell_engine).  The caller must
-        # supply the orientation-aware view in ``blocks`` (block_objs --
-        # ``blocks`` itself is rebound to plain rects below); it is split
-        # back into the two rows by polarity.
-        from bigcell_engine.geometry import slot_diffusion_access
-        rows_p = [b for b in block_objs if b.first.is_p]
-        rows_n = [b for b in block_objs if not b.first.is_p]
-        sig_diff, power_diff = slot_diffusion_access(
-            netlist, placement, (rows_p, rows_n),
-            {dev.name: (p.legs, p.leg_width_cols)
-             for dev, p in placement.items()})
+    # Access-point derivation (doc/BIGCELL_SLOT_GEOMETRY.md sections 7-8):
+    # the bigcell slot chain's placement (every leg one column wide) is
+    # verified against the SHARED die view (smt_engine.die_view) -- the
+    # same orientation-aware, edge-column derivation route_grid routes
+    # with, so the router's terminals and the verifier's requirements
+    # agree even where the die cannot distinguish a single block's flip.
+    # The supplied ``blocks`` stay authoritative for the LAYOUT
+    # invariants above (abutment, breaks, overlap).  A ``blocks`` view on
+    # a non-slot placement instead only re-orients the historical inset
+    # walk (diffusion_access_points' blocks parameter); no ``blocks`` at
+    # all keeps the byte-identical base behaviour.
+    if slot_model or (block_objs is not None
+                      and die_view.is_slot_placement(placement)):
+        sig_diff, power_diff = die_view.die_slot_access_points(
+            netlist, placement)
+    elif block_objs is not None:
+        sig_diff, power_diff = diffusion_access_points(
+            netlist, placement, block_objs)
     else:
         sig_diff, power_diff = diffusion_access_points(netlist, placement)
     gate = gate_access_points(netlist, placement)

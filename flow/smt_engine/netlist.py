@@ -283,7 +283,7 @@ def exposed_net_set(netlist):
     return nets
 
 
-def diffusion_access_points(netlist, placement):
+def diffusion_access_points(netlist, placement, blocks=None):
     """Per-net access columns on diffusion, per *terminal device*.
 
     placement maps Device -> object with start_col, legs, leg_width_cols.
@@ -295,14 +295,24 @@ def diffusion_access_points(netlist, placement):
     have a block-end terminal elsewhere* (an internal node shared in a
     chain is complete through diffusion and needs no contact).
 
+    ``blocks`` optionally supplies the ORIENTATION-AWARE block view the
+    placement was built from (bigcell's SA-refined orderings carry each
+    block's die member order and die edge nets); the walk then runs over
+    the given view instead of build_diffusion_blocks' pristine
+    decomposition, so a SA-mirrored placement's nets land on the columns
+    they actually occupy.  Default None keeps the historical base walk
+    byte-identical for exact-engine placements.
+
     Returns ({signal_net: [(col, device)]}, {power_net: [(col, device)]}).
     """
     from collections import defaultdict
+    if blocks is None:
+        blocks = build_diffusion_blocks(netlist)
     signal = defaultdict(list)
     power = defaultdict(list)
     powerNames = ("VCC", "GND", "VDD", "VSS")
     exposed = exposed_net_set(netlist)
-    for block in build_diffusion_blocks(netlist):
+    for block in blocks:
         col = placement[block.first].start_col
         for member in block.members:
             p = placement[member.device]

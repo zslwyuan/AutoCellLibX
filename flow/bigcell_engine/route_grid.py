@@ -32,10 +32,41 @@ per-column occupancy is *solidified* (filled contiguously per slot) so the
 emitted stripe interval equals the occupied set, matching the bar-coverage
 semantics of smt_engine.verify's BFS exactly.
 
-Diffusion access points are derived **orientation-aware** (_die_orientation
-+ _oriented_diffusion_access_points): the heuristic placement mirrors
-diffusion blocks (netlist_ext.mirror_block -- members reversed, each
-member's edge nets swapped), and the base smt_engine.netlist walk
+Slot geometry (doc/BIGCELL_SLOT_GEOMETRY.md section 8)
+------------------------------------------------------
+Placements whose every leg is one column wide (die_view.is_slot_placement,
+the fold/slot chain's signature) route on the SLOT grid:
+
+- the grid runs on the EDGE axis: member columns 0..W-1 plus the right
+  terminal edge W (which doubles as ASTRAN's trailing lateral GAP
+  escape column; the leading one's role is played by the per-column
+  pin hubs) -- width_cols = W + 1, so route column c draws at die x
+  0.2375 + c*0.19 (gds_cells' edge_x), in line with every contact;
+- diffusion terminals come from the SHARED die view
+  (smt_engine.die_view.die_slot_access_points): left access at the
+  member's start_col edge, right access at start_col + legs*leg_width_cols
+  (the exact engine's walk insets a width-1 leg's right access into its
+  own column), every slot of a multi-region net exposed so its regions
+  stay tied;
+- diffusion coverage / vertical costs realign to the W-tall strips, and
+  gate contact tracks are restricted to the strip x row-band
+  intersection, plus the corridor track T3 where an aligned P/N gate
+  pair makes the drawn merged poly continuous (verify's row-band spans
+  accept every track allowed here);
+- a gate-only net (no diffusion access) owns no pin terminal -- the
+  RouteResult vocabulary has no pin geometry -- and its crossing is
+  materialized directly by _complete_junctions (poly jump preferred,
+  M1 crossing last resort), ASTRAN's gate-element turn expressed in
+  this vocabulary;
+- exact-engine placements (any leg wider than one column) keep the
+  historical graph byte-for-byte: inset accesses via
+  _oriented_diffusion_access_points, row-band coverage, pins on every
+  external net.
+
+Diffusion access points are derived **orientation-aware** (die_view,
+lifted from this module): the heuristic placement mirrors diffusion
+blocks (netlist_ext.mirror_block -- members reversed, each member's
+edge nets swapped), and the base smt_engine.netlist walk
 extrapolates a mirrored block from its base-first member's column, which
 scrambles net->column and once built power stripes on columns where other
 signals' diffusions actually sit ("terminal clash at ('M1', 4, 8): cl0#Y
@@ -44,7 +75,7 @@ start_cols descend in the block's own member order; a single-member
 block's flip is recovered from place_row's abutment gaps (gap 0 <=> the
 facing end nets are equal, one break column <=> they differ), defaulting
 to pristine when no constraint pins it -- the one case the die cannot
-distinguish, where the base walk (verify's view) assumes pristine too.
+distinguish, where every consumer of die_view makes the same assumption.
 
 Per column there are also: a poly node per gate stripe (contacted by M1
 crossings, merged by poly jumps), a 0-cost ``inoutCnt`` hub wired to every
@@ -88,9 +119,9 @@ smt_engine/verify.py and smt_engine/gds.py unchanged.
 """
 
 import heapq
-import itertools
 
-from bigcell_engine.geometry import BREAK_GAP_COLS
+from bigcell_engine.geometry import (BREAK_GAP_COLS, MID_UM, WELL_GAP_UM)
+from smt_engine import die_view
 from smt_engine.gds import (CONTACT_S, POLY_OVERHANG, row_geometry,
                             track_geometry)
 from smt_engine.netlist import (build_diffusion_blocks, exposed_net_set,
@@ -161,134 +192,32 @@ def _row_track_ranges(height_um, grid_um):
 def _die_orientation(netlist, placement, break_cols=BREAK_GAP_COLS):
     """Per-device die orientation: {device name: (left_net, right_net)}.
 
-    The heuristic placement realizes mirrors with netlist_ext.mirror_block:
-    place_row always lays a block's members out in the block's own member
-    list order, and a mirrored block CARRIES the reversed list with every
-    member's left/right nets swapped.  A multi-member block is therefore
-    mirrored exactly when its members' placement start_cols descend in the
-    block's own member order.
-
-    A single-member block's flip is invisible in the column order, so it is
-    recovered from the abutment constraints geometry.place_row encoded into
-    the inter-block gaps of each row: gap 0 <=> the facing end nets are
-    equal, gap == break_cols <=> they differ.  Orientations propagate to a
-    fixpoint (constraints visited in a fixed sorted order; every pin is
-    permanent); a single no constraint pins keeps the pristine orientation
-    -- the one case the die cannot distinguish, where the base-view walk
-    (verify's) makes the same assumption.
-
-    Pure and deterministic (invariant 9).
+    The reconstruction (multi-member mirror detection + the
+    abutment-gap fixpoint for singles, pristine where the die cannot
+    distinguish) lives in smt_engine.die_view -- the SHARED view the
+    verifier's access derivation consumes too, so both engines always
+    agree on which net sits at which terminal column.  This adapter
+    keeps the router-local signature.
     """
-    blocks = build_diffusion_blocks(netlist)
-    flipped = []                      # block index -> True / False / None
-    die_members = []                  # block index -> members in die order
-    for blk in blocks:
-        starts = [placement[m.device].start_col for m in blk.members]
-        die = sorted(blk.members,
-                     key=lambda m: (placement[m.device].start_col,
-                                    m.device.name))
-        die_starts = [placement[m.device].start_col for m in die]
-        die_members.append(die)
-        if (len(blk.members) == 1):
-            flipped.append(None)
-        elif (die_starts == starts):
-            flipped.append(False)
-        elif (die_starts == starts[::-1]):
-            flipped.append(True)
-        else:
-            flipped.append(None)      # illegal placement: leave to defaults
-
-    def end_nets(idx, flip):
-        """(die_left, die_right) end nets of block idx under flip."""
-        blk = blocks[idx]
-        left = blk.members[0].left_net
-        right = blk.members[-1].right_net
-        return (right, left) if flip else (left, right)
-
-    # per-row die sequences and the gap constraints between neighbours
-    rows = {}
-    for idx, die in enumerate(die_members):
-        rows.setdefault(placement[die[0].device].row, []).append(idx)
-    constraints = []
-    for row in sorted(rows):
-        seq = sorted(rows[row],
-                     key=lambda i: placement[die_members[i][0].device]
-                     .start_col)
-        for a, b in zip(seq, seq[1:]):
-            gap = (placement[die_members[b][0].device].start_col
-                   - placement[die_members[a][-1].device].end_col)
-            if (gap == 0 or gap == break_cols):
-                constraints.append((a, b, gap == 0))
-
-    def satisfied(ia, ib, equal, flips):
-        """Whether the constraint holds under the given orientations."""
-        need = end_nets(ia, flips[ia])[1]             # a's die_right
-        return (end_nets(ib, flips[ib])[0] == need) == equal
-
-    # 1) propagate pinned blocks into unknown singles (fixpoint)
-    changed = True
-    while (changed):
-        changed = False
-        for ia, ib, equal in constraints:
-            for x, y in ((ia, ib), (ib, ia)):
-                if (flipped[x] is None or flipped[y] is not None):
-                    continue
-                ok = []
-                for cand in (False, True):
-                    trial = {ia: flipped[ia], ib: flipped[ib]}
-                    trial[y] = cand
-                    if (satisfied(ia, ib, equal, trial)):
-                        ok.append(cand)
-                if (len(ok) == 1):
-                    flipped[y] = ok[0]
-                    changed = True
-
-    # 2) remaining unknowns that any constraint touches: the die cannot
-    # pin them one at a time (e.g. two abutting singles), so enumerate
-    # their joint assignments deterministically -- pristine first, per
-    # block index order -- and take the first vector that satisfies every
-    # constraint whose both sides resolve
-    unknown = sorted(i for i, f in enumerate(flipped) if f is None
-                     and any(i in c[:2] for c in constraints))
-    if (unknown and len(unknown) <= 16):
-        for vector in itertools.product((False, True), repeat=len(unknown)):
-            trial = dict(zip(unknown, vector))
-            ok = True
-            for ia, ib, equal in constraints:
-                fa = trial.get(ia, flipped[ia])
-                fb = trial.get(ib, flipped[ib])
-                if (fa is None or fb is None):
-                    continue              # touches an unpinned outsider
-                if ((end_nets(ia, fa)[1] == end_nets(ib, fb)[0]) != equal):
-                    ok = False
-                    break
-            if (ok):
-                for i, f in zip(unknown, vector):
-                    flipped[i] = f
-                break
-    # 3) anything still unknown is orientation-invisible in the die:
-    # pristine (the base view's own assumption)
-    orientation = {}
-    for idx, blk in enumerate(blocks):
-        flip = flipped[idx] is True
-        for m in blk.members:
-            orientation[m.device.name] = \
-                (m.right_net, m.left_net) if flip \
-                else (m.left_net, m.right_net)
-    return orientation
+    return die_view.die_orientation_map(netlist, placement, break_cols)
 
 
 def _oriented_diffusion_access_points(netlist, placement, orientation):
-    """(signal, power) diffusion access points on the DIE orientation.
+    """(signal, power) diffusion access points, EXACT-ENGINE column form.
 
-    diffusion_access_points' exact contract (same exposed-net filter, same
-    sort), but walked in each block's DIE member order with the die edge
-    nets.  The base walk starts at the base-first member's column and
+    diffusion_access_points' exact contract (same exposed-net filter,
+    same sort, right access inset into the member's last own column),
+    but walked in each block's DIE member order with the die edge nets.
+    The base walk starts at the base-first member's column and
     accumulates widths in base member order, so a mirrored block's nets
     are extrapolated onto the columns where the *next* block's diffusions
     actually sit -- the scrambled view that once pre-built power stripes
     on foreign signal columns ("terminal clash").  For pristine blocks
     (the exact-engine placements) the two walks coincide.
+
+    Slot-model placements route through die_view.die_slot_access_points
+    instead (true EDGE columns, multi-region slots exposed, doc
+    /BIGCELL_SLOT_GEOMETRY.md section 8.1-8.2).
     """
     exposed = exposed_net_set(netlist)
     signal = {}
@@ -353,6 +282,17 @@ class _RouteGrid(object):
                  height_um=2.47, grid_um=0.19):
         self.netlist = netlist
         self.placement = placement
+        self.slot = die_view.is_slot_placement(placement)
+        if self.slot:
+            # slot geometry (doc/BIGCELL_SLOT_GEOMETRY.md section 8): the
+            # grid runs on the EDGE axis -- member columns 0..W-1 plus the
+            # right terminal edge W, which doubles as the trailing lateral
+            # escape column of ASTRAN's route() (its leading lateral GAP
+            # role is played by the per-column pin hubs).  Edge e is the
+            # left boundary of column e, so the die frame (gds_cells)
+            # draws route column c at x = ESCAPE_L_UM + c*0.19, in line
+            # with every contact.
+            width_cols += 1
         self.width_cols = width_cols
         self.height_um = height_um
         self.grid_um = grid_um
@@ -415,23 +355,33 @@ class _RouteGrid(object):
         netlist, placement, width = (self.netlist, self.placement,
                                      self.width_cols)
         height, grid = self.height_um, self.grid_um
-        row_tracks = _row_track_ranges(height, grid)
 
         # ---- static per-column geometry ----
         self.gate_tracks, self.gate_nets_at, self.gate_span = \
             self._gate_maps()
         self.field = self._field_map()
-        # diffusion coverage per (column, half): union of the track ranges
-        # of the devices whose rectangle covers the column edge (ASTRAN's
-        # nDiff/pDiff span per element, autocell2.cpp:319-329)
+        # diffusion coverage per (column, half): the tracks of the devices
+        # whose rectangle covers the column edge (ASTRAN's nDiff/pDiff
+        # span per element, autocell2.cpp:319-329).  Slot model: the
+        # coverage comes from the W-tall strips (section 8.4); exact
+        # engine: the row_geometry sub-bands.
         self.diff_tracks = {c: {False: set(), True: set()}
                             for c in range(width)}
-        for dev in netlist.devices:
-            p = placement[dev]
-            for c in range(p.start_col, p.end_col + 1):
-                if (c < width):
-                    self.diff_tracks[c][dev.is_p].update(
-                        row_tracks[(dev.is_p, p.row)])
+        if self.slot:
+            for dev in netlist.devices:
+                tracks = self._strip_tracks(dev)
+                p = placement[dev]
+                for c in range(p.start_col, p.end_col):
+                    if (c < width):
+                        self.diff_tracks[c][dev.is_p].update(tracks)
+        else:
+            row_tracks = _row_track_ranges(height, grid)
+            for dev in netlist.devices:
+                p = placement[dev]
+                for c in range(p.start_col, p.end_col + 1):
+                    if (c < width):
+                        self.diff_tracks[c][dev.is_p].update(
+                            row_tracks[(dev.is_p, p.row)])
         self.gate_cols = set()
         for cols in self.gate_nets_at.values():
             self.gate_cols.update(cols)
@@ -442,9 +392,20 @@ class _RouteGrid(object):
         # (internal) diffusion edges is electrically complete through the
         # shared diffusion and needs no wire (netlist.exposed_net_set).
         signal = [n for n in netlist.nets if n not in POWER_NAMES]
-        orientation = _die_orientation(netlist, placement)
-        diff_sig, diff_pow = _oriented_diffusion_access_points(
-            netlist, placement, orientation)
+        if self.slot:
+            # slot geometry (doc/BIGCELL_SLOT_GEOMETRY.md section 8.1-8.2):
+            # terminals on the TRUE edge columns (left = start_col, right
+            # = start_col + legs*leg_width_cols -- the exact engine's walk
+            # insets a width-1 leg's right access into its own column) and
+            # every slot of a multi-region net exposed so its regions stay
+            # tied.  The shared die view -- smt_engine.verify derives its
+            # access requirements from the same function.
+            diff_sig, diff_pow = die_view.die_slot_access_points(
+                netlist, placement, break_cols=BREAK_GAP_COLS)
+        else:
+            orientation = _die_orientation(netlist, placement)
+            diff_sig, diff_pow = _oriented_diffusion_access_points(
+                netlist, placement, orientation)
         gate_pts = gate_access_points(netlist, placement)
         routed = sorted(n for n in signal
                         if diff_sig.get(n) or gate_pts.get(n))
@@ -520,7 +481,14 @@ class _RouteGrid(object):
                 self._add_arc(hub, self._m1(t, c), cost)
         ports = getattr(netlist, "external", set())
         for name in routed:
-            if (name in ports):
+            if (name in ports and (not self.slot or diff_sig.get(name))):
+                # slot model: a gate-only net (no diffusion access anywhere)
+                # gets NO pin terminal -- the RouteResult vocabulary has no
+                # pin geometry and gds_cells labels pins at diffusion
+                # accesses only, so the pin would be a phantom requirement
+                # whose M1 escape can structurally deadlock the negotiation
+                # (the poly crossing at the gate is the net's whole wire).
+                # Exact-engine placements keep the historical behaviour.
                 pin = self._node((_PIN, name))
                 for c in range(width):
                     self._add_arc(pin, self._node((_HUB, c)), 0)
@@ -541,11 +509,14 @@ class _RouteGrid(object):
                         % (net.name, c, width - 2))
                     return
                 self._claim(self._node((_G, c, net.name)), net)
-            if (net.name in ports):
-                # every external net owns its pin node (the ASTRAN
-                # getInouts() semantics: all I/O nets route to their pin);
-                # the single-stub rule in the post-pass keeps the pin-hub
-                # network a leaf, never a phantom connector
+            if (net.name in ports and (not self.slot
+                                       or diff_sig.get(net.name))):
+                # every external net with a diffusion access owns its pin
+                # node (the ASTRAN getInouts() semantics: all I/O nets
+                # route to their pin); gate-only slot-model nets are
+                # excluded (see the pin-hub note above); the single-stub
+                # rule in the post-pass keeps the pin-hub network a leaf,
+                # never a phantom connector
                 self._claim(self._node((_PIN, net.name)), net)
 
         # ---- pre-built power stripes (route_model's power-end rule) ----
@@ -570,9 +541,12 @@ class _RouteGrid(object):
         _, rows = row_geometry(height, grid)
         trackY = self.trackY
         spans = {}
+        strip_ranges = {}             # (gate, c) -> [(strip y0, strip y1)]
+        strip_pol = {}                # (gate, c) -> [has_p, has_n]
         for dev in netlist.devices:
             p = placement[dev]
             y0, y1 = rows[(dev.is_p, p.row)]
+            sy0, sy1 = self._strip_y(dev)
             for j in range(p.legs):
                 c = p.start_col + j * p.leg_width_cols + p.leg_width_cols // 2
                 if (c >= self.width_cols):
@@ -583,17 +557,65 @@ class _RouteGrid(object):
                     spans[key] = (min(o0, y0), max(o1, y1))
                 else:
                     spans[key] = (y0, y1)
+                strip_ranges.setdefault(key, []).append((sy0, sy1))
+                pol = strip_pol.setdefault(key, [False, False])
+                pol[0 if dev.is_p else 1] = True
         gate_tracks = {}
         gate_nets_at = {}
         gate_span = {}
         for (net, c), (y0, y1) in spans.items():
             gate_nets_at.setdefault(net, set()).add(c)
             gate_span[(net, c)] = (y0 - POLY_OVERHANG, y1 + POLY_OVERHANG)
-            lo = y0 - POLY_OVERHANG + CONTACT_S / 2.0
-            hi = y1 + POLY_OVERHANG - CONTACT_S / 2.0
-            gate_tracks[(net, c)] = sorted(
-                t for t in range(N_TRACKS) if lo <= trackY[t] <= hi)
+            if (self.slot):
+                # section 8.4, router-local track alignment: a gate
+                # contact must land on a track the DRAWN W-tall strip
+                # spans (gds_cells draws the contact square only inside
+                # the strip) AND on a track verify's row-band contact
+                # range accepts -- the drawn poly overhang can reach
+                # past the row band, so the two ranges are intersected.
+                # The well-boundary corridor track joins in only where
+                # an aligned P/N gate pair makes the drawn merged poly
+                # stripe continuous over the boundary.
+                tracks = set()
+                for sy0, sy1 in strip_ranges.get((net, c), ()):
+                    lo = max(sy0, y0) - POLY_OVERHANG + CONTACT_S / 2.0
+                    hi = min(sy1, y1) + POLY_OVERHANG - CONTACT_S / 2.0
+                    tracks.update(t for t in range(N_TRACKS)
+                                  if lo <= trackY[t] <= hi)
+                pol = strip_pol.get((net, c), (False, False))
+                if (pol[0] and pol[1]):
+                    lo = MID_UM - WELL_GAP_UM + CONTACT_S / 2.0
+                    hi = MID_UM + WELL_GAP_UM - CONTACT_S / 2.0
+                    tracks.update(t for t in range(N_TRACKS)
+                                  if lo <= trackY[t] <= hi)
+                gate_tracks[(net, c)] = sorted(tracks)
+            else:
+                lo = y0 - POLY_OVERHANG + CONTACT_S / 2.0
+                hi = y1 + POLY_OVERHANG - CONTACT_S / 2.0
+                gate_tracks[(net, c)] = sorted(
+                    t for t in range(N_TRACKS) if lo <= trackY[t] <= hi)
         return gate_tracks, gate_nets_at, gate_span
+
+    def _strip_y(self, dev):
+        """(y0, y1) of the device's W-tall diffusion strip -- the slot
+        model's drawing convention (W vertical, anchored at the well
+        boundary, growing away from it by the electrical width; the
+        fold already divided multi-leg devices' width)."""
+        w = dev.width_um
+        if dev.is_p:
+            y0 = MID_UM + WELL_GAP_UM
+            return y0, y0 + w
+        y1 = MID_UM - WELL_GAP_UM
+        return y1 - w, y1
+
+    def _strip_tracks(self, dev):
+        """Tracks the device's drawn strip physically spans (section 8.4:
+        the vertical cost / corridor model realigned to the W-tall
+        strips; the shared 7-track domain itself is the RouteResult
+        contract with smt_engine.verify/gds and stays untouched)."""
+        y0, y1 = self._strip_y(dev)
+        return set(t for t in range(N_TRACKS)
+                   if y0 <= self.trackY[t] <= y1)
 
     def _spans_track(self, gate_net, c, t):
         y0, y1 = self.gate_span[(gate_net, c)]
@@ -682,9 +704,29 @@ class _RouteGrid(object):
         junction point gets a history bump so the next attempt prices the
         colliding merge choice.  Deterministic: the smallest candidate
         track / first matching side wins.  Returns the bumped node ids.
+
+        Slot model, second role: a tree gate node with NO crossing at all
+        (the gate-only nets -- no diffusion terminal gives the BFS a
+        second endpoint to grow towards) gets its crossing materialized
+        directly.  A poly jump on an in-strip row track is preferred (the
+        gate merge is a 0-cost same-layer junction and poly claims no
+        diffusion-side metal); the M1 crossing is the last resort.  A
+        candidate whose endpoints sit on foreign metal is skipped, so the
+        post-pass reports the honest violation instead of manufacturing
+        a permanent conflict.
         """
         mine = set(net.tree)
+        # foreign tree membership: a point can be free (net == -1, e.g. the
+        # owner ripped up) while still living in another net's tree from
+        # its last route -- the share is with that tree either way
+        foreign_tree = {}
+        for other in self.nets + self.power:
+            if (other is net):
+                continue
+            for nid in other.tree:
+                foreign_tree[nid] = other.index
         adds = []
+        crossed_g = set()
         for nid in net.tree:
             kind = self.graph[nid].kind
             if (kind[0] != _G):
@@ -693,12 +735,25 @@ class _RouteGrid(object):
             for t in self.gate_tracks.get((gname, c), ()):
                 if (self._m1(t, c) in mine):
                     adds.append((self._m1(t, c + 1), self._m1(t, c)))
+                    crossed_g.add(nid)
                     break
                 if (t in ROW_TRACKS
                         and self._node((_PJ, t, c)) in mine):
                     adds.append((self._node((_PJ, t, c + 1)),
                                  self._node((_PJ, t, c))))
+                    crossed_g.add(nid)
                     break
+        if (self.slot):
+            for nid in net.tree:
+                if (nid in crossed_g):
+                    continue
+                kind = self.graph[nid].kind
+                if (kind[0] != _G):
+                    continue
+                fallback = self._gate_crossing_fallback(
+                    net, kind[2], kind[1], mine, foreign_tree)
+                if (fallback is not None):
+                    adds.extend(fallback)
         for t in range(N_TRACKS):
             for c in range(self.width_cols):
                 m1c, m2c = self._m1(t, c), self._node((_M2, t, c))
@@ -717,15 +772,6 @@ class _RouteGrid(object):
                       and self._node((_M2, t, c + 1)) in mine and c > 0):
                     adds.append((self._m1(t, c - 1), m2c))
         bumps = []
-        # foreign tree membership: a point can be free (net == -1, e.g. the
-        # owner ripped up) while still living in another net's tree from
-        # its last route -- the share is with that tree either way
-        foreign_tree = {}
-        for other in self.nets + self.power:
-            if (other is net):
-                continue
-            for nid in other.tree:
-                foreign_tree[nid] = other.index
         for nid, trigger in adds:
             if (nid in mine):
                 continue
@@ -735,6 +781,40 @@ class _RouteGrid(object):
             if (onet not in (-1, net.index) or nid in foreign_tree):
                 bumps.append(trigger)
         return bumps
+
+    def _gate_crossing_fallback(self, net, gname, c, mine, foreign_tree):
+        """Crossing endpoints for one un-crossed tree gate (slot model).
+
+        Returns [(new_node, trigger_node), ...] or None.  Poly jump
+        first, M1 second; the smallest qualifying track wins.  Both
+        endpoints must be claimable by ``net`` (unowned or already its
+        own, and not living in another net's tree).
+        """
+        for t in self.gate_tracks.get((gname, c), ()):
+            if (t in ROW_TRACKS and c + 1 < self.width_cols
+                    and (c + 1) in self.field[t]
+                    and self._poly_span[(t, c)] <= frozenset((net.name,))
+                    and self._claimable(self._node((_PJ, t, c)), net,
+                                        mine, foreign_tree)
+                    and self._claimable(self._node((_PJ, t, c + 1)), net,
+                                        mine, foreign_tree)):
+                g = self._node((_G, c, gname))
+                return [(self._node((_PJ, t, c + 1)), g),
+                        (self._node((_PJ, t, c)), g)]
+        for t in self.gate_tracks.get((gname, c), ()):
+            if (c + 1 < self.width_cols
+                    and self._claimable(self._m1(t, c), net, mine,
+                                        foreign_tree)
+                    and self._claimable(self._m1(t, c + 1), net, mine,
+                                        foreign_tree)):
+                g = self._node((_G, c, gname))
+                return [(self._m1(t, c), g), (self._m1(t, c + 1), g)]
+        return None
+
+    def _claimable(self, nid, net, mine, foreign_tree):
+        """Whether ``net`` may take ``nid`` without a permanent conflict."""
+        node = self.graph[nid]
+        return (node.net in (-1, net.index) and nid not in foreign_tree)
 
     def _bfs_route(self, net, tree, label, attempt, max_cost=0,
                    definitive=True, strict=False):

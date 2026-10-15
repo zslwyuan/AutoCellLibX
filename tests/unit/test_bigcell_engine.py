@@ -175,31 +175,30 @@ def test_rung3_closes_when_rung2_disabled(monkeypatch):
     """The full heuristic placement chain + grid router rescues a cell
     whose exact route and rung-2 offering were both unavailable.
 
-    PENDING (doc/BIGCELL_SLOT_GEOMETRY.md section 8): the slot-model
-    placement is far narrower than the exact engine's (NAND2: 2 columns
-    vs 6) and route_grid's diffusion access derivation still uses the
-    exact engine's inset column semantics -- a width-1 leg's right
-    terminal collapses onto its own left column ("terminal clash") and
-    the rightmost gate has no lateral column to route from ("gate sits
-    past the last segment column").  Until route_grid adapts (the file
-    is owned by the parallel router work), rung 3 closes the PLACEMENT
-    but its routing stage reports the documented pending failure.
-    Flip this test back to closure when the router's access-edge fix
-    lands.
+    CLOSED (doc/BIGCELL_SLOT_GEOMETRY.md section 8 adapted in
+    route_grid): the router now runs on the slot geometry -- diffusion
+    terminals on the true member EDGE columns (die view, smt_engine
+    die_view), every slot of a multi-region net exposed, the grid on the
+    edge axis (member columns + the right edge column), and gate-only
+    nets crossed on the poly layer.  The inline NAND2's slot placement
+    (width 2 vs the exact engine's 6) routes FEASIBLE on the first
+    negotiation attempt and verifies clean inside the ladder.
     """
     _fail_exact_routing(monkeypatch)
-    with pytest.raises(UnsupportedCell) as excinfo:
-        synth_cell(_netlist(NAND2), exact_budget_s=20.0, grid_router=False)
-    meta = excinfo.value.meta
+    placement, route, meta = synth_cell(_netlist(NAND2),
+                                        exact_budget_s=20.0,
+                                        grid_router=False)
+    assert meta["engine"] == "bigcell-full"
+    assert route.ok and route.status_name == "FEASIBLE"
+    assert route.width_cols >= real_layout_width(placement)
     rung3 = [a for a in meta["attempts"] if a["rung"] == 3]
-    # the placement stage itself is fine (the slot chain works)
+    # the placement stage is fine (the slot chain works)
     placement_attempts = [a for a in rung3 if a.get("stage") == "placement"]
     assert placement_attempts and placement_attempts[-1]["ok"] is True
-    # the routing stage is the documented pending failure
+    # the routing stage closed with a clean verification
     routing = [a for a in rung3 if a.get("stage") == "routing"]
-    assert routing and routing[-1]["ok"] is False
-    note = routing[-1].get("note", "")
-    assert "terminal clash" in note or "past the last segment" in note
+    assert routing and routing[-1]["ok"] is True
+    assert routing[-1]["note"] == "verify ok"
 
 
 def test_rung3_placement_failure_is_recorded(monkeypatch):

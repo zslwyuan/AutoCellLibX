@@ -277,18 +277,19 @@ def test_slot_access_points_use_edge_columns():
     assert "Y" in sig and {"VCC", "GND"} <= set(powr)
 
 
-def test_route_grid_cannot_route_slot_cells_yet():
-    # the documented pending adaptation (design note section 8): the
-    # router's diffusion access derivation insets a width-1 leg's right
-    # terminal into its own column, which collides with the left
-    # terminal's pre-built stripe.  Pin the failure signature so the
-    # later router fix flips this test's expectation deliberately.
+def test_route_grid_routes_slot_cells_after_the_section8_adaptation():
+    # CLOSED (design note section 8 adapted in route_grid): the router
+    # runs on the slot geometry -- edge-column diffusion accesses from
+    # the shared die view, every multi-region slot exposed, the grid on
+    # the edge axis, gate-only nets crossed on poly.  NAND2's slot
+    # placement (2 columns) routes FEASIBLE and verifies clean.
+    from smt_engine.verify import verify_cell
     from bigcell_engine.route_grid import route_cell
-    nl3, lw, _op, _on, pl, cols, _bd = _chain(NAND2)
+    nl3, lw, op2, on2, pl, cols, _bd = _chain(NAND2)
     route = route_cell(nl3, pl, cols, lw)
-    assert not route.ok
-    assert "terminal clash" in (getattr(route, "fail_note", "") or "") \
-        or "past the last segment" in (getattr(route, "fail_note", "") or "")
+    assert route.ok, (route.status_name, route.fail_note)
+    report = verify_cell(nl3, pl, route, blocks=list(op2) + list(on2))
+    assert report.ok(), report.violations
 
 
 def test_verify_slot_model_accepts_a_hand_routed_invx1():
