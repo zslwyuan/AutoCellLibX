@@ -717,6 +717,12 @@ def _render_markdown(report):
             _fmt_um(ratio["median"]) if ratio["median"] is not None
             else "n/a", ratio["n"]),
         "",
+        "Ratios are same-semantics comparable only for `bigcell-*` "
+        "engines (slot model: W vertical, doc/BIGCELL_SLOT_GEOMETRY.md); "
+        "`smt-exact` cells draw device W as horizontal columns (the "
+        "exact engine's own IR, unchanged) and their ratios overstate "
+        "width against ASTRAN's slot geometry.",
+        "",
         "| cell | source | T | astran um | python um | ratio | engine "
         "| verify | sanity | note |",
         "|---|---|---|---|---|---|---|---|---|---|",
