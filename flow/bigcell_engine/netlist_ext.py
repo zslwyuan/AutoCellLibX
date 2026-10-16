@@ -38,6 +38,29 @@ build_diffusion_blocks) -- this module only adds what big cells need:
    shared otherwise.  Every device ends up in exactly one block
    (property-tested over every benchmark cell).
 
+4. ``build_bigcell_blocks`` ``variant`` knob: alternative TOTAL
+   decompositions for the routability-aware speculate pool
+   (place_sa.decomposition_variant_classes).  The conflict evidence
+   (flow/_stage3_check/bench_int3) shows the plateau surviving every
+   ordering/mirror of ONE decomposition, so the variants change the
+   decomposition itself; each one keeps the orientation discipline
+   (members carry (device, left, right), mirror_block stays valid) and
+   covers every device exactly once:
+   - ``"default"``: the tree/branch decomposition above;
+   - ``"base"``: exactly ``build_diffusion_blocks`` (no tree coupling);
+   - ``"parallel_phase"``: parallel groups re-phased -- the
+     lexicographically SMALLER pair net becomes the internal shared
+     edge (build_diffusion_blocks buries the larger one), which turns
+     buried pair nets into two exposed block-end diffusions and the
+     power end internal (rail-covered) -- a structural change no block
+     flip can express;
+   - ``"split_parallel"`` / ``"split_series"``: that kind dissolved
+     into per-member singles (canonical (source, drain) orientation),
+     then tree-coupled as "default" does;
+   - ``"singles"``: every kind dissolved, no coupling -- the
+     maximal-split extreme (maximum diffusion breaks / corridors);
+   - ``"max_merge"``: "default" with ``max_coupler_degree=None``.
+
 All iterations are over sorted structures (AGENTS.md invariant 9).
 """
 
@@ -226,9 +249,82 @@ def _slot_nets(block):
     return ends, internal
 
 
-def build_bigcell_blocks(netlist, max_coupler_degree=3):
+#: the decomposition variants build_bigcell_blocks understands (documented
+#: in the module docstring); the non-default ones are mirrored by
+#: place_sa.DECOMPOSITION_VARIANTS, whose order is the speculate pool's
+#: variant priority.
+BLOCK_VARIANTS = ("default", "base", "parallel_phase", "split_parallel",
+                  "split_series", "singles", "max_merge")
+
+
+def _dissolved_blocks(blocks, kinds):
+    """``blocks`` with every multi-member block of kind in ``kinds``
+    replaced by per-member singles (canonical (source, drain)
+    orientation, like build_diffusion_blocks' standalone blocks).
+
+    Totality is preserved member-for-member; a dissolved parallel pair
+    or series chain's internal shared edge becomes re-exposable (the
+    router ties split regions with metal, exactly like the tree
+    linearizer's re-exposed branch nets).  Deterministic.
+    """
+    out = []
+    for block in blocks:
+        if block.kind in kinds and len(block.members) > 1:
+            for member in block.members:
+                out.append(DiffusionBlock("single", [BlockMember(
+                    member.device, member.device.source,
+                    member.device.drain)]))
+        else:
+            out.append(block)
+    out.sort(key=lambda b: (len(b.members) == 1, b.first.name))
+    return out
+
+
+def _parallel_phase_blocks(blocks):
+    """``blocks`` with every parallel group re-phased.
+
+    build_diffusion_blocks orients a parallel group's member j as
+    (l0, r0) when j is even -- so the shared edge between consecutive
+    members is the lexicographically LARGER pair net (r0) and the
+    smaller one (l0) sits on both block ends.  This variant flips the
+    alternation: the smaller net is internal, the larger one re-exposed
+    at both ends.  For a power/pair split (e.g. NAND pull-ups over
+    {VCC, Y}) that buries the rail edge -- which the rail covers anyway
+    -- and exposes the signal net twice, a diffusion-access structure
+    no member flip or reordering of the original block can reach.
+    Deterministic (member order kept, alternation start swapped).
+    """
+    out = []
+    for block in blocks:
+        if block.kind != "parallel" or len(block.members) < 2:
+            out.append(block)
+            continue
+        l0, r0 = sorted((block.members[0].left_net,
+                         block.members[0].right_net))
+        members = []
+        for j, member in enumerate(block.members):
+            left, right = (r0, l0) if j % 2 == 0 else (l0, r0)
+            members.append(BlockMember(member.device, left, right))
+        out.append(DiffusionBlock("parallel", members))
+    out.sort(key=lambda b: (len(b.members) == 1, b.first.name))
+    return out
+
+
+def _block_shape(blocks):
+    """Comparable value-shape of a block list (kinds + oriented members),
+    the identity test place_sa uses to skip variants that cannot produce
+    a new ordering."""
+    return tuple(
+        (b.kind,) + tuple((m.device.name, m.left_net, m.right_net)
+                          for m in b.members)
+        for b in blocks)
+
+
+def build_bigcell_blocks(netlist, max_coupler_degree=3, variant="default"):
     """The TOTAL diffusion-block decomposition: smt_engine blocks plus
-    tree/branch blocks over degree-3-coupled units.
+    tree/branch blocks over degree-3-coupled units, or one of the
+    alternative decompositions (``variant``, see BLOCK_VARIANTS and the
+    module docstring).
 
     ``max_coupler_degree`` caps how high a pure internal node's terminal
     count may go and still couple its units into one trail (None =
@@ -238,12 +334,28 @@ def build_bigcell_blocks(netlist, max_coupler_degree=3):
     slot-model chain (geometry parity with ASTRAN's eulerian runs) calls
     with ``max_coupler_degree=None`` so doubled networks' degree-4
     junctions linearize into one strip (doc/BIGCELL_SLOT_GEOMETRY.md
-    section 5).
+    section 5).  ``variant="max_merge"`` is that same unbounded coupling.
 
     Returns a deterministic list of DiffusionBlock (kinds: series /
-    parallel / single / tree) covering every device exactly once.
+    parallel / single / tree) covering every device exactly once, for
+    every variant.
     """
+    if variant not in BLOCK_VARIANTS:
+        raise ValueError("unknown block decomposition variant %r (choose "
+                         "from %s)" % (variant, ", ".join(BLOCK_VARIANTS)))
+    if variant == "max_merge":
+        max_coupler_degree = None
     base = build_diffusion_blocks(netlist)
+    if variant == "base":
+        return base
+    if variant == "parallel_phase":
+        base = _parallel_phase_blocks(base)
+    elif variant == "split_parallel":
+        base = _dissolved_blocks(base, ("parallel",))
+    elif variant == "split_series":
+        base = _dissolved_blocks(base, ("series",))
+    elif variant == "singles":
+        return _dissolved_blocks(base, ("parallel", "series"))
     deg3, _all_pure = _pure_internal_nodes(netlist, max_coupler_degree)
     if not deg3:
         return base

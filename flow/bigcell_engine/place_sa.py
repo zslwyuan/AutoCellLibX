@@ -71,6 +71,22 @@ the selection is additive, parameterized (``candidate_count``,
 deterministic (no RNG; every candidate and score is a pure function of
 the inputs, invariant 9).
 
+Decomposition-variant classes (``select_orderings``'
+``variant_classes=True``): the bench_int3 evidence shows plateaus that
+survive every ordering/mirror of ONE decomposition, so a lazy second
+pool phase joins alternative TOTAL decompositions
+(netlist_ext.build_bigcell_blocks' ``variant`` knob: base, re-phased
+parallel groups, split chains/groups, all-singles, unbounded tree
+coupling) as extra candidate classes -- per variant the euler+SA best
+(budget-bounded, size-aware), its proven mirror classes, and alignment
+nominees (aligned P/N terminal columns + corridor count, a routability
+signal SA's cost cannot see, found by a capped exhaustive search over
+the variant's ordering space).  Measured on the ctrl/COMPLEX0 8T
+plateau (fixed pool's floor: 4 trial conflicts / 3 at full budget):
+``var:singles-align4`` trial-scores 2 conflicts and the full-budget
+route from it shrinks the residual {cl0#B, cl0#Y, cl1#Y} to the single
+internal net {cl0#a_2_6#}.
+
 Throughput note: DEFAULT_QUALITY is 20, not ASTRAN's 150 -- Python
 applies ~5k moves/s where ASTRAN's C applies ~10^6/s; the budget is set
 by measured convergence on the benchmark corpus (doc section 6, risk 1),
@@ -78,11 +94,14 @@ not by copying ASTRAN's constant.  ``quality`` stays a parameter.
 """
 
 import hashlib
+import itertools
+import math
 import random
 import re
 
 from smt_engine.netlist import BlockMember
 
+from bigcell_engine.geometry import BREAK_GAP_COLS, N_ROW, P_ROW
 from bigcell_engine.netlist_ext import mirror_block
 
 ENGINE_VERSION = "bigcell-sa/2"     # /2: the slot-model cost (half-slots)
@@ -580,6 +599,69 @@ _MAX_FLIP_COMBOS = 1024
 #: gate order, terminal clash) -- worse than any negotiable plateau.
 _UNROUTABLE = 1 << 30
 
+# --------------------------------------------------------------------------
+# decomposition-variant candidate classes (the upstream lever)
+# --------------------------------------------------------------------------
+# The conflict evidence (flow/_stage3_check/bench_int3, ctrl/COMPLEX0)
+# shows the routing plateau surviving EVERY ordering/mirror of one
+# decomposition -- agent T exhausted all 64 flip combinations of both
+# base orderings at full budget.  The lever left is the decomposition
+# itself: netlist_ext.build_bigcell_blocks' ``variant`` knob builds
+# alternative TOTAL decompositions (split chains/groups, re-phased
+# parallel groups, unbounded tree coupling), whose ordering spaces
+# contain arrangements the default block structure cannot express (a
+# split pair's re-exposed internal net, a re-phased group's buried rail
+# edge).  These join the speculate pool as extra candidate classes,
+# ranked by the SAME trial route as the mirror classes.
+
+#: variants joined to the speculate pool when the fixed classes all fail
+#: their trials ("default" is the main pool itself, so it is not listed;
+#: the order here is the pool priority)
+DECOMPOSITION_VARIANTS = ("base", "parallel_phase", "split_parallel",
+                          "split_series", "singles", "max_merge")
+
+#: per-variant Threshold-Accept budget.  The full DEFAULT_ITERATIONS x
+#: DEFAULT_QUALITY budget is the MAIN path's; a variant only needs its
+#: best ordering locally sane for the fallback (conflicts, cost) rank --
+#: the variant's VALUE is its different block structure, not a tighter
+#: cost optimum (measured: the ctrl 8T cell's variant SA plateaus at the
+#: default's own ordering in a fraction of the main budget).  The
+#: iteration count additionally shrinks with the problem size so one
+#: variant's refine stays within VARIANT_SA_MOVES moves (see
+#: _variant_sa_iterations) -- measured on adder/COMPLEX10 (36T, 18x18
+#: blocks) the unshrunk budget alone cost ~30 s per variant.
+VARIANT_SA_ITERATIONS = 12
+
+#: move budget for ONE variant's Threshold-Accept refine (the
+#: initial-threshold search's own bounded pass comes on top)
+VARIANT_SA_MOVES = 6000
+
+#: problem-size cap (P blocks x N blocks of the variant's seed) beyond
+#: which the variant skips its Threshold-Accept refine and nominates the
+#: euler seed directly: the variant's value is its different STRUCTURE,
+#: and sa_refine's initial-threshold bisection alone (64 x init_moves)
+#: costs ~10 s per call once the product nears 300 (measured on
+#: adder/COMPLEX10: 18x18 blocks).  Big cells still get every variant's
+#: euler-seed ordering as a candidate, at euler's own bounded cost.
+_VARIANT_SA_PROBLEM_CAP = 120
+
+#: alignment-nomination search caps.  Per variant, EVERY per-row block
+#: ordering (permutations x flips) is enumerated up to _ALIGN_ROW_CAP
+#: rows per side and _ALIGN_PAIR_CAP pair scorings -- the routability
+#: signal (aligned P/N terminal columns, corridor count) is one SA cost
+#: cannot see, and the plateau cells are small enough to search
+#: exhaustively; bigger rows fall back to the euler+SA classes only.
+_ALIGN_ROW_CAP = 4096
+_ALIGN_PAIR_CAP = 200000
+
+#: exact SA cost is computed only for the top cheap-ranked alignment
+#: pairs (the final nomination rank is alignment first, then corridors,
+#: then SA cost)
+_ALIGN_COST_POOL = 64
+
+#: alignment nominees added per variant
+ALIGN_CANDIDATES = 4
+
 
 def ordering_signature(ordering_p, ordering_n):
     """Canonical dedupe key for a candidate: per-row block content.
@@ -611,8 +693,205 @@ def _row_die_mirror(row):
     return [mirror_block(b) for b in reversed(row)]
 
 
+# --------------------------------------------------------------------------
+# decomposition-variant candidate classes
+# --------------------------------------------------------------------------
+
+def _row_terminals(ordering, leg_widths):
+    """({col: gate nets}, {col: signal edge nets}, breaks, width_cols)
+    for one row ordering -- the cheap routability picture the alignment
+    nomination scores (mirrors geometry.place_row's walk: break columns
+    where the facing end nets differ)."""
+    gates = {}
+    edges = {}
+    col = 0
+    breaks = 0
+    prev_right = None
+    for block in ordering:
+        if prev_right is not None \
+                and block.members[0].left_net != prev_right:
+            col += BREAK_GAP_COLS
+            breaks += 1
+        for member in block.members:
+            legs, cols = leg_widths[member.device.name]
+            w = legs * cols
+            gates.setdefault(col, set()).add(member.device.gate)
+            if member.left_net not in POWER_NETS:
+                edges.setdefault(col, set()).add(member.left_net)
+            col += w
+            if member.right_net not in POWER_NETS:
+                edges.setdefault(col, set()).add(member.right_net)
+        prev_right = block.members[-1].right_net
+    return gates, edges, breaks, col
+
+
+def _row_orderings(blocks):
+    """Every ordering of one row's blocks over all flip combinations
+    (deterministic: permutations in index order, flip bits lexicographic)."""
+    out = []
+    for perm in itertools.permutations(range(len(blocks))):
+        for flips in itertools.product((0, 1), repeat=len(blocks)):
+            out.append([mirror_block(blocks[i]) if f else blocks[i]
+                        for i, f in zip(perm, flips)])
+    return out
+
+
+def alignment_candidates(p_blocks, n_blocks, leg_widths,
+                         limit=ALIGN_CANDIDATES):
+    """Routability-nominated orderings for one variant's decomposition.
+
+    SA's cost cannot see routability (the proven NAND2X1/ctrl-plateau
+    mechanism), so the variant's aligned-terminal orderings are nominated
+    directly: every per-row ordering is enumerated (bounded by
+    _ALIGN_ROW_CAP rows per side and _ALIGN_PAIR_CAP pair scorings --
+    beyond them the nomination is skipped for that variant) and pairs
+    rank by
+
+        1. aligned gate columns   (a merged P/N poly crossing is free),
+        2. aligned signal diffusion edges (a shared M1 stub),
+        3. diffusion breaks DESC  (a break column is a routing corridor),
+        4. SA cost ASC            (only for the _ALIGN_COST_POOL
+                                   cheap-ranked finalists, so the exact
+                                   cost never runs on the full pair
+                                   space),
+        5. lexicographic ordering signature (deterministic tie-break).
+
+    Returns up to ``limit`` distinct (ordering_p, ordering_n) pairs.
+    Pure and deterministic (invariant 9); no router is invoked.
+    """
+    if not p_blocks or not n_blocks:
+        return []
+    if (math.factorial(len(p_blocks)) * 2 ** len(p_blocks)
+            > _ALIGN_ROW_CAP
+            or math.factorial(len(n_blocks)) * 2 ** len(n_blocks)
+            > _ALIGN_ROW_CAP):
+        return []
+    p_rows = _row_orderings(p_blocks)
+    n_rows = _row_orderings(n_blocks)
+    if len(p_rows) * len(n_rows) > _ALIGN_PAIR_CAP:
+        return []
+    p_maps = [(_row_terminals(r, leg_widths),
+               ordering_signature(r, [])) for r in p_rows]
+    n_maps = [(_row_terminals(r, leg_widths),
+               ordering_signature([], r)) for r in n_rows]
+    scored = []
+    for (gp, ep, bp, wp), sp in p_maps:
+        for (gn, en, bn, wn), sn in n_maps:
+            cols = set(gp) | set(gn)
+            ga = sum(1 for c in cols if gp.get(c, set()) & gn.get(c, set()))
+            da = sum(1 for c in cols if ep.get(c, set()) & en.get(c, set()))
+            scored.append((ga, da, bp + bn, wp + wn, sp, sn))
+    # stable two-stage rank: signature ascending, then the numeric key
+    # descending -- ties keep the lexicographically smaller signature
+    scored.sort(key=lambda t: (t[4], t[5]))
+    scored.sort(key=lambda t: (t[0], t[1], t[2], t[3]), reverse=True)
+    finalists = scored[:_ALIGN_COST_POOL]
+    # exact SA cost for the finalists, final rank (alignment, corridors,
+    # cost, signature), truncate
+    p_by_sig = {sp: r for (_m, sp), r in zip(p_maps, p_rows)}
+    n_by_sig = {sn: r for (_m, sn), r in zip(n_maps, n_rows)}
+    ranked = []
+    for ga, da, br, wp, sp, sn in finalists:
+        op = p_by_sig[sp]
+        on = n_by_sig[sn]
+        cost = _SAState(op, on, leg_widths).total
+        ranked.append(((ga, da, br, cost, sp, sn), op, on))
+    # stable two-stage final rank: cost (then signature) ascending, then
+    # the alignment/corridor key descending -- ties keep the cheaper,
+    # lexicographically smaller ordering
+    ranked.sort(key=lambda t: (t[0][3], t[0][4], t[0][5]))
+    ranked.sort(key=lambda t: (t[0][0], t[0][1], t[0][2]), reverse=True)
+    out = []
+    seen = set()
+    for _key, op, on in ranked:
+        sig = ordering_signature(op, on)
+        if sig in seen:
+            continue
+        seen.add(sig)
+        out.append((op, on))
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _variant_sa_iterations(problem_size, cap=VARIANT_SA_ITERATIONS):
+    """Deterministic per-variant TA iteration count: the full ``cap``
+    while the cell is small, shrinking so one refine's move count
+    (problem_size x DEFAULT_QUALITY per iteration) stays within
+    VARIANT_SA_MOVES.  Pure function (invariant 9)."""
+    reps = int(problem_size * DEFAULT_QUALITY)
+    if reps <= 0:
+        return cap
+    return max(1, min(int(cap), VARIANT_SA_MOVES // reps))
+
+
+def decomposition_variant_classes(netlist, leg_widths,
+                                  variant_names=DECOMPOSITION_VARIANTS,
+                                  sa_iterations=VARIANT_SA_ITERATIONS,
+                                  align_limit=ALIGN_CANDIDATES):
+    """The per-variant candidate classes for the speculate pool.
+
+    For every decomposition variant (netlist_ext.BLOCK_VARIANTS minus
+    "default", which IS the main pool): build blocks -> row seeds ->
+    euler -> a budget-bounded Threshold-Accept refine (the same
+    content-hash seed discipline as the main path) and nominate
+
+        1. the variant's SA best ("var:<name>"; above the
+           _VARIANT_SA_PROBLEM_CAP problem size the euler seed stands
+           in -- the structure is the candidate),
+        2. its both-rows flip / die-mirror (the proven closure classes),
+        3. up to ``align_limit`` alignment nominees
+           ("var:<name>-align<j>") from :func:`alignment_candidates`.
+
+    Variants whose block shape equals the default decomposition's are
+    skipped outright (their whole ordering space is the main pool's --
+    the classes would only dedupe away).  Deduped internally by
+    :func:`ordering_signature` (first occurrence wins); the caller
+    dedupes against the main pool.  Pure and deterministic.
+    """
+    from bigcell_engine.netlist_ext import (_block_shape,
+                                            build_bigcell_blocks,
+                                            row_seeds)
+    from bigcell_engine.place_euler import euler_orderings
+    default_shape = _block_shape(build_bigcell_blocks(netlist))
+    out = []
+    seen = set()
+    for name in variant_names:
+        blocks = build_bigcell_blocks(netlist, variant=name)
+        if _block_shape(blocks) == default_shape:
+            continue
+        p_blocks = [b for b in blocks if b.first.is_p]
+        n_blocks = [b for b in blocks if not b.first.is_p]
+        seeds = row_seeds(blocks, leg_widths)
+        eop, eon = euler_orderings(seeds, leg_widths)
+        problem_size = len(seeds[P_ROW]) * len(seeds[N_ROW])
+        if problem_size <= _VARIANT_SA_PROBLEM_CAP:
+            bp, bn, _bd = sa_refine(eop, eon, netlist, leg_widths,
+                                    iterations=_variant_sa_iterations(
+                                        problem_size, cap=sa_iterations))
+        else:
+            bp, bn = eop, eon
+        classes = [("var:%s" % name, bp, bn),
+                   ("var:%s-flip-both" % name,
+                    _row_flipped(bp), _row_flipped(bn)),
+                   ("var:%s-die-both" % name,
+                    _row_die_mirror(bp), _row_die_mirror(bn))]
+        for j, (op, on) in enumerate(
+                alignment_candidates(p_blocks, n_blocks, leg_widths,
+                                     limit=align_limit), start=1):
+            classes.append(("var:%s-align%d" % (name, j), op, on))
+        for kind, op, on in classes:
+            sig = ordering_signature(op, on)
+            if sig in seen:
+                continue
+            seen.add(sig)
+            out.append((kind, op, on))
+    return out
+
+
 def generate_candidates(best_p, best_n, seed_p, seed_n, leg_widths,
-                        candidate_count=DEFAULT_CANDIDATES):
+                        candidate_count=DEFAULT_CANDIDATES,
+                        extra_classes=None):
     """The deterministic top-K candidate pool (speculate stage, step 1).
 
     ``best_p``/``best_n`` are the SA cost-best orderings;
@@ -629,7 +908,13 @@ def generate_candidates(best_p, best_n, seed_p, seed_n, leg_widths,
     5. further per-block flip combinations of the SA best, ranked by
        SA cost then lexicographic bit order (only below the fixed
        classes when ``candidate_count`` allows, and only when
-       2**(nP+nN) <= _MAX_FLIP_COMBOS).
+       2**(nP+nN) <= _MAX_FLIP_COMBOS);
+    6. ``extra_classes`` -- pre-built (kind, ordering_p, ordering_n)
+       entries appended after the flip combinations and deduped like
+       every class (the decomposition-variant classes of
+       :func:`decomposition_variant_classes`; the ``candidate_count``
+       cap applies to the FINAL pool, so a caller passing extras must
+       raise it accordingly).
 
     Deduped by :func:`ordering_signature` (first occurrence wins) and
     truncated to ``candidate_count``.  Pure and deterministic.
@@ -660,6 +945,8 @@ def generate_candidates(best_p, best_n, seed_p, seed_n, leg_widths,
         combos.sort(key=lambda t: (t[0], t[1]))
         pool.extend(("flip%s" % ("".join(map(str, t[1])),), t[2], t[3])
                     for t in combos)
+    if extra_classes:
+        pool.extend(extra_classes)
     seen = set()
     out = []
     for kind, op, on in pool:
@@ -701,7 +988,7 @@ def _default_trial_router():
 def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
                      candidate_count=DEFAULT_CANDIDATES,
                      trial_attempts=DEFAULT_TRIAL_ATTEMPTS,
-                     trial_router=None):
+                     trial_router=None, variant_classes=False):
     """Speculate stage (doc section 2.2 "Composition"): score the
     candidate pool by a fast trial route and pick the winner.
 
@@ -713,6 +1000,19 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
     within the trial budget the candidate with the lowest
     (conflicts, SA cost, pool index) is returned: the caller's
     full-budget route then starts from the best-known orientation.
+
+    ``variant_classes`` extends the pool with the decomposition-variant
+    classes (:func:`decomposition_variant_classes`) when the fixed
+    classes all fail their trials -- the conflict evidence shows
+    plateaus that survive every ordering of ONE decomposition, so the
+    alternative decompositions join as a lazy second phase (a cell that
+    closes in the fixed classes never pays for them).  Variants rank
+    exactly like the mirror classes: first FEASIBLE wins, fallback =
+    lowest (conflicts, cost, pool index).  Candidates are deduped by
+    :func:`ordering_signature` (content-only: two decompositions
+    producing the same ordering route identically, so one trial
+    covers both; the report's ``kind`` carries the first occurrence's
+    provenance).
 
     ``trial_router`` defaults to ``route_grid.route_cell`` and is
     called as ``router(netlist, placements, width_cols, leg_widths,
@@ -737,7 +1037,10 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
     from bigcell_engine.geometry import layout_cell
     entries = []
     fallback = None                     # (conflicts, cost, index) -> entry
-    for idx, (kind, op, on) in enumerate(pool):
+
+    def _trial(idx):
+        """Trial-route pool[idx]; append the report entry; return it."""
+        kind, op, on = pool[idx]
         placements, width = layout_cell(op, on, leg_widths)
         try:
             result = router(netlist, placements, width, leg_widths,
@@ -757,15 +1060,45 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
                  "attempts": getattr(result, "attempts_used", None),
                  "note": note}
         entries.append(entry)
-        if conflicts == 0:
+        return entry
+
+    def _keep(entry, op, on):
+        """Short-circuit on FEASIBLE; track the fallback winner."""
+        nonlocal fallback
+        if entry["conflicts"] == 0:
             return op, on, {
-                "selected": idx, "kind": kind, "feasible": True,
-                "conflicts": 0, "trial_attempts": trial_attempts,
+                "selected": entry["index"], "kind": entry["kind"],
+                "feasible": True, "conflicts": 0,
+                "trial_attempts": trial_attempts,
                 "candidate_count": len(pool), "candidates": entries,
             }
-        if fallback is None or (conflicts, cost, idx) < \
-                (fallback["conflicts"], fallback["cost"], fallback["index"]):
+        if fallback is None or (entry["conflicts"], entry["cost"],
+                                entry["index"]) < \
+                (fallback["conflicts"], fallback["cost"],
+                 fallback["index"]):
             fallback = entry
+        return None
+
+    for idx in range(len(pool)):
+        entry = _trial(idx)
+        won = _keep(entry, pool[idx][1], pool[idx][2])
+        if won is not None:
+            return won
+    if variant_classes:
+        # phase 2: the decomposition-variant classes, deduped against
+        # everything already trialed
+        extra = decomposition_variant_classes(netlist, leg_widths)
+        known = {ordering_signature(op, on) for _k, op, on in pool}
+        for kind, op, on in extra:
+            if ordering_signature(op, on) in known:
+                continue
+            known.add(ordering_signature(op, on))
+            pool.append((kind, op, on))
+        for idx in range(len(entries), len(pool)):
+            entry = _trial(idx)
+            won = _keep(entry, pool[idx][1], pool[idx][2])
+            if won is not None:
+                return won
     return pool[fallback["index"]][1], pool[fallback["index"]][2], {
         "selected": fallback["index"], "kind": fallback["kind"],
         "feasible": False, "conflicts": fallback["conflicts"],
@@ -779,7 +1112,7 @@ def sa_refine_routable(ordering_p, ordering_n, netlist, leg_widths,
                        trial_attempts=DEFAULT_TRIAL_ATTEMPTS,
                        trial_router=None, iterations=None,
                        quality=DEFAULT_QUALITY, init_moves=None,
-                       seed=None, check=True):
+                       seed=None, check=True, variant_classes=False):
     """``sa_refine`` + the speculate selection stage: the rung-3 entry
     point for routability-aware placement.
 
@@ -801,6 +1134,10 @@ def sa_refine_routable(ordering_p, ordering_n, netlist, leg_widths,
     the selection itself uses none (invariant 9).  ``trial_router`` is
     injectable for tests; the default runs the real
     ``route_grid.route_cell`` at ``trial_attempts``.
+    ``variant_classes=True`` additionally joins the decomposition-
+    variant classes (see :func:`select_orderings`) when the fixed
+    classes all fail -- the upstream lever for the one-decomposition
+    routing plateaus.
     """
     cost_p, cost_n, _bd = sa_refine(
         ordering_p, ordering_n, netlist, leg_widths,
@@ -809,7 +1146,7 @@ def sa_refine_routable(ordering_p, ordering_n, netlist, leg_widths,
     sel_p, sel_n, sel = select_orderings(
         cost_p, cost_n, ordering_p, ordering_n, netlist, leg_widths,
         candidate_count=candidate_count, trial_attempts=trial_attempts,
-        trial_router=trial_router)
+        trial_router=trial_router, variant_classes=variant_classes)
     breakdown = _SAState(sel_p, sel_n, leg_widths).breakdown()
     breakdown["selection"] = sel
     return sel_p, sel_n, breakdown
