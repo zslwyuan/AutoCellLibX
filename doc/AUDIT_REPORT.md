@@ -1378,3 +1378,34 @@ max/COMPLEX5、adder/COMPLEX0、multiplier/COMPLEX4、NAND3X1（镜像候选）
 （cl1#Y@7 / cl1#A@8）唯一幸存交叉轨道同为 T3，共享节点 (T3,8)——
 M2 抬不动 M1 栅接触，8 轨加宽可解（非本轮范围）。试布下界从 4 降到 1
 （固定池）/变体池直接 FEASIBLE。全量 640 绿 + 1 skip。
+
+## §5.45 第五轮基准：29/49 闭合，同口径中位比 0.83（2026-10-16）
+
+M2 自由度（c4b3e9c）+ 取最窄政策（eb77d6e）+ 分解变体的首次联合对拍
+（bench_int5，18276s ≈ 5.1h，49 cells）：
+
+**闭合 29/49（59%）**，verify 29/29 清。同口径（bigcell-full，槽位模
+型）11 cell 全部 ≤1.10：NOR2X1 **0.50**、COMPLEX5(6T) 0.67、NAND3X1
+0.75、AND2X1/OR2X1 0.80、AOI22X1 0.83、COMPLEX0(8T) 0.86、
+COMPLEX0(14T)/COMPLEX4(14T) 0.91、CLKBUF1 1.10——**中位 ~0.86，
+Python 已窄于 ASTRAN**。multiplier/COMPLEX5(16T) 在 M2 轮被判
+"beyond M2"，本轮经窄化政策的变体链闭合（诚实记录：关闭路径待
+attempt 明细归档确认）。
+
+**报告口径勘误**：bigcell-grid cell 用的是精确布局（横向腿 IR），与
+smt-exact 同属旧语义——报告标注从"bigcell-* 可比"修正为"仅
+bigcell-full 可比"。
+
+**暴露的政策缺口（下一轮）**：rung 1 闭合仍立即返回未做候选比较
+——NAND2X1/INVX1 以 smt-exact（1.50/1.67，旧 IR）闭合，而槽位链
+给 0.765/0.575。取最窄政策应覆盖 rung 1。
+
+**未闭合 20 cell 画像**：22-36T 大 COMPLEX（COMPLEX1/7/9/10/11/20、
+multiplier/COMPLEX0）+ 时序/复杂库 cell（DFFNEG/DFFPOS/DFFSR/LATCH）
++ XOR/MUX 类（XOR2/XNOR2/MUX2X1）+ FAX1/HAX1/TBUFX2。两条已知升级
+路径：runtime（两阶段对失败 cell 双倍代价——结构诊断可预言跳
+phase 1；变体预算随规模收缩）与 8th track/门接触 M2 上浮
+（multiplier/COMPLEX5 类）。
+
+**运行时发现**：第五轮 5.1h（第四轮 2.9h）——M2 两阶段 + 变体链的
+代价随 M2 闭合率上升而放大，优化方向明确且不阻塞正确性。
