@@ -1,10 +1,13 @@
 """Width/checker benchmark: bigcell engine vs the ASTRAN baseline
 (stage 3, doc/STAGE3_BIGCELL_ENGINE.md section 4).
 
-Fixed benchmark set (``BENCHMARK_GLOBS``): the ASTRAN baseline cells and
-the mined COMPLEX cells.  Per-cell record: device count, ASTRAN width,
-Python width, producing engine, verify/layout-sanity verdicts.  Reports
-are written as JSON + markdown.  This is the continuous-verification
+Fixed benchmark set: the ASTRAN baseline cell decks
+(``BENCHMARK_GLOBS``), the mined COMPLEX cells, and the standard-cell
+LIBRARY cells (``LIBRARY_SOURCES`` -- one BenchmarkCell per .subckt
+block of ``std_celllib/cellsAstranFriendly.sp``, the gates the Python
+ladder closes).  Per-cell record: device count, ASTRAN width, Python
+width, producing engine, verify/layout-sanity verdicts.  Reports are
+written as JSON + markdown.  This is the continuous-verification
 backbone for the ASTRAN replacement -- every engine change re-runs it.
 
 Measurement discipline (doc section 4 + AGENTS.md invariants):
@@ -43,6 +46,26 @@ from . import gds_cells
 
 BENCHMARK_GLOBS = ("original_astran_cells/*.sp", "outputs/*/*.sp")
 
+#: Multi-subckt library decks: one BenchmarkCell per .subckt block, in
+#: file order.  Each block is reported under a VIRTUAL flow-relative
+#: source ``<LIBRARY_SOURCE_DIR>/<name>.sp``: the real deck sits OUTSIDE
+#: the flow directory (``../std_celllib/``), and a source that escapes
+#: the flow dir would make run_benchmark's artifact tree (built by
+#: joining ``out_dir`` with the source) write outside ``out_dir``.  The
+#: virtual source keeps every downstream path join (.sp/.gds artifacts,
+#: work dirs) inside the benchmark's own tree; the real file is wired by
+#: name below.
+LIBRARY_SOURCES = ("../std_celllib/cellsAstranFriendly.sp",)
+LIBRARY_SOURCE_DIR = "library"
+
+#: Where the library cells' ASTRAN baseline logs live.  The baselines
+#: were run from cellsAstranFriendly.sp directly (each
+#: ``original_astran_cells/<name>.Astranlog`` records "Loading cells
+#: netlist from file: ../stdCelllib/cellsAstranFriendly.sp"), so there
+#: is no per-cell .sp deck next to them -- the wired directory is the
+#: only place a library baseline can be found.
+LIBRARY_LOG_DIR = "original_astran_cells"
+
 #: scratch area (git-ignored by convention) for the baseline cache, the
 #: per-cell ASTRAN work dirs and benchmark artifacts.
 STAGE3_CHECK_DIR = "_stage3_check"
@@ -64,7 +87,14 @@ class BenchmarkCell:
     COMPLEX ids are per-run assignments (AGENTS.md invariant 6), so the
     same name can denote different patterns in different outputs dirs.
     ``source`` (the flow-relative posix path of the .sp) is the unique
-    key; reports carry both.
+    key; reports carry both.  Library subckts carry the virtual
+    ``library/<name>.sp`` source (see LIBRARY_SOURCES).
+
+    ``log_dir`` is an optional flow-relative directory holding the
+    cell's ``<name>.Astranlog`` when that log is NOT a sibling of the
+    .sp (library cells: LIBRARY_LOG_DIR -- their baseline logs sit next
+    to the baseline decks, not next to any per-cell .sp).  ``None``
+    keeps the historical log-next-to-the-.sp resolution only.
     """
 
     name: str
@@ -72,41 +102,136 @@ class BenchmarkCell:
     netlist: CellNetlist
     transistors: int
     text: str
+    log_dir: str = None
+
+
+_SUBCKT_START_RE = re.compile(r"^[ \t]*\.subckt\b.*$", re.IGNORECASE
+                              | re.MULTILINE)
+_ENDS_RE = re.compile(r"^[ \t]*\.ends\b.*$", re.IGNORECASE | re.MULTILINE)
+
+
+def _iter_subckt_blocks(text):
+    """The .subckt ... .ends blocks of a deck, in file order.
+
+    ``parse_spice_subckt`` reads the FIRST .subckt header of its input
+    but every MOS line of the WHOLE text, so a multi-subckt deck must be
+    split before it is parsed: a whole-file parse would attribute every
+    device of the file to the first block.  Each block spans its .subckt
+    line through the .ends line (missing .ends: through the next .subckt
+    or EOF) -- devices outside any block are never picked up.
+    """
+    starts = [m.start() for m in _SUBCKT_START_RE.finditer(text)]
+    for i, start in enumerate(starts):
+        limit = starts[i + 1] if (i + 1 < len(starts)) else len(text)
+        end = limit
+        m = _ENDS_RE.search(text, start, limit)
+        if (m):
+            end = m.end()
+        yield text[start:end]
+
+
+def _parse_or_none(text):
+    """parse_spice_subckt with OSError folded away (no deck, no cell)."""
+    try:
+        return parse_spice_subckt(text)
+    except ValueError:
+        return None
 
 
 def load_benchmark_cells(flow_dir=None):
     """Return the sorted, de-duplicated benchmark cell list.
 
     Walks BENCHMARK_GLOBS relative to ``flow_dir`` (default: the flow
-    directory this package lives in), parses every .subckt with
-    ``parse_spice_subckt`` and returns one BenchmarkCell per parseable
-    file, sorted by (name, source).  De-duplication is by source path
-    (the unique key -- names collide across benchmarks, invariant 6);
-    decks the shared parser cannot read are skipped: the benchmark
+    directory this package lives in) and parses every .subckt with
+    ``parse_spice_subckt``; then splits each LIBRARY_SOURCES deck into
+    per-subckt blocks and yields one BenchmarkCell per parseable block
+    under its virtual ``library/<name>.sp`` source.  Returns everything
+    sorted by (name, source).
+
+    De-duplication is by source path (the unique key -- names collide
+    across benchmarks, invariant 6); a duplicated subckt name inside one
+    library deck keeps the FIRST occurrence (file order).  Decks or
+    blocks the shared parser cannot read are skipped: the benchmark
     benchmarks cells, not the parser.
+
+    Name overlap between the baseline decks (``original_astran_cells/``)
+    and the library is resolved by baseline availability: when a
+    same-named baseline .sp has its .Astranlog as a true sibling, its
+    record wins and the library record is dropped; otherwise both
+    sources are kept as distinct records.
     """
     if (flow_dir is None):
         flow_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     seen = set()
     cells = []
+
+    def _add(source, text, parsed, log_dir=None):
+        # unique by source; keep the first occurrence (deterministic)
+        if (parsed is None or source in seen):
+            return
+        seen.add(source)
+        cells.append(BenchmarkCell(
+            name=parsed.subckt_name, source=source,
+            netlist=CellNetlist(parsed), transistors=len(parsed.devices),
+            text=text, log_dir=log_dir))
+
     for pattern in BENCHMARK_GLOBS:
         for path in sorted(glob.glob(os.path.join(flow_dir, pattern))):
             rel = os.path.relpath(path, flow_dir).replace(os.sep, "/")
             if (rel in seen):
                 continue
-            seen.add(rel)
             try:
                 with open(path, "r", errors="replace", newline="") as fh:
                     text = fh.read()
-                parsed = parse_spice_subckt(text)
-            except (OSError, ValueError):
+            except OSError:
                 continue
-            cells.append(BenchmarkCell(
-                name=parsed.subckt_name, source=rel,
-                netlist=CellNetlist(parsed),
-                transistors=len(parsed.devices), text=text))
+            _add(rel, text, _parse_or_none(text))
+    for lib_rel in LIBRARY_SOURCES:
+        path = os.path.join(flow_dir, lib_rel)
+        try:
+            with open(path, "r", errors="replace", newline="") as fh:
+                text = fh.read()
+        except OSError:
+            continue
+        for block in _iter_subckt_blocks(text):
+            parsed = _parse_or_none(block)
+            if (parsed is None):
+                continue
+            _add("%s/%s.sp" % (LIBRARY_SOURCE_DIR, parsed.subckt_name),
+                 block, parsed, log_dir=LIBRARY_LOG_DIR)
+    cells = _prefer_logged_baseline(cells, flow_dir)
     cells.sort(key=lambda c: (c.name, c.source))
     return cells
+
+
+def _prefer_logged_baseline(cells, flow_dir):
+    """Same-named original_astran_cells / library records: keep one.
+
+    The baseline decks and the library describe the SAME gates.  When a
+    baseline deck's own .Astranlog exists next to it (baseline
+    availability, i.e. an ASTRAN log that needs no directory wiring),
+    its record wins and the same-named library record is dropped; when
+    it does not, both records stay (name+source is the identity).  Only
+    this pair of source families is name-deduped: outputs/* COMPLEX ids
+    are per-run (invariant 6) -- a same-named outputs cell is a
+    different pattern and is never collapsed against the library.
+    """
+    logged = set()
+    for c in cells:
+        if (not (c.source.startswith("original_astran_cells/")
+                 and c.source.endswith(".sp"))):
+            continue
+        stem = c.source[:-3]
+        if (os.path.basename(stem) != c.name):
+            continue                    # log is named after the deck
+        if (os.path.exists(os.path.join(flow_dir,
+                                        stem + ASTRAN_LOG_SUFFIX))):
+            logged.add(c.name)
+    if (not logged):
+        return cells
+    return [c for c in cells
+            if not (c.source.startswith(LIBRARY_SOURCE_DIR + "/")
+                    and c.name in logged)]
 
 
 def baseline_cache_path(flow_dir=None):
@@ -200,8 +325,10 @@ def get_astran_baselines(cells, cache_path=None, allow_runs=False,
     note}.  Resolution order per cell:
 
     1. a valid cache entry (same transistor count) -- origin "cache";
-    2. the .Astranlog next to the .sp, width validated against the
-       log's transistor count (stale logs are rejected, not used);
+    2. the .Astranlog next to the .sp -- or, when the cell wires one
+       (``log_dir``, library cells), ``<log_dir>/<name>.Astranlog`` --
+       width validated against the log's transistor count (stale logs
+       are rejected, not used);
     3. only with ``allow_runs``: a fresh ASTRAN run into a per-cell
        work dir under ``_stage3_check/work/<source>/`` (never a shared
        cwd), linted first, result parsed from the run's log and cached.
@@ -233,6 +360,12 @@ def get_astran_baselines(cells, cache_path=None, allow_runs=False,
                 flow_dir, (cell.source[:-3] + ASTRAN_LOG_SUFFIX)
                 if cell.source.endswith(".sp") else
                 (cell.source + ASTRAN_LOG_SUFFIX))
+            if (not os.path.exists(log_path) and cell.log_dir):
+                # wired baseline directory: library subckts have no
+                # per-cell .sp deck, their logs live with the baseline
+                # decks (see LIBRARY_LOG_DIR)
+                log_path = os.path.join(flow_dir, cell.log_dir,
+                                        cell.name + ASTRAN_LOG_SUFFIX)
             if (os.path.exists(log_path)):
                 width, note = _validate_log_width(log_path, cell.transistors)
                 entry = {"name": cell.name,
@@ -248,11 +381,13 @@ def get_astran_baselines(cells, cache_path=None, allow_runs=False,
                     cache["cells"][cell.source] = dict(entry)
                     dirty = True
             else:
+                note = "no .Astranlog next to the .sp"
+                if (cell.log_dir):
+                    note += " or in %s" % cell.log_dir
                 entry = {"name": cell.name,
                          "transistors": cell.transistors,
                          "width_um": None, "origin": "missing",
-                         "note": "no .Astranlog next to the .sp "
-                                 "(allow_runs=False)"}
+                         "note": note + " (allow_runs=False)"}
         result[cell.source] = entry
     if (dirty):
         _save_cache(cache_path, cache)
@@ -269,6 +404,13 @@ def _run_baseline(cell, flow_dir, astran_runner):
                             BASELINE_WORK_SUBDIR, *stem.split("/"))
     os.makedirs(work_dir, exist_ok=True)
     sp_path = os.path.join(flow_dir, cell.source)
+    if (not os.path.exists(sp_path)):
+        # virtual source (library subckt, see LIBRARY_SOURCES): there is
+        # no on-disk deck to point ASTRAN at -- materialize the cell's
+        # own block text in the per-cell work dir instead of writing
+        # anywhere near the real library file
+        sp_path = os.path.join(work_dir, cell.name + ".sp")
+        _write_if_changed(sp_path, cell.text)
     lint = lint_netlist(sp_path)
     errs = lint_errors(lint)
     if (errs):

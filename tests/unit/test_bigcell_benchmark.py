@@ -7,7 +7,9 @@ INJECTED fakes -- no ASTRAN, no CP-SAT, no GDS writing in this file.
 import json
 import os
 
-from bigcell_engine.benchmark import (BenchmarkCell, baseline_cache_path,
+from bigcell_engine import benchmark as benchmark_mod
+from bigcell_engine.benchmark import (BenchmarkCell, LIBRARY_LOG_DIR,
+                                      baseline_cache_path,
                                       get_astran_baselines,
                                       load_benchmark_cells, run_benchmark)
 from bigcell_engine.engine import UnsupportedCell
@@ -31,13 +33,14 @@ MnB n1 B GND GND NMOS W=0.5u L=0.05u
 """
 
 
-def _cell(rel, text, name=None):
+def _cell(rel, text, name=None, log_dir=None):
     parsed = parse_spice_subckt(text)
     # the loader names cells by the parsed subckt; real decks name the
     # subckt after the file, so the fakes do the same
     return BenchmarkCell(name=name or os.path.basename(rel)[:-3],
                          source=rel, netlist=CellNetlist(parsed),
-                         transistors=len(parsed.devices), text=text)
+                         transistors=len(parsed.devices), text=text,
+                         log_dir=log_dir)
 
 
 def _mk_file(tmp_path, rel, text):
@@ -79,6 +82,187 @@ def test_loader_covers_the_known_set(flow_dir):
     # names different patterns in different dirs -- sources disambiguate
     names = [c.name for c in cells]
     assert names.count("COMPLEX0") >= 2
+
+
+# --- loader: the standard-cell LIBRARY file ------------------------------
+
+def test_loader_includes_library_cells(flow_dir):
+    cells = load_benchmark_cells(flow_dir)
+    lib = [c for c in cells if c.source.startswith("library/")]
+    assert len(lib) > 0                     # the library file is in the set
+    by_source = {c.source: c for c in lib}
+    # the gates the Python ladder closes are now benchmarked
+    assert "library/INVX1.sp" in by_source
+    assert "library/NAND2X1.sp" in by_source
+    assert by_source["library/INVX1.sp"].transistors == 2
+    assert by_source["library/NAND2X1.sp"].transistors == 4
+    for c in lib:
+        assert c.log_dir == LIBRARY_LOG_DIR   # baseline dir wired
+        assert c.source.endswith(".sp")
+        # one block per cell: the deck text is the subckt, not the file
+        assert c.text.lower().count(".subckt") == 1
+        assert c.text.lower().count(".ends") == 1
+    # one record per subckt, deterministic (name, source) order
+    names = [c.name for c in lib]
+    assert names == sorted(names)
+    assert len(set(c.source for c in lib)) == len(lib)
+
+
+def test_library_blocks_parsed_independently(tmp_path, monkeypatch):
+    # parse_spice_subckt reads the FIRST .subckt header but EVERY MOS
+    # line of its input: without the per-block split the first subckt
+    # would inherit the devices of the whole file
+    deck = INV + "\n" + NAND2 + "\n" + ".end\n"
+    _mk_file(tmp_path, "libsrc/all.sp", deck)
+    monkeypatch.setattr(benchmark_mod, "LIBRARY_SOURCES", ("libsrc/all.sp",))
+    cells = load_benchmark_cells(str(tmp_path))
+    by_name = {c.name: c for c in cells}
+    assert sorted(by_name) == ["INV", "NAND2"]
+    assert by_name["INV"].transistors == 2      # not the file's 6 devices
+    assert by_name["NAND2"].transistors == 4
+    assert by_name["INV"].source == "library/INV.sp"
+    assert by_name["INV"].text.count("Mp") == 1
+    assert by_name["NAND2"].text.count("Mp") == 2
+
+
+def test_library_unparseable_and_duplicate_blocks_skipped(tmp_path,
+                                                          monkeypatch):
+    deck = (INV
+            + "\n.subckt EMPTY VCC GND\n.ends EMPTY\n"       # no MOS devices
+            + "\n" + INV)                                     # duplicate name
+    _mk_file(tmp_path, "libsrc/all.sp", deck)
+    monkeypatch.setattr(benchmark_mod, "LIBRARY_SOURCES", ("libsrc/all.sp",))
+    cells = load_benchmark_cells(str(tmp_path))
+    assert [c.name for c in cells] == ["INV"]
+    assert cells[0].text == INV.rstrip("\n")     # first occurrence's block
+
+
+# --- library baselines: wired log directory ------------------------------
+
+def test_library_baselines_wired_to_original_astran_logs(flow_dir, tmp_path):
+    # the library cells have no .sp deck next to their logs: the wired
+    # LIBRARY_LOG_DIR is the only place their baselines can be found
+    cells = [c for c in load_benchmark_cells(flow_dir)
+             if c.source.startswith("library/")]
+    base = get_astran_baselines(cells,
+                                cache_path=os.path.join(str(tmp_path),
+                                                        "cache.json"),
+                                flow_dir=str(flow_dir))
+    parsed = {s: e for s, e in base.items()
+              if e["origin"] == "log" and e["width_um"]}
+    assert len(parsed) >= 15                 # at least 15 logs carry a width
+    assert parsed["library/INVX1.sp"]["width_um"] == 0.57
+    assert parsed["library/NAND2X1.sp"]["width_um"] == 0.76
+    assert parsed["library/INVX1.sp"]["origin"] == "log"
+    # truncated logs (no Cell Size line) are honest misses, not drops
+    misses = [base[c.source] for c in cells if c.source not in parsed]
+    for e in misses:
+        assert e["width_um"] is None
+        assert "no Cell Size" in e["note"] or "rejected" in e["note"]
+
+
+def test_baseline_wired_log_dir_resolution(tmp_path):
+    _mk_file(tmp_path, "library/FOO.sp", INV)          # virtual-source log
+    _mk_file(tmp_path, "baselogs/FOO.Astranlog",
+             "-> Cell Size (W x H): 0.57 x 2.47\n"
+             "-> Number of transistors before folding: 2 -> P(1) N(1)\n")
+    base = get_astran_baselines(
+        [_cell("library/FOO.sp", INV, log_dir="baselogs")],
+        cache_path=os.path.join(str(tmp_path), "cache.json"),
+        flow_dir=str(tmp_path))
+    e = base["library/FOO.sp"]
+    assert e["width_um"] == 0.57 and e["origin"] == "log"
+    # without the wiring the same log is invisible (fresh cache: the
+    # first call's entry must not mask the resolution difference)
+    base2 = get_astran_baselines(
+        [_cell("library/FOO.sp", INV)],
+        cache_path=os.path.join(str(tmp_path), "cache2.json"),
+        flow_dir=str(tmp_path))
+    e2 = base2["library/FOO.sp"]
+    assert e2["width_um"] is None and e2["origin"] == "missing"
+    assert "no .Astranlog next to the .sp (allow_runs=False)" in e2["note"]
+
+
+def test_baseline_stale_wired_log_rejected(tmp_path):
+    _mk_file(tmp_path, "library/FOO.sp", INV)
+    _mk_file(tmp_path, "baselogs/FOO.Astranlog",
+             "-> Cell Size (W x H): 3.61 x 2.47\n"
+             "-> Number of transistors before folding: 30 -> P(15) N(15)\n")
+    base = get_astran_baselines(
+        [_cell("library/FOO.sp", INV, log_dir="baselogs")],
+        cache_path=os.path.join(str(tmp_path), "cache.json"),
+        flow_dir=str(tmp_path))
+    e = base["library/FOO.sp"]
+    assert e["width_um"] is None and e["origin"] == "missing"
+    assert "rejected" in e["note"]           # stale wired log: never used
+
+
+# --- name-overlap dedupe: baseline decks vs the library ------------------
+
+def _with_libsrc(tmp_path, monkeypatch, deck):
+    _mk_file(tmp_path, "libsrc/all.sp", deck)
+    monkeypatch.setattr(benchmark_mod, "LIBRARY_SOURCES", ("libsrc/all.sp",))
+
+
+def test_dedupe_prefers_baseline_deck_with_sibling_log(tmp_path, monkeypatch):
+    # a same-named original_astran_cells deck WITH its .Astranlog wins
+    # over the library record (its baseline needs no directory wiring)
+    _mk_file(tmp_path, "original_astran_cells/INV.sp", INV)
+    _mk_file(tmp_path, "original_astran_cells/INV.Astranlog",
+             "-> Cell Size (W x H): 0.57 x 2.47\n"
+             "-> Number of transistors before folding: 2 -> P(1) N(1)\n")
+    _with_libsrc(tmp_path, monkeypatch, INV)
+    names = [(c.name, c.source) for c in load_benchmark_cells(str(tmp_path))]
+    assert names == [("INV", "original_astran_cells/INV.sp")]
+
+
+def test_dedupe_keeps_both_when_no_sibling_log(tmp_path, monkeypatch):
+    _mk_file(tmp_path, "original_astran_cells/INV.sp", INV)
+    _with_libsrc(tmp_path, monkeypatch, INV)
+    names = sorted((c.name, c.source)
+                   for c in load_benchmark_cells(str(tmp_path)))
+    # no log to prefer: both sources stay as distinct records
+    assert names == [("INV", "library/INV.sp"),
+                     ("INV", "original_astran_cells/INV.sp")]
+
+
+def test_dedupe_never_collapses_outputs_against_library(tmp_path, monkeypatch):
+    # invariant 6: outputs names are per-run ids -- a same-named outputs
+    # cell may be a different pattern and is never name-deduped away,
+    # even when the outputs deck has its own sibling log
+    _mk_file(tmp_path, "outputs/x/INV.sp", INV)
+    _mk_file(tmp_path, "outputs/x/INV.Astranlog",
+             "-> Cell Size (W x H): 0.57 x 2.47\n"
+             "-> Number of transistors before folding: 2 -> P(1) N(1)\n")
+    _with_libsrc(tmp_path, monkeypatch, INV)
+    names = sorted((c.name, c.source)
+                   for c in load_benchmark_cells(str(tmp_path)))
+    assert names == [("INV", "library/INV.sp"),
+                     ("INV", "outputs/x/INV.sp")]
+
+
+# --- virtual sources keep run_benchmark artifacts inside out_dir ---------
+
+def test_report_artifacts_for_virtual_library_source(tmp_path):
+    out = os.path.join(str(tmp_path), "out")
+    report = run_benchmark(
+        [_cell("library/INVX1.sp", INV, log_dir="original_astran_cells")],
+        out, baselines={"library/INVX1.sp":
+                        {"name": "INVX1", "transistors": 2,
+                         "width_um": 0.57, "origin": "log", "note": ""}},
+        synth_runner=_fake_synth_ok, gds_writer=_fake_gds_writer,
+        verify_fn=lambda nl, pl, rt: _OkReport(),
+        sanity_checker=lambda p: _SanityReport(True, 0.57),
+        flow_dir=str(tmp_path))
+    rec = report["cells"][0]
+    assert rec["status"] == "ok" and rec["astran_um"] == 0.57
+    # artifacts mirror the VIRTUAL source under out_dir -- never next to
+    # the real library deck (which lives outside the flow directory)
+    assert open(os.path.join(out, "library", "INVX1.sp"),
+                newline="").read() == INV
+    assert os.path.exists(os.path.join(out, "library", "INVX1.gds"))
+    assert "| INVX1 | library/INVX1.sp | 2 | 0.57 | 0.57 |" in \
+        open(os.path.join(out, "report.md")).read()
 
 
 # --- .Astranlog width parsing + baseline cache --------------------------
