@@ -711,7 +711,7 @@ def test_multiplier_repro_never_clashes_and_fails_honestly(flow_dir):
     from bigcell_engine.engine import _heuristic_placement
     path = os.path.join(flow_dir, "outputs", "multiplier", "COMPLEX0.sp")
     nl = CellNetlist(parse_spice_subckt(open(path).read()))
-    nl3, pl, w, lws, blocks = _heuristic_placement(nl)
+    nl3, pl, w, lws, blocks, _orderings = _heuristic_placement(nl)
     r = route_cell(nl3, pl, w, lws, max_attempts=3)
     note = getattr(r, "fail_note", None) or ""
     assert "terminal clash" not in note
@@ -767,7 +767,9 @@ LIB_NAND2X1_CELL = "NAND2X1"
 
 
 def _slot_state(sp):
-    """(netlist3, placement, width, leg_widths, blocks) via rung 3."""
+    """(netlist3, placement, width, leg_widths, blocks, orderings) via
+    rung 3 -- engine._heuristic_placement's 6-value contract (the
+    orderings tuple feeds the slot GDS emitter)."""
     from bigcell_engine.engine import _heuristic_placement
     nl = CellNetlist(parse_spice_subckt(sp))
     return _heuristic_placement(nl)
@@ -786,7 +788,7 @@ def _lib_subckt(cell, flow_dir):
 @pytest.mark.parametrize("sp,label", [
     (INVX1_SP, "INVX1"), (INLINE_NAND2_SP, "NAND2")])
 def test_slot_cells_route_and_verify_clean(sp, label):
-    nl3, pl, w, lws, blocks = _slot_state(sp)
+    nl3, pl, w, lws, blocks, _orderings = _slot_state(sp)
     r = route_cell(nl3, pl, w, lws)
     assert r.ok, (r.status_name, r.fail_note)
     rep = verify_cell(nl3, pl, r, blocks=blocks)
@@ -798,7 +800,7 @@ def test_slot_route_end_to_end_gds_and_sanity(tmp_path):
     verify clean -> gds_cells.write_cell_gds -> layout_sanity clean."""
     from layout_sanity import check_layout
     from bigcell_engine.gds_cells import write_cell_gds
-    nl3, pl, w, lws, blocks = _slot_state(INVX1_SP)
+    nl3, pl, w, lws, blocks, _orderings = _slot_state(INVX1_SP)
     r = route_cell(nl3, pl, w, lws)
     assert r.ok, (r.status_name, r.fail_note)
     rep = verify_cell(nl3, pl, r, blocks=blocks)
@@ -814,7 +816,7 @@ def test_slot_route_end_to_end_gds_and_sanity(tmp_path):
 
 
 def test_slot_route_is_byte_stable_in_process():
-    nl3, pl, w, lws, _blocks = _slot_state(INLINE_NAND2_SP)
+    nl3, pl, w, lws, _blocks, _orderings = _slot_state(INLINE_NAND2_SP)
     sigs = set()
     for _run in range(2):
         r = route_cell(nl3, pl, w, lws)
@@ -834,7 +836,7 @@ from bigcell_engine.route_grid import route_cell, route_signature
 SP = %r
 
 nl = CellNetlist(parse_spice_subckt(SP))
-nl3, pl, w, lws, _blocks = _heuristic_placement(nl)
+nl3, pl, w, lws, _blocks, _orderings = _heuristic_placement(nl)
 r = route_cell(nl3, pl, w, lws)
 assert r.ok, (r.status_name, r.fail_note)
 print(hashlib.sha256(route_signature(r).encode()).hexdigest())
@@ -865,7 +867,7 @@ def test_lib_nand2x1_slot_route_closes_after_speculate(flow_dir):
     now picks the mirrored flip-both orientation, which routes FEASIBLE
     and verifies clean: the plateau is broken by orientation choice,
     not by router tuning."""
-    nl3, pl, w, lws, blocks = _slot_state(_lib_subckt(LIB_NAND2X1_CELL,
+    nl3, pl, w, lws, blocks, _orderings = _slot_state(_lib_subckt(LIB_NAND2X1_CELL,
                                                       flow_dir))
     r = route_cell(nl3, pl, w, lws)
     assert r.ok and r.status_name == "FEASIBLE"
@@ -873,3 +875,92 @@ def test_lib_nand2x1_slot_route_closes_after_speculate(flow_dir):
     assert r.width_cols >= max(p.end_col for p in pl.values())
     rep = verify_cell(nl3, pl, r, blocks=blocks)
     assert rep.ok()
+
+
+# ------------- structural freedom diagnosis (corridor-locked T3) ----------
+
+def test_structural_diagnosis_names_corridor_contest_on_ctrl(flow_dir):
+    """The ctrl/COMPLEX0 slot plateau (chain W=6) is structural, not a
+    search failure: the 9-level bar domain has a single N<->P crossover
+    track (T3) and the power stripes wall every other track at their
+    access columns, so several nets' forced demands land on the same
+    corridor node.  The exact CP-SAT model is INFEASIBLE on the same
+    placement under the shared die-slot accesses (scratch probe
+    flow/_stage3_check/diag_exact_shared.py), and a second corridor
+    track does not lift it (diag_widen_probe.py).  The failing route's
+    note must therefore NAME the contest and the missing freedom
+    (ASTRAN's metal2 z-layer) instead of only counting conflicts."""
+    import os
+
+    from bigcell_engine.engine import _heuristic_placement
+    path = os.path.join(flow_dir, "outputs", "ctrl", "COMPLEX0.sp")
+    nl = CellNetlist(parse_spice_subckt(open(path).read()))
+    nl3, pl, w, lws, _blocks, _orderings = _heuristic_placement(nl)
+    r = route_cell(nl3, pl, w, lws, max_attempts=5)
+    assert not r.ok
+    note = getattr(r, "fail_note", None) or ""
+    assert "corridor T3 over-subscribed" in note
+    assert "metal2 z-layer" in note
+    g = _RouteGrid(nl3, pl, w)
+    contests, walled = g.structural_diagnosis()
+    # cl0#B's gate@0 and cl0#a_2_6#'s power-walled P access both need
+    # the (T3, col 1) node; cl1#Y's gate island needs the corridor too
+    assert 1 in contests
+    assert {"cl0#B", "cl0#a_2_6#", "cl1#Y"} <= set(contests[1])
+    # no false walls: cl1#A crosses its gate via a poly jump, so it is
+    # not caged
+    assert all(name != "cl1#A" for name, _label in walled)
+
+
+def test_structural_diagnosis_clean_on_closures():
+    """No invented contests: the closing cells (INVX1, NAND2) route
+    conflict-free and their static diagnosis reports no corridor
+    over-subscription and no caged terminals."""
+    for sp in (INVX1_SP, INLINE_NAND2_SP):
+        nl3, pl, w, lws, _blocks, _orderings = _slot_state(sp)
+        r = route_cell(nl3, pl, w, lws)
+        assert r.ok, (r.status_name, r.fail_note)
+        g = _RouteGrid(nl3, pl, w)
+        contests, walled = g.structural_diagnosis()
+        assert contests == {}
+        assert walled == []
+
+
+def test_structural_note_is_deterministic(flow_dir):
+    """The diagnosis is a pure function of the build-time geometry: the
+    failing route's note (plateau part + structural part) is
+    byte-identical across repeated in-process runs (invariant 9)."""
+    import os
+
+    from bigcell_engine.engine import _heuristic_placement
+    path = os.path.join(flow_dir, "outputs", "max", "COMPLEX5.sp")
+    nl = CellNetlist(parse_spice_subckt(open(path).read()))
+    notes = set()
+    for _run in range(2):
+        nl3, pl, w, lws, _blocks, _orderings = _heuristic_placement(nl)
+        r = route_cell(nl3, pl, w, lws, max_attempts=5)
+        assert not r.ok
+        notes.add(r.fail_note)
+    assert len(notes) == 1
+
+
+def test_adder_bfs_fail_names_caged_gate_contact(flow_dir):
+    """adder/COMPLEX0 (chain W=8) hard-fails at attempt 1: the N-side
+    gate of cl2#a_2_54# at col 2 contacts only on T2 -- the very track
+    GND's power stripe covers at that column (its diffusion access sits
+    there) -- so the gate is statically caged.  The hard-fail note must
+    say so, plus the corridor contest at col 1 (cl2#B's forced crossing
+    endpoint vs cl2#a_2_54#'s walled N-access escape)."""
+    import os
+
+    from bigcell_engine.engine import _heuristic_placement
+    path = os.path.join(flow_dir, "outputs", "adder", "COMPLEX0.sp")
+    nl = CellNetlist(parse_spice_subckt(open(path).read()))
+    nl3, pl, w, lws, _blocks, _orderings = _heuristic_placement(nl)
+    r = route_cell(nl3, pl, w, lws, max_attempts=1)
+    assert not r.ok
+    note = getattr(r, "fail_note", None) or ""
+    assert "impossible to find a path for net cl2#a_2_54#" in note
+    assert "cl2#a_2_54# gate contact @col 2 is statically caged" in note
+    assert "corridor T3 over-subscribed at col 1" in note
+    assert r.width_cols >= max(p.end_col for p in pl.values())

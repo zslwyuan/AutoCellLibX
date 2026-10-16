@@ -107,6 +107,45 @@ single stub per net (post-pass (h)): the BFS has no pin geometry, so a
 tree path hopping point -> hub -> pin -> hub -> point would be connected
 in the tree but not on the die.
 
+Residual structural class: the corridor-locked terminal
+-------------------------------------------------------
+The slot-router residuals that survive every mirror/decomposition
+variant (measured on the benchmark's COMPLEX plateau cells) share one
+anatomy.  The 9-level bar domain gives each column exactly ONE N<->P
+crossover level: the boundary track T3.  Every power stripe is forced to
+an interval that spans its half of the domain (a GND access on row rail
+1 covers T0-T2, a VCC access on rail 2 covers T4-T6 -- the power-end
+contract leaves no choice), so at every power-access column T3 is the
+only free track.  A diffusion access whose left/right/up/down M1
+neighbours are all power-walled then has exactly one escape -- the
+corridor node (T3, c) -- and a gate-only net whose crossing tracks are
+power-walled except T3 has its crossing endpoints forced there too.
+When two nets' forced demands land on the same corridor node, one of
+them must yield a negotiated conflict per contested node; that count is
+the domain's floor for the placement, not a search failure -- the exact
+CP-SAT model (smt_engine.route_model, the same RouteResult vocabulary)
+returns INFEASIBLE on all three plateau placements under the shared
+die-slot accesses, and adding a second corridor track (8 tracks / 10
+bar levels, probed) does NOT lift it: the yielding-free transition's
+solidified stripe sweeps the whole corridor band at its transition
+column, so the drawn metal -- not the node count -- is the wall.
+
+The freedom ASTRAN uses here is its metal2 z-layer: the C++ router is a
+3D grid (designmng.cpp:454 setup(..., 3)) whose layer costs
+(router.cpp:53-55) are M1 h=11/v=4, M2 h=4/**v=11** and via-up 4 at any
+node -- M2 track changes and node-level vias are first-class moves.
+This vocabulary cannot express them: hseg is horizontal-only per
+(track, column), a via joins two same-track adjacent segments (so a
+power-walled access point -- both adjacent M1 segment slots owned by a
+power stripe -- can never lift onto M2), and verify's BFS gives M2 no
+vertical edges.  Expressing the fix means extending the RouteResult
+contract itself (M2 vertical geometry + access-point vias across
+route_model/verify/gds -- outside this module) or placing cells without
+corridor-locked terminals.  :meth:`structural_diagnosis` names the
+contested corridor nodes and the walled terminals on every failure so
+the plateau note says WHICH freedom is missing instead of only how many
+conflicts stalled.
+
 Determinism (AGENTS.md invariants 8/9): nets are routed in sorted-name
 order; the priority queue breaks cost ties by (node id, insertion counter);
 all loops terminate on fixed counts; no wall-clock anywhere.  Identical
@@ -1315,6 +1354,7 @@ class _RouteGrid(object):
                     if (ok == -1):
                         self._fail_note = ("impossible to find a path for "
                                            "net %s" % net.name)
+                        self._fail_note += self._structural_note()
                         break
                     for nid in self._complete_junctions(net):
                         self.graph[nid].history += 1
@@ -1373,6 +1413,7 @@ class _RouteGrid(object):
                     "conflicts at attempt %d; unresolved: %s)"
                     % (attempt, best[1], best[0],
                        ", ".join(best[2]) if best[2] else "-"))
+                self._fail_note += self._structural_note()
             return False
         # arcs of solved nets become the final solution's arcs
         # (graphrouter.cpp:169-171)
@@ -1439,7 +1480,190 @@ class _RouteGrid(object):
                         plan[(c, slot)] = (nidx, lo, hi)
         return plan, contested, conflicted
 
+    # ---------------- structural freedom diagnosis ----------------
 
+    def _static_term_owner(self):
+        """{node id: net index} for every BUILD-TIME terminal (diffusion
+        accesses, gates, pins, power stripes) -- net.nodes holds
+        source==1 nodes only and survives the solver's resets, so this
+        is negotiation-independent static geometry."""
+        owner = {}
+        for net in self.nets + self.power:
+            for nid in net.nodes:
+                owner[nid] = net.index
+        return owner
+
+    def _cage(self, xidx, start, banned=frozenset()):
+        """Least fixpoint of the nodes net ``xidx`` can physically occupy
+        starting from ``start``: M1 / M2 / poly / gate arcs over nodes
+        that are no foreign build-time terminal and not ``banned``.
+
+        Hubs and pins are excluded: a hub hop is either the pin stub or
+        a same-column vertical whose drawn stripe consumes the corridor
+        node anyway, so it never substitutes for a corridor crossing.
+        M2 enters only through the over-approximated via rule (some
+        same-track M1 neighbour is already reached), which can only
+        OVER-state reachability -- the diagnosis may miss a contest but
+        never invents one.  The fixpoint is monotone, hence unique and
+        independent of the work order (determinism, invariant 9)."""
+        owner = self._term_owner
+        seen = {start}
+        work = [start]
+        while work:
+            nid = work.pop()
+            for ai in self.graph[nid].arcs:
+                arc = self.arcs[ai]
+                other = arc.n2 if arc.n1 == nid else arc.n1
+                if (other in seen or other in banned):
+                    continue
+                kind = self.graph[other].kind
+                if (kind[0] in (_HUB, _PIN)):
+                    continue
+                if (owner.get(other, xidx) != xidx):
+                    continue            # foreign terminal (static)
+                if (kind[0] == _M2 and not any(
+                        self._id.get((_M1, kind[1], kind[2] + dc))
+                        in seen for dc in (-1, 1))):
+                    continue            # no same-track M1 seg partner
+                seen.add(other)
+                work.append(other)
+                if (kind[0] == _M1):
+                    # entering an M1 node can open the via gate of
+                    # already-seen same-track M1 neighbours
+                    for dc in (-1, 1):
+                        side = self._id.get((_M1, kind[1], kind[2] + dc))
+                        if (side is not None and side in seen
+                                and side != nid):
+                            work.append(side)
+        return seen
+
+    def _term_label(self, nid):
+        """Human-readable terminal descriptor for the diagnosis notes."""
+        kind = self.graph[nid].kind
+        if (kind[0] == _G):
+            return "gate contact @col %d" % kind[1]
+        if (kind[0] == _M1):
+            return "diffusion access @col %d track %d" % (kind[2], kind[1])
+        return str(kind)
+
+    def _gate_only_forced(self, xidx, name):
+        """Corridor demands of a gate-only net (no diffusion access):
+        for each gate node, the crossing tracks that survive the static
+        walls (M1: both endpoint nodes unowned by foreign nets; poly:
+        row track over field with no foreign gate stripe).  Only when
+        the corridor is the sole survivor is the crossing forced."""
+        demands = {}
+        mine = sorted(nid for nid, o in self._term_owner.items()
+                      if o == xidx)
+        for nid in mine:
+            kind = self.graph[nid].kind
+            if (kind[0] != _G):
+                continue
+            c, gname = kind[1], kind[2]
+            if (c + 1 >= self.width_cols):
+                continue
+            legal = []
+            for t in self.gate_tracks.get((gname, c), ()):
+                m1_ok = all(
+                    self._term_owner.get(self._id.get((_M1, t, cc)),
+                                         xidx) == xidx
+                    for cc in (c, c + 1))
+                pj_ok = (t in ROW_TRACKS
+                         and (c + 1) in self.field[t]
+                         and self._poly_span[(t, c)]
+                         <= frozenset((gname,)))
+                if (m1_ok or pj_ok):
+                    legal.append(t)
+            if (legal == [BOUNDARY_T]):
+                demands[BOUNDARY_T, c] = (name,
+                                          "gate contact @col %d" % c)
+                demands[BOUNDARY_T, c + 1] = (name,
+                                              "gate contact @col %d" % c)
+        return demands
+
+    def structural_diagnosis(self):
+        """Static forced-demand analysis of the well-boundary corridor.
+
+        For every signal net, the terminals' free-space cages (see
+        :meth:`_cage`) decide which corridor nodes (T3, c) are forced:
+        a corridor node is forced for a terminal pair when removing it
+        disconnects the pair in the free graph.  Returns
+        ``(contests, walled)`` where ``contests`` maps corridor column
+        -> {net name: reason} for nodes demanded by >= 2 nets and
+        ``walled`` lists (net name, label) for terminals caged away
+        from all their net's other terminals.  Pure function of the
+        build-time geometry; deterministic; the forced set is
+        deliberately under-approximated so a contest is never
+        invented.
+        """
+        self._term_owner = self._static_term_owner()
+        demands = {}                    # (T3, c) -> {net name: reason}
+        walled = []
+        for net in self.nets:
+            terms = sorted(nid for nid in net.nodes
+                           if self.graph[nid].kind[0] in (_M1, _G))
+            net_demands = {}
+            if (not any(self.graph[nid].kind[0] == _M1
+                        for nid in terms)):
+                net_demands = self._gate_only_forced(net.index, net.name)
+            if (len(terms) < 2):
+                # a single-terminal net (gate-only) has no pairwise
+                # connectivity requirement -- its demand is the gate
+                # crossing, handled above
+                for key, entry in net_demands.items():
+                    demands.setdefault(key, {})[entry[0]] = entry[1]
+                continue
+            for i, t1 in enumerate(terms):
+                cage1 = self._cage(net.index, t1)
+                if (not any(t2 in cage1 for t2 in terms if t2 != t1)):
+                    # statically caged from its own net (hub-mediated
+                    # or hard-fail territory): report, don't cut-test
+                    walled.append((net.name, self._term_label(t1)))
+                    continue
+                for t2 in terms:
+                    if (t2 <= t1 or t2 not in cage1):
+                        continue
+                    for nid in cage1:
+                        kind = self.graph[nid].kind
+                        if (kind[0] != _M1 or kind[1] != BOUNDARY_T):
+                            continue
+                        cage2 = self._cage(net.index, t1,
+                                           banned=frozenset((nid,)))
+                        if (t2 not in cage2):
+                            net_demands.setdefault(
+                                (kind[1], kind[2]),
+                                (net.name, self._term_label(t1)))
+            for key, entry in net_demands.items():
+                demands.setdefault(key, {})[entry[0]] = entry[1]
+        contests = {c: users for (t, c), users in sorted(demands.items())
+                    if t == BOUNDARY_T and len(users) > 1}
+        return contests, walled
+
+    def _structural_note(self):
+        """The failure-note fragment naming the missing freedom."""
+        contests, walled = self.structural_diagnosis()
+        self.structural_contests = contests
+        self.structural_walled = walled
+        parts = []
+        if (walled):
+            parts.append("; structural: " + "; ".join(
+                "%s %s is statically caged" % (name, label)
+                for name, label in walled))
+        if (contests):
+            detail = "; ".join(
+                "col %d: %s" % (c, " vs ".join(
+                    "%s (%s)" % (name, reason)
+                    for name, reason in sorted(users.items())))
+                for c, users in sorted(contests.items()))
+            parts.append(
+                "; structural: corridor T3 over-subscribed at %s -- "
+                "zero-conflict routing is inexpressible in the "
+                "7-track/9-bar contract (single N<->P crossover; power "
+                "stripes wall every other track at their access "
+                "columns); the missing freedom is ASTRAN's metal2 "
+                "z-layer (node-level vias + M2 track changes, "
+                "router.cpp:53-55), not corridor width" % detail)
+        return "".join(parts)
     def build_result(self):
         """Build the RouteResult-compatible solution from the trees."""
         width = self.width_cols
