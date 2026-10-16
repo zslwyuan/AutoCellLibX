@@ -901,17 +901,20 @@ def test_lib_nand2x1_slot_route_closes_after_speculate(flow_dir):
 
 # ------------- structural freedom diagnosis (corridor-locked T3) ----------
 
-def test_structural_diagnosis_names_corridor_contest_on_ctrl(flow_dir):
-    """The ctrl/COMPLEX0 slot plateau (chain W=6) is structural, not a
-    search failure: the 9-level bar domain has a single N<->P crossover
-    track (T3) and the power stripes wall every other track at their
-    access columns, so several nets' forced demands land on the same
-    corridor node.  The exact CP-SAT model is INFEASIBLE on the same
-    placement under the shared die-slot accesses (scratch probe
-    flow/_stage3_check/diag_exact_shared.py), and a second corridor
-    track does not lift it (diag_widen_probe.py).  The failing route's
-    note must therefore NAME the contest and the missing freedom
-    (ASTRAN's metal2 z-layer) instead of only counting conflicts."""
+def test_structural_diagnosis_names_gate_contest_on_ctrl(flow_dir):
+    """The ctrl/COMPLEX0 pure-cost arrangement still stalls (its
+    heuristic-chain variant closes -- see the variant test), and the
+    static diagnosis names what remains beyond the metal2 freedom.
+    Updated by the freedom (node-level vias + M2 track changes,
+    router.cpp:53-55): the corridor demands that used to be forced
+    (cl0#a_2_6#'s power-walled escape, cl1#Y's island exit) now dissolve
+    -- their cages ride metal2 over the walls -- so they no longer
+    appear in the contest set.  What remains is the gate-contact class:
+    cl0#B's and cl0#a_2_6#'s only surviving crossing track is T3, and
+    M2 cannot lift an M1 gate contact.  The exact CP-SAT model (the old
+    vocabulary) is INFEASIBLE on the same placement under the shared
+    die-slot accesses (scratch probe flow/_stage3_check/
+    diag_exact_shared.py)."""
     import os
 
     nl3, pl, w, lws, _blocks = _pure_cost_state(open(os.path.join(
@@ -920,13 +923,14 @@ def test_structural_diagnosis_names_corridor_contest_on_ctrl(flow_dir):
     assert not r.ok
     note = getattr(r, "fail_note", None) or ""
     assert "corridor T3 over-subscribed" in note
-    assert "metal2 z-layer" in note
+    assert "does not dissolve" in note
     g = _RouteGrid(nl3, pl, w)
     contests, walled = g.structural_diagnosis()
-    # cl0#B's gate@0 and cl0#a_2_6#'s power-walled P access both need
-    # the (T3, col 1) node; cl1#Y's gate island needs the corridor too
+    # the M2 freedom dissolved the escape/island demands: what contests
+    # is exactly the gate-contact pair at col 1
     assert 1 in contests
-    assert {"cl0#B", "cl0#a_2_6#", "cl1#Y"} <= set(contests[1])
+    assert contests[1] == {"cl0#B": "gate contact @col 1",
+                           "cl0#a_2_6#": "gate contact @col 0"}
     # no false walls: cl1#A crosses its gate via a poly jump, so it is
     # not caged
     assert all(name != "cl1#A" for name, _label in walled)
@@ -964,12 +968,14 @@ def test_structural_note_is_deterministic(flow_dir):
 
 
 def test_adder_bfs_fail_names_caged_gate_contact(flow_dir):
-    """adder/COMPLEX0 (chain W=8) hard-fails at attempt 1: the N-side
-    gate of cl2#a_2_54# at col 2 contacts only on T2 -- the very track
-    GND's power stripe covers at that column (its diffusion access sits
-    there) -- so the gate is statically caged.  The hard-fail note must
-    say so, plus the corridor contest at col 1 (cl2#B's forced crossing
-    endpoint vs cl2#a_2_54#'s walled N-access escape)."""
+    """adder/COMPLEX0 (pure-cost chain) hard-fails at attempt 1: the
+    N-side gate of cl2#a_2_54# at col 2 contacts only on T2 -- the very
+    track GND's power stripe covers at that column (its diffusion access
+    sits there) -- so the gate is statically caged (M2 cannot lift an
+    M1 gate contact).  Updated by the metal2 freedom: the corridor
+    contest the old note named at col 1 dissolved (the walled escape
+    lifts onto metal2); what remains is the adjacent-gate contest at
+    col 6, cl1#A's and cl1#Y's only surviving crossings."""
     import os
 
     nl3, pl, w, lws, _blocks = _pure_cost_state(open(os.path.join(
@@ -979,5 +985,88 @@ def test_adder_bfs_fail_names_caged_gate_contact(flow_dir):
     note = getattr(r, "fail_note", None) or ""
     assert "impossible to find a path for net cl2#a_2_54#" in note
     assert "cl2#a_2_54# gate contact @col 2 is statically caged" in note
-    assert "corridor T3 over-subscribed at col 1" in note
+    assert "corridor T3 over-subscribed at col 6" in note
     assert r.width_cols >= max(p.end_col for p in pl.values())
+
+
+# ---------------- the metal2 vertical freedom (router) -------------------
+
+def test_m2_vertical_arcs_carry_the_astran_v_cost():
+    """The 3D-grid move set: M2 vertical arcs at every column between
+    adjacent tracks, cost 11 (Router::setup, router.cpp:53-55 -- the M2
+    v-cost; via-up/down stay 4 at any node).  The arcs are appended
+    after the M1 arcs so the pre-existing per-node arc order the A*
+    tie-break consumed is preserved."""
+    nl, placement, width, _lw = _placed(INV)
+    g = _RouteGrid(nl, placement, width)
+    from bigcell_engine.route_grid import M2_V_COST
+    assert M2_V_COST == 11
+    for t in range(1, 7):
+        for c in range(width):
+            arc = g.arcs[_pair_arc(g, ("M2", t - 1, c), ("M2", t, c))]
+            assert arc.cost == M2_V_COST
+
+
+def test_m2_freedom_closes_and_verifies_with_spans_and_node_vias(
+        flow_dir):
+    """The library NAND2X1's cost-best orientation used to be
+    structurally unroutable (both power accesses on the input gate's
+    column, bd3fda4): with the freedom, Y's N<->P merge lifts onto an
+    M2 span through node vias, the route closes, verifies clean, and
+    carries the new vocabulary fields."""
+    import os
+
+    nl3, pl, w, lws, _blocks, _orderings = _slot_state(
+        _lib_subckt("NAND2X1", flow_dir))
+    r = route_cell(nl3, pl, w, lws)
+    assert r.ok and r.status_name == "FEASIBLE", (r.status_name,
+                                                  r.fail_note)
+    rep = verify_cell(nl3, pl, r, blocks=_blocks)
+    assert rep.ok(), rep.violations
+    # the fingerprint: Y rides a metal2 span with node vias
+    assert r.m2v, "expected an M2 span"
+    assert any(v for v in r.m2via.values())
+    for (c, t1, t2), net in r.m2v.items():
+        assert t1 < t2
+    # the signature serializes the new fields only when present
+    sig = route_signature(r)
+    assert "s" in sig and "n" in sig
+
+
+def test_m2_route_is_byte_stable_across_processes(flow_dir, tmp_path):
+    """Cross-process determinism (invariant 9) on a route that carries
+    the metal2 vertical freedom."""
+    import os
+    import subprocess
+
+    helper = tmp_path / "m2_route_hash_helper.py"
+    helper.write_text(
+        "import hashlib, os, sys\n"
+        "sys.path.insert(0, os.getcwd())\n"
+        "sys.path.insert(0, %r)\n"
+        "from smt_cell_placer import parse_spice_subckt\n"
+        "from smt_engine.netlist import CellNetlist\n"
+        "from bigcell_engine.engine import _heuristic_placement\n"
+        "from bigcell_engine.route_grid import route_cell, "
+        "route_signature\n"
+        "text = open(%r, errors='ignore').read()\n"
+        "sp = ('.subckt NAND2X1'\n"
+        "      + text.split('.subckt NAND2X1')[1].split('.ends')[0]\n"
+        "      + '.ends')\n"
+        "nl = CellNetlist(parse_spice_subckt(sp))\n"
+        "nl3, pl, w, lws, _b, _o = _heuristic_placement(nl)\n"
+        "r = route_cell(nl3, pl, w, lws)\n"
+        "assert r.ok, (r.status_name, r.fail_note)\n"
+        "print(hashlib.sha256(route_signature(r).encode()).hexdigest())\n"
+        % (str(flow_dir),
+           os.path.join(str(flow_dir), "..", "std_celllib",
+                        "cellsAstranFriendly.sp")))
+    digests = set()
+    for seed in ("0", "1"):
+        env = dict(os.environ, PYTHONHASHSEED=seed)
+        proc = subprocess.run([sys.executable, str(helper)],
+                              cwd=flow_dir, env=env,
+                              capture_output=True, text=True,
+                              check=True)
+        digests.add(proc.stdout.strip().splitlines()[-1])
+    assert len(digests) == 1, digests

@@ -27,6 +27,17 @@ a solver bug cannot silently ship a bad cell:
   covers -- the T3 merge of a dual pair falls out of coverage; gates
   join only crossings on tracks their y-range spans).
 
+The metal2 vertical freedom (route_grid's node-level vias + M2 track
+changes) extends the checked geometry additively: an ``m2v`` span
+((col, t_lo, t_hi) -> net) is claimed M2 across a track range on one
+column (no foreign M2 span overlap, no foreign M2 segment endpoint and
+no foreign node via inside the range -- M2 over M1/poly/gates is the
+freedom itself); an ``m2via`` node via ((track, col) -> bool) joins the
+net's M1 point (stripe coverage or M1 segment endpoint) to the same
+net's metal2 at that point (span member or M2 segment endpoint).  Both
+default to absent, so routes without the freedom verify exactly as
+before.
+
 Deterministic and pure: no solver, no randomness.
 """
 
@@ -116,6 +127,8 @@ def verify_cell(netlist, placement, route, grid_um=0.19, height_um=2.47,
     via = getattr(route, "via", {})
     reachB_n = getattr(route, "reachB_n", [False] * width_cols)
     reachB_p = getattr(route, "reachB_p", [False] * width_cols)
+    m2v = getattr(route, "m2v", {}) or {}
+    m2via = getattr(route, "m2via", {}) or {}
 
     def stripes(c):
         return route.stripes(c)
@@ -132,6 +145,31 @@ def verify_cell(netlist, placement, route, grid_um=0.19, height_um=2.47,
             if (net2 == net and lo <= t + 1 <= hi):
                 return True
         return False
+
+    def _m1_owner_at(t, c):
+        """Net owning M1 metal at the point (t, c), or None: a stripe
+        covering the track, else an M1 (not poly/M2) segment endpoint."""
+        for net2, lo, hi, _slot in stripes(c):
+            if (lo <= t + 1 <= hi):
+                return net2
+        for cseg in (c - 1, c):
+            n2 = route.hseg.get((t, cseg))
+            if (n2 is not None and not pj.get((t, cseg))
+                    and not m2.get((t, cseg))):
+                return n2
+        return None
+
+    def _m2_owner_at(t, c):
+        """Net owning metal2 at the point (t, c), or None: an m2v span
+        covering the track, else an M2 segment endpoint."""
+        for (cc, t1, t2), net2 in m2v.items():
+            if (cc == c and t1 <= t <= t2):
+                return net2
+        for cseg in (c - 1, c):
+            n2 = route.hseg.get((t, cseg))
+            if (n2 is not None and m2.get((t, cseg))):
+                return n2
+        return None
 
     def _layer(t, c):
         if (pj.get((t, c))):
@@ -269,8 +307,15 @@ def verify_cell(netlist, placement, route, grid_um=0.19, height_um=2.47,
                     violations.append("segment %s@%d track %d crosses "
                                       "foreign stripe %s"
                                       % (net, c, t, net2))
-    # dual columns: same net merges at the boundary; different nets must
-    # not both reach it (their bars would overlap at y = H/2)
+    # dual columns: different nets must not both reach the boundary
+    # (their bars would overlap at y = H/2 -- a short).  A same-net dual
+    # no longer REQUIRES the T3 merge: the metal2 vertical freedom is a
+    # second N<->P crossover, so the halves may meet through an M2 span
+    # instead -- physical connectivity is the exact BFS's verdict below
+    # (a disconnected net is reported there), which subsumes the old
+    # same-net merge check.  Routes without M2 geometry always merge
+    # (the exact model forces it; the router's solidify keeps the fill),
+    # so this loosening changes nothing for them.
     for c in range(width_cols):
         nOwn, pOwn = route.owners(c)
         if (nOwn is None or pOwn is None):
@@ -280,10 +325,6 @@ def verify_cell(netlist, placement, route, grid_um=0.19, height_um=2.47,
                 violations.append("column %d: bars of %s and %s both "
                                   "reach the well boundary"
                                   % (c, nOwn, pOwn))
-        else:
-            if (not (reachB_n[c] and reachB_p[c])):
-                violations.append("column %d: same-net bars %s do not "
-                                  "merge at the boundary" % (c, nOwn))
     # poly jump legality: row tracks only, field oxide, no foreign gate,
     # anchored runs
     for (t, c), isPoly in pj.items():
@@ -375,13 +416,53 @@ def verify_cell(netlist, placement, route, grid_um=0.19, height_um=2.47,
             violations.append("via track %d col %d joins %s-%s (need "
                               "M1-M2)" % (t, c, lL, lR))
 
+    # ---- metal2 vertical freedom: spans + node vias ----
+    # A span is claimed M2 across a track range on one column: no foreign
+    # span overlap at its column, no foreign M2 segment endpoint and no
+    # foreign node via inside its range (M2 over M1/poly/gates is the
+    # freedom itself, not a short).  A node via joins exactly one net's
+    # M1 point (stripe coverage or M1 segment endpoint) to the same
+    # net's metal2 at that point (span member or M2 segment endpoint).
+    for (c, t1, t2), net in sorted(m2v.items()):
+        if (t1 >= t2):
+            violations.append("M2 span %s@col %d is not a track range "
+                              "(%d..%d)" % (net, c, t1, t2))
+    spansByCol = {}
+    for (c, t1, t2), net in m2v.items():
+        spansByCol.setdefault(c, []).append((t1, t2, net))
+    for c, colSpans in spansByCol.items():
+        for i, (a1, a2, na) in enumerate(colSpans):
+            for b1, b2, nb in colSpans[i + 1:]:
+                if (na != nb and a1 <= b2 and b1 <= a2):
+                    violations.append(
+                        "M2 spans %s and %s overlap at column %d"
+                        % (na, nb, c))
+    for (c, t1, t2), net in sorted(m2v.items()):
+        for t in range(t1, t2 + 1):
+            for cseg in (c - 1, c):
+                n2 = route.hseg.get((t, cseg))
+                if (n2 is not None and n2 != net and m2.get((t, cseg))):
+                    violations.append(
+                        "M2 span %s@col %d track %d touches M2 segment "
+                        "of %s" % (net, c, t, n2))
+    for (t, c), on in sorted(m2via.items()):
+        if (not on):
+            continue
+        m1_owner = _m1_owner_at(t, c)
+        m2_owner = _m2_owner_at(t, c)
+        if (m1_owner is None or m2_owner is None or m1_owner != m2_owner):
+            violations.append(
+                "node via track %d col %d does not join one net's M1 "
+                "and M2 (%s vs %s)"
+                % (t, c, m1_owner, m2_owner))
+
     # ---- physical connectivity: exact BFS over layers ----
     nets = set(sig_diff) | set(gate)
     for net in sorted(nets):
         if (not _net_connected_exact(netlist, placement, route, net,
                                      sig_diff.get(net, set()),
                                      gate.get(net, []), trackY, spans,
-                                     pj, m2, via)):
+                                     pj, m2, via, m2v, m2via)):
             violations.append("net %s is not connected" % net)
     return VerifyReport(violations)
 
@@ -408,22 +489,27 @@ def _nets_touch(netlist, a, b, blocks=None):
 
 
 def _net_connected_exact(netlist, placement, route, net, diffPts, gateCols,
-                         trackY, spans, pj, m2, via):
+                         trackY, spans, pj, m2, via, m2v=None, m2via=None):
     """Exact physical connectivity.
 
     Nodes: (t, c) for M1 segments, (M2, (t, c)) for M2 segments,
     (PJ, (t, c)) for poly jumps, (G, c) for gate stripes,
-    (NB, c)/(PB, c) for the slot bars.  Edges: same-track same-layer
-    segments merge across a column boundary; a via joins the M1 and M2
-    ends of two adjacent same-net segments; a bar joins the (t, c) nodes
-    of the tracks its index interval covers (so a same-net dual pair
-    reaching T3 merges through the (T3, c) node); the gate stripe at c
-    joins every M1/poly segment crossing it on a track inside its
-    y-range (M1 via contact, poly via merge; M2 floats above and never
-    joins).  True when every access is in one component.
+    (NB, c)/(PB, c) for the slot bars, (M2V, (c, t1, t2)) for the net's
+    metal2 vertical spans.  Edges: same-track same-layer segments merge
+    across a column boundary; a via joins the M1 and M2 ends of two
+    adjacent same-net segments; a bar joins the (t, c) nodes of the
+    tracks its index interval covers (so a same-net dual pair reaching
+    T3 merges through the (T3, c) node); the gate stripe at c joins
+    every M1/poly segment crossing it on a track inside its y-range
+    (M1 via contact, poly via merge; M2 floats above and never joins);
+    an M2 span joins the same-net M2 segment endpoints on its column
+    and, through a node via, the net's M1 point at every via'd track of
+    its range.  True when every access is in one component.
     """
     nodes = set()
     adj = {}
+    m2v = m2v or {}
+    m2via = m2via or {}
 
     def node(kind, c):
         n = (kind, c)
@@ -464,6 +550,31 @@ def _net_connected_exact(netlist, placement, route, net, diffPts, gateCols,
                 or route.hseg.get((t, c)) != net):
             continue
         edge(_end(t, c - 1, c), _end(t, c, c))
+    # metal2 vertical freedom: a span joins the same-net M2 segment
+    # endpoints on its column (M2-M2 merge at the shared point) and,
+    # through a node via, the net's M1 point at every via'd track of
+    # its range (the M1-side ownership is the validity check's business;
+    # guarding here keeps phantom points out of the graph)
+    for (c, t1, t2), n2 in sorted(m2v.items()):
+        if (n2 != net):
+            continue
+        sn = node("M2V", (c, t1, t2))
+        for t in range(t1, t2 + 1):
+            for cseg in (c - 1, c):
+                if (route.hseg.get((t, cseg)) == net
+                        and m2.get((t, cseg))):
+                    edge(sn, node("M2", (t, c)))
+                    break
+            if (m2via.get((t, c))):
+                on_stripe = any(
+                    n3 == net and lo <= t + 1 <= hi
+                    for n3, lo, hi, _slot in route.stripes(c))
+                on_m1seg = any(
+                    route.hseg.get((t, cseg)) == net
+                    and not pj.get((t, cseg)) and not m2.get((t, cseg))
+                    for cseg in (c - 1, c))
+                if (on_stripe or on_m1seg):
+                    edge(sn, node(t, c))
     # bars join the tracks their interval covers (index rule); a dual
     # pair both reaching T3 merges through the (T3, c) node
     for c in range(route.width_cols):

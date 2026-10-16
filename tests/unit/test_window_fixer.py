@@ -152,6 +152,46 @@ def test_single_column_window_refuses_uncrossable_gate(nand2_slot):
     assert "exactly-unroutable" in fix.note
 
 
+def test_window_merge_carries_the_m2_vertical_freedom():
+    """The partial's metal2 vertical geometry flows through the window
+    fixer's kept/merge contract: outside-window spans and node vias are
+    copied wholesale, window-column verticals of window nets are dropped
+    (the window re-routes those nets), and window-column verticals of
+    non-window nets are kept as blockages + restored geometry."""
+    from smt_engine.route_model import (_merge_window_route, _win_kept_geometry,
+                                        BAR_LEVELS, RouteResult)
+    W = 4
+    partial = RouteResult(
+        "UNKNOWN", ["G", "Y", "A", "K"], ["V", "Y", None, "K"],
+        [0, 2, 0, 0], [3, 4, 0, 0], [5, 4, 0, 0], [8, 5, 0, 0],
+        {}, {}, {}, {}, [False] * W, [False] * W, W, 0, 0, 0, 0, 0,
+        m2v={(0, 1, 4): "A",          # outside the window: copied
+             (2, 4, 5): "Y",          # window net's window column: dropped
+             (2, 0, 3): "A"},         # kept net's window column: kept
+        m2via={(1, 0): True,          # outside: copied
+               (5, 2): True,          # Y's window-column via: dropped
+               (3, 2): True})         # A's window-column via: kept
+    kept_stripes, kept_segments, kept_m2v, kept_m2via = _win_kept_geometry(
+        partial, 1, 3, {"Y"})
+    # kept = everything the merge must restore: every vertical whose
+    # owner is not re-routed by the window (window-owner window-column
+    # verticals are the only drops; outside-column ones ride along)
+    assert kept_m2v == {(0, 1, 4): "A", (2, 0, 3): "A"}
+    assert kept_m2via == {(1, 0): True, (3, 2): True}
+    # the kept via's owner resolves through the kept span
+    from smt_engine.route_model import _win_m2via_owner
+    assert _win_m2via_owner(partial, 3, 2) == "A"
+    win = RouteResult(
+        "FEASIBLE", [None, None], [None, None],
+        [0, 0], [0, 0], [BAR_LEVELS - 1, BAR_LEVELS - 1],
+        [BAR_LEVELS - 1, BAR_LEVELS - 1], {}, {}, {}, {},
+        [False, False], [False, False], 2, 0, 0, 0, 0, 0)
+    merged = _merge_window_route(partial, (1, 3), win, kept_stripes,
+                                 kept_segments, kept_m2v, kept_m2via)
+    assert merged.m2v == {(0, 1, 4): "A", (2, 0, 3): "A"}
+    assert merged.m2via == {(1, 0): True, (3, 2): True}
+
+
 def test_complex0_whole_cell_window_is_exactly_unroutable(complex0_slot):
     """ACCEPTANCE (doc section 2.4 rung 1): ctrl/COMPLEX0's W=6 slot
     placement -- the router's 8000-attempt plateau region IS the whole

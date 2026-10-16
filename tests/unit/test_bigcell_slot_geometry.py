@@ -326,6 +326,81 @@ def test_verify_slot_model_accepts_a_hand_routed_invx1():
     assert report.ok(), report.violations
 
 
+def test_m2_crossover_hand_route_verifies():
+    # The metal2 vertical freedom's vocabulary semantics, hand-built on
+    # the INVX1 slot chain: a same-net dual column may stay unmerged at
+    # T3 when its halves meet through an M2 span (col 1, tracks 2..4)
+    # with node vias down to both slots' stripes.  The old vocabulary
+    # (horizontal M2 only) had no such route; the exact BFS connects Y
+    # through the span and the loosened dual rule accepts the unmerged
+    # bars (physical connectivity is the BFS's verdict).
+    from smt_engine.route_model import RouteResult
+    from smt_engine.verify import verify_cell
+    nl3, lw, op2, on2, pl, _cols, _bd = _chain(INV)
+    route = RouteResult(
+        "FEASIBLE",
+        {0: "GND", 1: "Y", 2: None},       # col_owner_n
+        {0: "VCC", 1: "Y", 2: None},       # col_owner_p
+        {0: 0, 1: 3, 2: 0}, {0: 3, 1: 3, 2: 0},          # lo_n / hi_n
+        {0: 5, 1: 5, 2: 0}, {0: 8, 1: 5, 2: 0},          # lo_p / hi_p
+        {(4, 0): "A"}, {(4, 0): True}, {}, {},           # hseg/pj/m2/via
+        [False, False, False], [False, False, False],    # reachB_n/p
+        2, 1, 2, 0, 0, 0,
+        m2v={(1, 2, 4): "Y"}, m2via={(2, 1): True, (4, 1): True})
+    report = verify_cell(nl3, pl, route, blocks=list(op2) + list(on2),
+                         slot_model=True)
+    assert report.ok(), report.violations
+
+
+def test_verify_rejects_broken_m2_crossover():
+    # The freedom's claimed geometry is checked: a dropped node via
+    # disconnects the net (the BFS reports it); an inverted span range,
+    # a foreign span overlap at the same column and a node via whose M1
+    # landing belongs to another net are named violations.
+    from smt_engine.route_model import RouteResult
+    from smt_engine.verify import verify_cell
+    nl3, lw, op2, on2, pl, _cols, _bd = _chain(INV)
+
+    def m2_route(m2v, m2via):
+        return RouteResult(
+            "FEASIBLE",
+            {0: "GND", 1: "Y", 2: None}, {0: "VCC", 1: "Y", 2: None},
+            {0: 0, 1: 3, 2: 0}, {0: 3, 1: 3, 2: 0},
+            {0: 5, 1: 5, 2: 0}, {0: 8, 1: 5, 2: 0},
+            {(4, 0): "A"}, {(4, 0): True}, {}, {},
+            [False] * 3, [False] * 3,
+            2, 1, 2, 0, 0, 0, m2v=m2v, m2via=m2via)
+
+    blocks = list(op2) + list(on2)
+    good_v = {(2, 1): True, (4, 1): True}
+    # (a) a dropped node via: the P half's landing is gone
+    report = verify_cell(nl3, pl, m2_route({(1, 2, 4): "Y"},
+                                           {(2, 1): True}),
+                         blocks=blocks, slot_model=True)
+    assert not report.ok()
+    assert any("Y is not connected" in v for v in report.violations)
+    # (b) an inverted span is not a track range
+    report = verify_cell(nl3, pl, m2_route({(1, 4, 2): "Y"}, good_v),
+                         blocks=blocks, slot_model=True)
+    assert not report.ok()
+    assert any("not a track range" in v for v in report.violations)
+    # (c) a foreign span overlapping the net's span at the same column
+    report = verify_cell(nl3, pl,
+                         m2_route({(1, 2, 4): "Y", (1, 3, 5): "GND"},
+                                  good_v),
+                         blocks=blocks, slot_model=True)
+    assert not report.ok()
+    assert any("overlap at column" in v for v in report.violations)
+    # (d) a node via whose M1 landing belongs to another net
+    report = verify_cell(nl3, pl,
+                         m2_route({(1, 2, 4): "Y"},
+                                  {(2, 1): True, (4, 1): True,
+                                   (0, 0): True}),
+                         blocks=blocks, slot_model=True)
+    assert not report.ok()
+    assert any("does not join" in v for v in report.violations)
+
+
 def test_verify_default_path_is_untouched_by_slot_model():
     # the additive flag must not change the historical behaviour: the
     # exact engine's own INV placement still verifies as before
@@ -514,3 +589,58 @@ def test_gds_labels_gate_only_nets_on_their_poly_stripes(tmp_path):
     srep = check_layout(gds, units_per_um=1.0)
     assert srep.ok(), srep.violations
     assert {"GND", "VCC", "Y", "A"} <= set(srep.metrics["labels"])
+
+
+# --------------------------------------------------------------------------
+# the metal2 vertical freedom: the drawn geometry matches what verify
+# accepts (same discipline as the corridor-contact fix, 8f9c35d)
+# --------------------------------------------------------------------------
+
+def test_gds_draws_m2_spans_and_node_vias(tmp_path):
+    # The lib NAND2X1's slot chain closes with Y lifted onto an M2 span
+    # through node vias; the emitter draws the span as the column-stripe
+    # primitive on metal2 and one via1 square per node via, and the GDS
+    # stays layout_sanity-clean.
+    import gdstk
+    from bigcell_engine.route_grid import route_cell
+    from layout_sanity import check_layout
+    from smt_engine.gds import M2_W, track_geometry
+    nl3, lw, op2, on2, pl, cols, _bd = _chain(_subckt_text("NAND2X1"))
+    r = route_cell(nl3, pl, cols, lw)
+    assert r.ok and r.status_name == "FEASIBLE", (
+        r.status_name, getattr(r, "fail_note", None))
+    assert r.m2v, "expected the closure to carry an M2 span"
+    gds = str(tmp_path / "NAND2X1.gds")
+    write_cell_gds(gds, nl3, pl, cols, op2, on2, lw, route=r,
+                   cell_name="NAND2X1")
+    cell = gdstk.read_gds(gds).cells[0]
+    trackY, _barY = track_geometry(2.47, 0.19)
+    # one metal2 rect per span at its column edge, spanning its tracks
+    m2 = [p for p in cell.polygons if p.layer == 51]
+    for (c, t1, t2), _net in r.m2v.items():
+        xc = 0.2375 + c * 0.19
+        hits = [p for p in m2
+                if abs((p.bounding_box()[0][0]
+                        + p.bounding_box()[1][0]) / 2 - xc) <= GDS_DB_UM
+                and abs(p.bounding_box()[0][1]
+                        - (trackY[t1] - M2_W / 2)) <= GDS_DB_UM
+                and abs(p.bounding_box()[1][1]
+                        - (trackY[t2] + M2_W / 2)) <= GDS_DB_UM]
+        assert hits, "no metal2 rect where the span (c=%d, %d..%d) is" \
+            % (c, t1, t2)
+    # one via1 square per node via, centred on the (track, column) point
+    via1 = [p for p in cell.polygons if p.layer == 50]
+    for (t, c), on in r.m2via.items():
+        if not on:
+            continue
+        xc = 0.2375 + c * 0.19
+        hits = [p for p in via1
+                if abs((p.bounding_box()[0][0]
+                        + p.bounding_box()[1][0]) / 2 - xc) <= GDS_DB_UM
+                and abs((p.bounding_box()[0][1]
+                         + p.bounding_box()[1][1]) / 2
+                        - trackY[t]) <= GDS_DB_UM]
+        assert hits, "no via1 square where the node via (t=%d, c=%d) is" \
+            % (t, c)
+    srep = check_layout(gds, units_per_um=1.0)
+    assert srep.ok(), srep.violations

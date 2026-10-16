@@ -114,7 +114,7 @@ class RouteResult(object):
     def __init__(self, status_name, col_owner_n, col_owner_p, lo_n, hi_n,
                  lo_p, hi_p, hseg, pj, m2, via, reachB_n, reachB_p,
                  width_cols, hseg_count, vseg_count, pj_count, m2_count,
-                 via_count):
+                 via_count, m2v=None, m2via=None):
         self.status_name = status_name
         self.col_owner_n = col_owner_n      # N-half stripe per column
         self.col_owner_p = col_owner_p      # P-half stripe per column
@@ -134,6 +134,20 @@ class RouteResult(object):
         self.pj_count = pj_count
         self.m2_count = m2_count
         self.via_count = via_count
+        # --- the metal2 vertical freedom (additive, default absent) ---
+        # m2v: (col, t_lo, t_hi) -> net -- metal2 occupying a COLUMN
+        # across a track RANGE (t_lo < t_hi), enabling track changes:
+        # via-up at (t_lo, c) -> M2 span -> via-down at (t_hi, c).  Drawn
+        # as one M2 rectangle per span (the column-stripe primitive on
+        # metal2) plus one via1 square per endpoint via.
+        # m2via: (track, col) -> bool -- a NODE-level via joining the M1
+        # point (track, col) to the net's metal2 at the same point (an
+        # m2v span member or an M2 segment endpoint), where the old
+        # both-side same-track segment form does not apply.  A power-
+        # walled access point (both adjacent M1 segment slots foreign)
+        # lifts onto M2 exactly through this form.
+        self.m2v = dict(m2v) if m2v else {}
+        self.m2via = dict(m2via) if m2via else {}
 
     @property
     def ok(self):
@@ -1314,7 +1328,7 @@ def _win_boundary_constraints(ch, fact, col, gap, width):
 
 
 def _win_blockage_layer(model, rm, ch, partial, w0, w1, kept_stripes,
-                        kept_segments):
+                        kept_segments, kept_m2v=None, kept_m2via=None):
     """Add the kept-geometry blockage constraints to the window model.
 
     Kept stripes at window columns (owners without window accesses,
@@ -1324,7 +1338,11 @@ def _win_blockage_layer(model, rm, ch, partial, w0, w1, kept_stripes,
     Reserved segment slots (pre-routed nets crossing the window) are
     forced empty for the window solve and block their endpoint points
     and the adjacent same-layer segments.  The two fixed boundary
-    segments are handled by _win_boundary_constraints.
+    segments are handled by _win_boundary_constraints.  The metal2
+    vertical freedom's kept spans + node vias ban the window M2 segment
+    slots whose endpoints would land on their metal (M2-M2 short) and,
+    for node vias, the window stripes covering their M1 landing track
+    (the via square sits on the landing metal).
     """
     width = w1 - w0
     # ---- kept stripes at window columns (pre-routed owners) ----
@@ -1371,13 +1389,74 @@ def _win_blockage_layer(model, rm, ch, partial, w0, w1, kept_stripes,
                 continue
             for name in rm.nets:
                 _win_forbid_segment_layer(ch, name, t, g, layer)
+    # ---- kept metal2 verticals: spans + node vias ----
+    # The window model cannot create M2 verticals, so the only legal
+    # interaction is avoidance: a window horizontal M2 segment whose
+    # endpoint point (t, cw) falls inside kept span/via metal would
+    # short it -- forbid the M2 layer on both adjacent segment slots of
+    # every covered track.  A kept node via's via1 square also sits on
+    # its M1 landing point, so no window stripe may cover that track at
+    # the via's column (the C1 form; the landing metal itself is a kept
+    # stripe or kept-segment endpoint and already bans its slot).
+    for (c, t1, t2), _net in sorted((kept_m2v or {}).items()):
+        cw = c - w0
+        if (not (0 <= cw < width)):
+            continue            # span outside the window: no interaction
+        for t in range(t1, t2 + 1):
+            for g in (cw - 1, cw):
+                if (not (0 <= g < width - 1)):
+                    continue
+                for name in rm.nets:
+                    _win_forbid_segment_layer(ch, name, t, g, "M2")
+    for (t, c), _on in sorted((kept_m2via or {}).items()):
+        cw = c - w0
+        if (not (0 <= cw < width)):
+            continue
+        for g in (cw - 1, cw):
+            if (0 <= g < width - 1):
+                for name in rm.nets:
+                    _win_forbid_segment_layer(ch, name, t, g, "M2")
+        for slot in ("N", "P"):
+            cov = ch.covers_lit(cw, t, slot)
+            if (cov is None):
+                continue
+            for name in rm.nets:
+                own = ch.owner_lit(cw, name, slot)
+                model.Add(own + cov <= 1)
+
+
+def _win_m2via_owner(partial, t, c):
+    """Owning net of the partial's node via (t, c), or None.
+
+    The node via joins the net's M1 point to its metal2 at one point, so
+    the owner is the net of the M2 side: an m2v span covering the track,
+    else an M2 segment endpoint at the point, else the M1 side (a stripe
+    owner or M1 segment endpoint -- the dead-via fallback).
+    """
+    for (cc, t1, t2), net in sorted(getattr(partial, "m2v", {}).items()):
+        if (cc == c and t1 <= t <= t2):
+            return net
+    for cseg in (c - 1, c):
+        name = partial.hseg.get((t, cseg))
+        if (name is not None and getattr(partial, "m2", {}).get((t, cseg))):
+            return name
+    for net, lo, hi, _slot in partial.stripes(c):
+        if (lo <= t + 1 <= hi):
+            return net
+    for cseg in (c - 1, c):
+        name = partial.hseg.get((t, cseg))
+        if (name is not None and not partial.pj.get((t, cseg))):
+            return name
+    return None
 
 
 def _win_kept_geometry(partial, w0, w1, window_owners):
     """The partial geometry the merge must keep, from the plateaued
     router solution alone (no model needed): stripes at window columns
-    whose owner has no window access, and segments of pre-routed nets
-    crossing the window's segment range.  Keyed in ABSOLUTE columns.
+    whose owner has no window access, segments of pre-routed nets
+    crossing the window's segment range, and the metal2 vertical
+    freedom's spans + node vias (same kept rule, keyed by column).
+    Keyed in ABSOLUTE columns.
     """
     kept_stripes = {}
     for c in range(w0, w1):
@@ -1389,7 +1468,21 @@ def _win_kept_geometry(partial, w0, w1, window_owners):
     for (t, c), net in partial.hseg.items():
         if (w0 <= c < w1 - 1 and net not in window_owners):
             kept_segments.add((t, c))
-    return kept_stripes, kept_segments
+    kept_m2v = {}
+    for (c, t1, t2), net in sorted(getattr(partial, "m2v", {}).items()):
+        if (w0 <= c < w1 and net in window_owners):
+            continue            # the window re-routes its owner's span
+        kept_m2v[(c, t1, t2)] = net
+    kept_m2via = {}
+    for (t, c), on in sorted(getattr(partial, "m2via", {}).items()):
+        if (not on):
+            continue
+        if (w0 <= c < w1):
+            owner = _win_m2via_owner(partial, t, c)
+            if (owner is not None and owner in window_owners):
+                continue        # the window re-routes its owner's via
+        kept_m2via[(t, c)] = True
+    return kept_stripes, kept_segments, kept_m2v, kept_m2via
 
 
 def _win_pseudo_access(t):
@@ -1594,13 +1687,18 @@ def _win_decode(rm, solver, status_name):
         vseg, sum(pj.values()), sum(m2.values()), sum(via.values()))
 
 
-def _merge_window_route(partial, window, win, kept_stripes, kept_segments):
+def _merge_window_route(partial, window, win, kept_stripes, kept_segments,
+                        kept_m2v=None, kept_m2via=None):
     """Window solution + untouched outside region -> one RouteResult.
 
     The window replaces exactly the window columns' stripes and the
     window segment slots (hseg/pj/m2/via); kept pre-routed geometry is
     restored; the two boundary vias are re-derived from the merged
     layers (a via joins one net's M1 and M2 segments on both sides).
+    The metal2 vertical freedom's spans + node vias cannot be created
+    by the window model: outside-window columns are copied, window
+    columns are restored from the kept sets (window owners' verticals
+    were dropped at planning time -- the window re-routes those nets).
     """
     w0, w1 = window
     W = partial.width_cols
@@ -1651,6 +1749,24 @@ def _merge_window_route(partial, window, win, kept_stripes, kept_segments):
     for (t, c), on in sorted(win.via.items()):
         if (on):
             via[(t, c + w0)] = True
+    # metal2 vertical freedom: outside columns are copied wholesale,
+    # window columns come from the kept sets (a kept via key maps to
+    # True only when the partial had it on)
+    m2v = {}
+    for (c, t1, t2), net in sorted(getattr(partial, "m2v", {}).items()):
+        if (w0 <= c < w1):
+            continue
+        m2v[(c, t1, t2)] = net
+    for (c, t1, t2), net in sorted((kept_m2v or {}).items()):
+        m2v[(c, t1, t2)] = net
+    m2via = {}
+    for (t, c), on in sorted(getattr(partial, "m2via", {}).items()):
+        if (not on or (w0 <= c < w1)):
+            continue
+        m2via[(t, c)] = True
+    for (t, c), on in sorted((kept_m2via or {}).items()):
+        if (on):
+            m2via[(t, c)] = True
     for cB in (w0, w1 - 1):
         if (not (1 <= cB <= W - 2)):
             continue
@@ -1670,7 +1786,8 @@ def _merge_window_route(partial, window, win, kept_stripes, kept_segments):
     return RouteResult(
         "FEASIBLE", owner_n, owner_p, lo_n, hi_n, lo_p, hi_p,
         hseg, pj, m2, via, reachB_n, reachB_p, W, len(hseg),
-        vseg, sum(pj.values()), sum(m2.values()), len(via))
+        vseg, sum(pj.values()), sum(m2.values()), len(via),
+        m2v=m2v, m2via=m2via)
 
 
 def solve_window_routing(netlist, placement, width_cols, window,
@@ -1753,8 +1870,8 @@ def solve_window_routing(netlist, placement, width_cols, window,
     refused = []
     if (partial is not None):
         window_owners = set(window_nets) | set(power)
-        kept_stripes, kept_segments = _win_kept_geometry(
-            partial, w0, w1, window_owners)
+        kept_stripes, kept_segments, kept_m2v, kept_m2via = \
+            _win_kept_geometry(partial, w0, w1, window_owners)
         directives, refused = _win_plan_ties(
             diffusion, gate, power, diffusion_full, gate_full, partial,
             w0, w1, width, window_owners, kept_stripes, kept_segments)
@@ -1772,7 +1889,7 @@ def solve_window_routing(netlist, placement, width_cols, window,
             _win_boundary_constraints(ch, seg, col, gap, width)
         _win_apply_ties(model, rm, directives, refused, w0)
         _win_blockage_layer(model, rm, ch, partial, w0, w1, kept_stripes,
-                            kept_segments)
+                            kept_segments, kept_m2v, kept_m2via)
     solver = cp_model.CpSolver()
     # single worker: parallel search picks different equal-cost optima
     # across runs (AGENTS.md invariant 9)
@@ -1803,7 +1920,7 @@ def solve_window_routing(netlist, placement, width_cols, window,
         merged = win
     else:
         merged = _merge_window_route(partial, (w0, w1), win, kept_stripes,
-                                     kept_segments)
+                                     kept_segments, kept_m2v, kept_m2via)
         merged.status_name = status_name
     merged.window = (w0, w1)
     merged.window_status = status_name

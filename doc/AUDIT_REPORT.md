@@ -1340,3 +1340,41 @@ NAND2X1 在 std_celllib）——基准集需补入库 cell。COMPLEX 系的残�
 **当前替换快照**：INVX1（0.575µm）、NAND2X1（0.765µm）、NAND2-inline、
 INV-inline 四个 cell 纯 Python 闭环（verify+sanity 清，宽度比 ~1.0）；
 宽度对拍 14/14 带内 [0.80, 1.26]；全量 586 绿 + 1 诚实 skip。
+
+
+## §5.44 metal2 纵向自由度：节点级 via + M2 跨道段 —— COMPLEX plateau 崩塌（2026-10-15）
+
+**缺陷与证据**：ce6ae7d 的结构诊断证明 plateau 冲突下界 == 实测最优
+（ctrl/COMPLEX0 W=6: 3 冲突），且 CP-SAT 在同词汇上 INFEASIBLE——缺失
+的自由是 ASTRAN 的 metal2 z 层（router.cpp:53-55：任意节点 via-up 4、
+M2 纵向 11），而 RouteResult 词汇里 via 要求两侧同轨段、M2 无纵向边。
+
+**词汇扩展（4 文件加法式）**：RouteResult 增 `m2v`（(col,t1,t2)->net，
+M2 占据单列跨轨道区间）与 `m2via`（(track,col)->bool，节点级 via），
+默认缺省——精确引擎 solve_routing 输出与全部旧构造点字节不变。
+verify.py BFS 遍历新元素（span 经节点 via 接 M1 点、经 M2 段端点同层
+合并），并检查 span/节点 via 的占用几何（异网 span 重叠、异网 M2 段
+端点、M1 落点归属）。两个渲染器（smt_engine/gds.py、gds_cells.py）加
+法式绘制（M2 列条带原语 + via1 方块），layout_sanity 清。
+
+**路由器两阶段（关键决策）**：单阶段自由度会把已闭合 cell 的谈判引向
+更差的局部最优（adder 复现 deck 236→594 代价回归被测得）。route_cell
+改为两阶段：phase 1 = 原词汇逐字节（无 M2 纵向弧、both-side via 规则、
+强制 dual fill），闭合即原样返回；仅 phase-1 停滞才以全新相位 2 网格
+（M2 纵向弧 + 节点级 via + M2 桥式 dual fill 跳过 + 阻挡者标记）重布。
+实测字节不变：INVX1、inline NAND2、库 NAND2X1（旧镜像朝向）、
+CONTESTED、adder 复现 deck、exact NAND3（代价 56==56）。
+
+**同网 dual 规则放宽**：M2 span 是第二条 N<->P 交叉路径，verify 的
+"同网 dual 必须达 T3"由 BFS 连通性判定取代（精确引擎模型仍强制合并，
+字节不变）；路由器 _solidify 在该列自身 M2 run 跨 T3 时跳过强制扫描。
+没有这条，ctrl/COMPLEX0 的 cl0#a_2_6# 对齐栅@col0 的四个交叉轨道全部
+被 cl0#Y 的强制 dual 条带封死——M2 无法抬升 M1 栅接触，单元不可布。
+
+**结果**：ctrl/COMPLEX0（spans={(5,0,4):cl0#Y}+4 节点 via）、
+max/COMPLEX5、adder/COMPLEX0、multiplier/COMPLEX4、NAND3X1（镜像候选）
+路由 FEASIBLE + verify 清 + layout_sanity 清；闭合排布的结构诊断报告
+零 contest。multiplier/COMPLEX5 为诚实事后 plateau：相邻对齐栅列
+（cl1#Y@7 / cl1#A@8）唯一幸存交叉轨道同为 T3，共享节点 (T3,8)——
+M2 抬不动 M1 栅接触，8 轨加宽可解（非本轮范围）。试布下界从 4 降到 1
+（固定池）/变体池直接 FEASIBLE。全量 640 绿 + 1 skip。

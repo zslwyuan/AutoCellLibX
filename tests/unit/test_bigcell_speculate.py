@@ -362,21 +362,24 @@ def test_inline_nand2_stays_closing_end_to_end():
     assert r.status_name == "FEASIBLE"
 
 
-def test_lib_nand2x1_closes_via_the_mirror_candidate(flow_dir):
-    """THE regression: the library NAND2X1's cost-best orientation
-    plateaus (proven structural, bd3fda4); the speculate loop must
-    select the electrically identical mirrored orientation, which
-    routes FEASIBLE in one attempt and verifies clean."""
+def test_lib_nand2x1_closes_end_to_end(flow_dir):
+    """THE regression, updated by the metal2 freedom: the library
+    NAND2X1's cost-best orientation used to be structurally unroutable
+    (both power accesses on the input gate's column; bd3fda4) and the
+    speculate loop had to select the mirrored orientation.  With the
+    router's metal2 verticals (node-level vias + M2 spans) the corridor
+    contest the cost-best orientation used to lose is dissolvable -- it
+    now routes FEASIBLE itself, lifting Y's N<->P merge onto metal2,
+    and verifies clean.  (The mirror-escape machinery stays proven by
+    NAND3X1 below.)"""
     bd, r = _closed_loop(_lib_subckt("NAND2X1", flow_dir), "NAND2X1")
     sel = bd["selection"]
     assert sel["feasible"], sel
-    assert sel["kind"] in ("flip-both", "die-both", "seed-flip-both",
-                           "seed-die-both")
-    best_entry = sel["candidates"][0]
-    assert not best_entry["feasible"]           # the cost best DID plateau
-    assert best_entry["conflicts"] >= 1
+    assert sel["kind"] == "best"                # the cost best routes now
     assert r.status_name == "FEASIBLE"
-    assert getattr(r, "attempts_used", 99) <= 2
+    # the freedom's fingerprint: the route lifts Y onto metal2
+    assert r.m2v, "expected an M2 span in the closing route"
+    assert getattr(r, "attempts_used", 99) <= 300
 
 
 def test_lib_nand2x1_selection_is_deterministic(flow_dir):
@@ -389,50 +392,48 @@ def test_lib_nand2x1_selection_is_deterministic(flow_dir):
         b[4]["selection"]["candidates"]
 
 
-def test_lib_nand3x1_honest_plateau_after_mirror_candidates(flow_dir):
-    """NAND3X1 plateaus in BOTH naive orientations; every mirror
-    candidate is trialed first, none routes (member-permutation probes
-    build-fail too), so the fallback keeps the cost-best ordering and
-    the cell fails HONESTLY with the specific structural blocker."""
-    nl, lw, op, on, bd = _chain(_lib_subckt("NAND3X1", flow_dir))
+def test_lib_nand3x1_closes_via_the_mirror_candidate(flow_dir):
+    """Updated by the metal2 freedom (was: honest plateau in both naive
+    orientations, 1 residual conflict): NAND3X1's cost-best orientation
+    still plateaus (net A's crossing), but the mirrored orientation now
+    ROUTES -- the speculate loop selects flip-both, the cell closes
+    FEASIBLE and verifies clean.  The mirror escape machinery the
+    stage exists for, demonstrated end to end."""
+    bd, r = _closed_loop(_lib_subckt("NAND3X1", flow_dir), "NAND3X1")
     sel = bd["selection"]
-    assert not sel["feasible"]
-    kinds = [e["kind"] for e in sel["candidates"]]
-    assert "flip-both" in kinds                 # mirrors were tried
-    assert sel["conflicts"] == 1                # the cost best is also the
-    # best-scoring candidate (net A's single unresolved conflict)
-    placements, width = layout_cell(op, on, lw)
-    r = route_cell(nl, placements, width, lw)
-    assert not r.ok and r.status_name == "UNKNOWN"
-    note = getattr(r, "fail_note", None) or ""
-    assert "no conflict-free routing" in note
-    assert "unresolved: A" in note              # the structural blocker
-    assert "terminal clash" not in note
-    assert r.width_cols >= max(p.end_col for p in placements.values())
+    assert sel["feasible"], sel
+    assert sel["kind"] in ("flip-both", "die-both", "seed-flip-both",
+                           "seed-die-both")
+    assert r.status_name == "FEASIBLE"
 
 
-def test_ctrl_complex0_honest_plateau_after_mirror_candidates(flow_dir):
-    """ctrl/COMPLEX0 (8T): the exhaustively probed candidate space
-    (all flip combinations of both base orderings, all orderings, trial
-    AND full budget) never routes -- best residual 3 conflicts.  The
-    speculate loop must (a) try the mirror candidates, (b) fall back to
-    the lowest-conflict candidate -- which the trial ranking shows is
-    the wider seed-flip-both class, not the cost-best -- and (c) fail
-    honestly."""
+def test_ctrl_complex0_fixed_pool_honest_plateau(flow_dir):
+    """ctrl/COMPLEX0 (8T) through the FIXED candidate pool (no
+    decomposition variants): every mirror class is trialed, none routes,
+    the fallback keeps the lowest-conflict candidate and the cell fails
+    HONESTLY.  Updated by the metal2 freedom: the trial floor dropped
+    from 4 conflicts to 1 (the escapes that used to be corridor-locked
+    now lift onto metal2), and the structural note names what remains
+    beyond metal2 -- the gate-contact contest: both cl0#B's and
+    cl0#a_2_6#'s only surviving crossing track is T3, and M2 cannot
+    lift an M1 gate contact.  The cell CLOSES only through the variant
+    pool (test_bigcell_variants)."""
     path = os.path.join(flow_dir, "outputs", "ctrl", "COMPLEX0.sp")
     nl, lw, op, on, bd = _chain(open(path).read())
     sel = bd["selection"]
     assert not sel["feasible"]
     kinds = [e["kind"] for e in sel["candidates"]]
     assert {"flip-both", "die-both", "seed-flip-both"} <= set(kinds)
-    # the trial ranking picks the class the full-budget sweep confirmed
-    assert sel["kind"] == "seed-flip-both" and sel["conflicts"] == 4
+    assert sel["conflicts"] == 1                # the metal2-era trial floor
     placements, width = layout_cell(op, on, lw)
     r = route_cell(nl, placements, width, lw, max_attempts=1000)
     assert not r.ok and r.status_name == "UNKNOWN"
     note = getattr(r, "fail_note", None) or ""
     assert "no conflict-free routing" in note
     assert "unresolved: cl0#B" in note          # the same blocker class
+    # the residual is named as beyond metal2: gate contacts, not escapes
+    assert "gate contact" in note
+    assert "does not dissolve" in note
     assert "terminal clash" not in note
     assert r.width_cols >= max(p.end_col for p in placements.values())
 

@@ -444,3 +444,24 @@ def test_m2_run_without_via_fails_verify():
                          rt.pj_count, rt.m2_count, rt.via_count - 1)
     report = verify_cell(nl, placement, broken)
     assert not report.ok()
+
+
+# --------------------------------------------------------------------------
+# the metal2 vertical freedom: node-level vias + M2 vertical spans
+# --------------------------------------------------------------------------
+
+def test_route_result_m2_fields_default_absent():
+    """The 19-positional-arg contract is untouched: new fields default
+    to empty dicts, so exact-engine routes (and every existing
+    constructor call site) serialize byte-identically.  The hand-built
+    semantics of the new fields are pinned in
+    test_bigcell_slot_geometry.py (slot chain, where the verify helpers
+    live)."""
+    from smt_engine.route_model import RouteResult
+    r = RouteResult("FEASIBLE", [], [], [], [], [], [], {}, {}, {}, {},
+                    [], [], 0, 0, 0, 0, 0, 0)
+    assert r.m2v == {} and r.m2via == {}
+    r2 = RouteResult("FEASIBLE", [], [], [], [], [], [], {}, {}, {}, {},
+                     [], [], 0, 0, 0, 0, 0, 0,
+                     m2v={(1, 2, 4): "Y"}, m2via={(2, 1): True})
+    assert r2.m2v == {(1, 2, 4): "Y"} and r2.m2via == {(2, 1): True}

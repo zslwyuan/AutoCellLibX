@@ -24,8 +24,8 @@ pending, design note section 8).
 
 import gdstk
 
-from smt_engine.gds import (CONTACT_S, LAYER, M1_W, POLY_OVERHANG, POLY_W,
-                            row_geometry, track_geometry)
+from smt_engine.gds import (CONTACT_S, LAYER, M1_W, M2_W, POLY_OVERHANG,
+                            POLY_W, row_geometry, track_geometry)
 
 from bigcell_engine.geometry import (BREAK_GAP_COLS, ESCAPE_L_UM, GRID_UM,
                                      HEIGHT_UM, MID_UM, N_ROW, P_ROW,
@@ -262,6 +262,8 @@ def _draw_route(cell, route, edge_x, trackY, barY, grid_um, height_um,
     m2 = getattr(route, "m2", {}) or {}
     via = getattr(route, "via", {}) or {}
     pj = getattr(route, "pj", {}) or {}
+    m2v = getattr(route, "m2v", {}) or {}
+    m2via = getattr(route, "m2via", {}) or {}
 
     def rect(x0, y0, x1, y1, layer):
         cell.add(gdstk.rectangle((x0, y0), (x1, y1), layer=layer))
@@ -277,6 +279,20 @@ def _draw_route(cell, route, edge_x, trackY, barY, grid_um, height_um,
         rect(edge_x(c), trackY[t] - w / 2, edge_x(c + 1), trackY[t] + w / 2,
              layer)
     for (t, c), on in sorted(via.items()):
+        if not on:
+            continue
+        xc = edge_x(c)
+        rect(xc - CONTACT_S / 2, trackY[t] - CONTACT_S / 2,
+             xc + CONTACT_S / 2, trackY[t] + CONTACT_S / 2, LAYER["via1"])
+    # the metal2 vertical freedom (additive): a span is the column-
+    # stripe primitive on metal2 (one column across a track range --
+    # the via-up / M2 / via-down track change); a node via squares the
+    # M1<->M2 junction at a single point
+    for (c, t1, t2), _net in sorted(m2v.items()):
+        xc = edge_x(c)
+        rect(xc - M2_W / 2, trackY[t1] - M2_W / 2,
+             xc + M2_W / 2, trackY[t2] + M2_W / 2, LAYER["metal2"])
+    for (t, c), on in sorted(m2via.items()):
         if not on:
             continue
         xc = edge_x(c)

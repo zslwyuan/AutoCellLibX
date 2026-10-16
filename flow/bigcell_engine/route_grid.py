@@ -107,6 +107,12 @@ single stub per net (post-pass (h)): the BFS has no pin geometry, so a
 tree path hopping point -> hub -> pin -> hub -> point would be connected
 in the tree but not on the die.
 
+route_cell runs the negotiation in TWO phases: phase 1 is this router
+byte for byte as it was before the metal2 freedom (no M2 vertical arcs,
+the both-side via rule, the forced dual fill), so every cell that closed
+before keeps its exact route; only a phase-1 stall rebuilds the grid
+with the freedom (below) and re-routes from scratch.
+
 Residual structural class: the corridor-locked terminal
 -------------------------------------------------------
 The slot-router residuals that survive every mirror/decomposition
@@ -130,21 +136,26 @@ bar levels, probed) does NOT lift it: the yielding-free transition's
 solidified stripe sweeps the whole corridor band at its transition
 column, so the drawn metal -- not the node count -- is the wall.
 
-The freedom ASTRAN uses here is its metal2 z-layer: the C++ router is a
-3D grid (designmng.cpp:454 setup(..., 3)) whose layer costs
-(router.cpp:53-55) are M1 h=11/v=4, M2 h=4/**v=11** and via-up 4 at any
-node -- M2 track changes and node-level vias are first-class moves.
-This vocabulary cannot express them: hseg is horizontal-only per
-(track, column), a via joins two same-track adjacent segments (so a
-power-walled access point -- both adjacent M1 segment slots owned by a
-power stripe -- can never lift onto M2), and verify's BFS gives M2 no
-vertical edges.  Expressing the fix means extending the RouteResult
-contract itself (M2 vertical geometry + access-point vias across
-route_model/verify/gds -- outside this module) or placing cells without
-corridor-locked terminals.  :meth:`structural_diagnosis` names the
-contested corridor nodes and the walled terminals on every failure so
-the plateau note says WHICH freedom is missing instead of only how many
-conflicts stalled.
+The freedom ASTRAN uses here is its metal2 z-layer, and this router now
+has it: the C++ router is a 3D grid (designmng.cpp:454 setup(..., 3))
+whose layer costs (router.cpp:53-55) are M1 h=11/v=4, M2 h=4/**v=11**
+and via-up 4 at any node -- M2 track changes and node-level vias are
+first-class moves.  The graph carries M1<->M2 via arcs at every node
+(they always did) plus M2 vertical arcs (M2_V_COST, appended after the
+M1 arcs so pre-existing arc order -- the A* tie-break -- is preserved),
+and the vocabulary was extended to match: a node via (m2via) joins the
+net's M1 point (stripe landing, segment endpoint or terminal) to its
+metal2 at one point, and an M2 span (m2v) occupies one column across a
+track range -- the via-up/M2-hop/via-down track change.  The negotiated
+post-pass rule (d) accepts both via forms and bumps dead-side pairs; a
+power-walled access point lifts onto M2 through its own stripe and
+crosses the wall above the metal that walled it.  When the negotiation
+still plateaus, :meth:`structural_diagnosis` names the contested
+corridor nodes and the walled terminals on every failure so the plateau
+note says WHICH freedom is still missing (the residual class is now a
+contest M2 cannot dissolve -- e.g. a gate contact whose only crossing
+tracks are foreign power metal, which M2 cannot lift because M2 never
+touches gates).
 
 Determinism (AGENTS.md invariants 8/9): nets are routed in sorted-name
 order; the priority queue breaks cost ties by (node id, insertion counter);
@@ -196,6 +207,9 @@ POLY_MET_OVER_DIFF = 200    # autocell2.cpp:47; likewise unmodeled: the only
                             # has is the gate crossing itself
 M2_H_COST = 4               # Router::setup, router.cpp:24/:55 (M2 h-cost of
                             # the GridRouter cost triples)
+M2_V_COST = 11              # Router::setup, router.cpp:53-55 (M2 v-cost):
+                            # the metal2 track-change arcs -- via-up at any
+                            # node (4), M2 vertical hop (11), via-down (4)
 VIA_COST = 4                # Router::setup, router.cpp:23-24 (up-cost)
 
 GND_NAMES = ("GND", "VSS")
@@ -318,7 +332,7 @@ class _RouteGrid(object):
     """The routing graph + Pathfinder solver for one cell."""
 
     def __init__(self, netlist, placement, width_cols,
-                 height_um=2.47, grid_um=0.19):
+                 height_um=2.47, grid_um=0.19, metal2_verticals=True):
         self.netlist = netlist
         self.placement = placement
         self.slot = die_view.is_slot_placement(placement)
@@ -335,6 +349,14 @@ class _RouteGrid(object):
         self.width_cols = width_cols
         self.height_um = height_um
         self.grid_um = grid_um
+        # the metal2 vertical freedom (router.cpp:53-55): via-up at any
+        # node, M2 vertical hops, via-down -- plus the negotiated rules
+        # that consume it (the node-via via form, the M2-bridge dual
+        # fill skip).  Phase 1 of route_cell runs WITHOUT it: the graph
+        # and the negotiation are then byte-for-byte the pre-freedom
+        # router, so every cell that closed before keeps its exact
+        # route (AGENTS.md invariant 8/9 determinism discipline).
+        self.metal2_verticals = metal2_verticals
         self.trackY, self.barY = track_geometry(height_um, grid_um)
         self.graph = []             # node id -> _Node
         self.arcs = []
@@ -491,6 +513,18 @@ class _RouteGrid(object):
             for c in range(width):
                 self._add_arc(self._m1(t - 1, c), self._m1(t, c),
                               self._v_cost(c, t))
+        # M2 vertical arcs (router.cpp:53-55, M2 v-cost): the metal2
+        # track-change freedom -- via-up at any node (the M1<->M2 arcs
+        # above), M2 vertical hops, via-down anywhere.  Appended after
+        # the M1 arcs so every pre-existing arc index (and the per-node
+        # arc order the A* tie-break consumed) is preserved: routes that
+        # cannot profit from metal2 stay byte-identical.  Phase 1
+        # (metal2_verticals=False) builds the pre-freedom graph.
+        if self.metal2_verticals:
+            for t in range(1, N_TRACKS):
+                for c in range(width):
+                    self._add_arc(self._node((_M2, t - 1, c)),
+                                  self._node((_M2, t, c)), M2_V_COST)
         for t in sorted(ROW_TRACKS):
             for c in range(width - 1):
                 # the jump segment (t, c) must leave field oxide at its
@@ -933,14 +967,23 @@ class _RouteGrid(object):
         [min, max] of the occupied levels; the fill makes the occupied set
         equal that interval, so verify.py's bar-coverage BFS and the
         crossing-safety rule see exactly the geometry the router built.
-        A same-net dual (both slots) must merge through the T3 boundary
-        track (verify.py's dual-column rule), so both slots extend to it.
+        A same-net dual (both slots) historically merged through the T3
+        boundary track (verify.py's dual-column rule); with the metal2
+        vertical freedom a column whose own M2 run already bridges the
+        slots (a contiguous M2 run covering tracks on both sides of T3)
+        is a SECOND N<->P crossover, so the forced T3 sweep is skipped --
+        it would only consume the corridor node another net's gate
+        contact needs.  Nets without M2 geometry keep the historical
+        fill byte for byte.
         """
         cols = {}
+        m2cols = {}
         for nid in net.tree:
             kind = self.graph[nid].kind
             if (kind[0] == _M1):
                 cols.setdefault(kind[2], set()).add(kind[1])
+            elif (kind[0] == _M2):
+                m2cols.setdefault(kind[2], set()).add(kind[1])
         have = set(net.tree)
         for c in sorted(cols):
             tracks = cols[c]
@@ -948,8 +991,16 @@ class _RouteGrid(object):
             p_side = sorted(t for t in tracks if t >= BOUNDARY_T)
             fill = []
             if (n_side and p_side):
-                fill.extend(range(n_side[0], BOUNDARY_T + 1))
-                fill.extend(range(BOUNDARY_T, p_side[-1] + 1))
+                if (self.metal2_verticals
+                        and self._m2_bridges_slots(m2cols.get(c, ()), net)):
+                    # the column's own M2 run joins the halves: keep the
+                    # corridor node free (phase 2 only -- phase 1 keeps
+                    # the historical forced sweep byte for byte)
+                    fill.extend(range(n_side[0], n_side[-1] + 1))
+                    fill.extend(range(p_side[0], p_side[-1] + 1))
+                else:
+                    fill.extend(range(n_side[0], BOUNDARY_T + 1))
+                    fill.extend(range(BOUNDARY_T, p_side[-1] + 1))
             elif (n_side):
                 fill.extend(range(n_side[0], n_side[-1] + 1))
             elif (p_side):
@@ -959,6 +1010,25 @@ class _RouteGrid(object):
                 if (nid not in have):
                     have.add(nid)
                     net.tree.append(nid)
+
+    def _m2_bridges_slots(self, tracks, net):
+        """Whether the net's M2 nodes at one column form a contiguous run
+        covering tracks on both sides of the T3 boundary -- a drawn M2
+        crossover between the N and P halves."""
+        m2t = sorted(tracks)
+        if (not m2t):
+            return False
+        start = prev = m2t[0]
+        for t in m2t[1:] + [None]:
+            if (t == prev + 1):
+                prev = t
+                continue
+            if (start < prev and start <= BOUNDARY_T <= prev):
+                return True
+            if (t is None):
+                break
+            start = prev = t
+        return False
 
 
     def _prim(self, net, nodes, attempt):
@@ -1153,27 +1223,89 @@ class _RouteGrid(object):
                         if (t in ROW_TRACKS
                                 and self._node((_PJ, t, c)) in mine):
                             bump(self._node((_PJ, t, c)))
+                    # a gate-only net's tree holds no crossing points at
+                    # all (its only terminal is the gate node), so the
+                    # bumps above price nothing; without pricing the
+                    # BLOCKERS the occupying net never yields and the
+                    # crossing stalls forever.  Bump every candidate
+                    # contact point another net occupies or parks in,
+                    # and mark those nets conflicted: GraphRouter rips
+                    # up only conflicted nets, so a blocker that shares
+                    # no node with the violating net would otherwise
+                    # keep its tree (and its parked points) forever.
+                    # Phase 2 only: the pre-freedom negotiation never
+                    # marked blockers, and previously-closing cells must
+                    # keep their exact dynamics.
+                    if (not self.metal2_verticals):
+                        continue
+                    for t in self.gate_tracks.get((gname, c), ()):
+                        for cc in (c, c + 1):
+                            if (not (0 <= cc < self.width_cols)):
+                                continue
+                            cands = [self._m1(t, cc)]
+                            if (t in ROW_TRACKS):
+                                cands.append(self._node((_PJ, t, cc)))
+                            for nid in cands:
+                                blockers = [u for u in
+                                            owner_nets.get(nid, ())
+                                            if (u != net.index)]
+                                if (blockers):
+                                    conflicted.update(blockers)
+                                    bump(nid)
 
-        # (d) vias join one net's M1 and M2 segments on both sides; on the
-        # edge columns no via can be emitted at all, so an M1|M2 pair there
-        # is always a violation
+        # (d) an M1|M2 pair at one point is a real via in one of two
+        # forms: the BOTH-SIDE segment form (the old vocabulary -- M1
+        # segment on one side of the column, M2 segment on the other,
+        # edge columns excluded) or the NODE-VIA form (the metal2
+        # freedom, router.cpp:53-55 via-up at any node -- both sides own
+        # drawable metal at the point: M1 stripe coverage via a vertical
+        # neighbour, an M1 segment endpoint or a terminal; an M2 span
+        # via a vertical neighbour or an M2 segment endpoint).  A pair
+        # with a dead side is dead metal: violation, bumped on both
+        # endpoints so the negotiation extends or drops it.
         for net in self.nets:
             mine = tree_set[net.index]
+            node_m1 = set(nid for nid in net.nodes
+                          if self.graph[nid].kind[0] == _M1)
             for t in range(N_TRACKS):
                 for c in range(self.width_cols):
                     m1c, m2c = self._m1(t, c), self._node((_M2, t, c))
                     if (m1c not in mine or m2c not in mine):
                         continue
-                    legal = (
-                        c > 0 and c < self.width_cols - 1
-                        and ((self._m1(t, c - 1) in mine
-                              and self._node((_M2, t, c + 1)) in mine)
-                             or (self._node((_M2, t, c - 1)) in mine
-                                 and self._m1(t, c + 1) in mine)))
-                    if (not legal):
+                    if (c > 0 and c < self.width_cols - 1
+                            and ((self._m1(t, c - 1) in mine
+                                  and self._node((_M2, t, c + 1)) in mine)
+                                 or (self._node((_M2, t, c - 1)) in mine
+                                     and self._m1(t, c + 1) in mine))):
+                        continue            # both-side segment via
+                    if (not self.metal2_verticals):
+                        # phase 1: the pre-freedom rule -- an M1|M2 pair
+                        # must be a both-side segment via
                         conflicts += 1
                         conflicted.add(net.index)
                         bump(m2c)
+                        continue
+                    m1_real = (
+                        (c > 0 and self._m1(t, c - 1) in mine)
+                        or (c + 1 < self.width_cols
+                            and self._m1(t, c + 1) in mine)
+                        or (t > 0 and self._m1(t - 1, c) in mine)
+                        or (t + 1 < N_TRACKS
+                            and self._m1(t + 1, c) in mine)
+                        or m1c in node_m1)
+                    m2_real = (
+                        (c > 0 and self._node((_M2, t, c - 1)) in mine)
+                        or (c + 1 < self.width_cols
+                            and self._node((_M2, t, c + 1)) in mine)
+                        or (t > 0 and self._node((_M2, t - 1, c)) in mine)
+                        or (t + 1 < N_TRACKS
+                            and self._node((_M2, t + 1, c)) in mine))
+                    if (m1_real and m2_real):
+                        continue            # node via: both sides real
+                    conflicts += 1
+                    conflicted.add(net.index)
+                    bump(m1c)
+                    bump(m2c)
 
         # (e) poly jump pairs: right end over field oxide
         for net in self.nets:
@@ -1493,6 +1625,26 @@ class _RouteGrid(object):
                 owner[nid] = net.index
         return owner
 
+    def _m1_landing_real(self, nid, seen):
+        """Whether the M1 point ``nid`` can host a node via's landing in
+        the over-approximated cage: a build-time terminal (its access
+        stripe is drawn) or an M1 neighbour already reached (a segment
+        endpoint or a solidified stripe run) -- the same realness rule
+        the negotiated post-pass's node-via form uses."""
+        if (nid in self._term_owner):
+            return True
+        kind = self.graph[nid].kind
+        t, c = kind[1], kind[2]
+        for dc in (-1, 1):
+            side = self._id.get((_M1, t, c + dc))
+            if (side is not None and side in seen):
+                return True
+        for dt in (-1, 1):
+            side = self._id.get((_M1, t + dt, c))
+            if (side is not None and side in seen):
+                return True
+        return False
+
     def _cage(self, xidx, start, banned=frozenset()):
         """Least fixpoint of the nodes net ``xidx`` can physically occupy
         starting from ``start``: M1 / M2 / poly / gate arcs over nodes
@@ -1501,11 +1653,13 @@ class _RouteGrid(object):
         Hubs and pins are excluded: a hub hop is either the pin stub or
         a same-column vertical whose drawn stripe consumes the corridor
         node anyway, so it never substitutes for a corridor crossing.
-        M2 enters only through the over-approximated via rule (some
-        same-track M1 neighbour is already reached), which can only
-        OVER-state reachability -- the diagnosis may miss a contest but
-        never invents one.  The fixpoint is monotone, hence unique and
-        independent of the work order (determinism, invariant 9)."""
+        Metal2 moves within the layer are free (horizontal segments and
+        vertical spans are always drawable); entering the layer through
+        a node via requires the M1 landing to be real (terminal, segment
+        endpoint or stripe run -- :meth:`_m1_landing_real`).  This can
+        only OVER-state reachability -- the diagnosis may miss a contest
+        but never invents one.  The fixpoint is monotone, hence unique
+        and independent of the work order (determinism, invariant 9)."""
         owner = self._term_owner
         seen = {start}
         work = [start]
@@ -1521,20 +1675,19 @@ class _RouteGrid(object):
                     continue
                 if (owner.get(other, xidx) != xidx):
                     continue            # foreign terminal (static)
-                if (kind[0] == _M2 and not any(
-                        self._id.get((_M1, kind[1], kind[2] + dc))
-                        in seen for dc in (-1, 1))):
-                    continue            # no same-track M1 seg partner
+                if (kind[0] == _M2 and nid == self._id.get(
+                        (_M1, kind[1], kind[2]))
+                        and not self._m1_landing_real(nid, seen)):
+                    continue            # via door: landing not drawable
                 seen.add(other)
                 work.append(other)
                 if (kind[0] == _M1):
-                    # entering an M1 node can open the via gate of
-                    # already-seen same-track M1 neighbours
-                    for dc in (-1, 1):
-                        side = self._id.get((_M1, kind[1], kind[2] + dc))
-                        if (side is not None and side in seen
-                                and side != nid):
-                            work.append(side)
+                    # entering an M1 node can open the via door of
+                    # already-seen same-track M2 nodes
+                    twin = self._id.get((_M2, kind[1], kind[2]))
+                    if (twin is not None and twin in seen
+                            and twin != nid):
+                        work.append(twin)
         return seen
 
     def _term_label(self, nid):
@@ -1546,12 +1699,15 @@ class _RouteGrid(object):
             return "diffusion access @col %d track %d" % (kind[2], kind[1])
         return str(kind)
 
-    def _gate_only_forced(self, xidx, name):
-        """Corridor demands of a gate-only net (no diffusion access):
-        for each gate node, the crossing tracks that survive the static
-        walls (M1: both endpoint nodes unowned by foreign nets; poly:
-        row track over field with no foreign gate stripe).  Only when
-        the corridor is the sole survivor is the crossing forced."""
+    def _gate_forced(self, xidx, name):
+        """Corridor demands of a net's gate contacts: for each gate node,
+        the crossing tracks that survive the static walls (M1: both
+        endpoint nodes unowned by foreign nets; poly: row track over
+        field with no foreign gate stripe).  Only when the corridor is
+        the sole survivor is the crossing forced.  Applied to EVERY
+        net's gates (verify's rule (c) demands a crossing for each):
+        the crossing segment claims both endpoint nodes, and M2 cannot
+        lift it -- a gate contact is an M1/poly touch."""
         demands = {}
         mine = sorted(nid for nid, o in self._term_owner.items()
                       if o == xidx)
@@ -1602,10 +1758,10 @@ class _RouteGrid(object):
         for net in self.nets:
             terms = sorted(nid for nid in net.nodes
                            if self.graph[nid].kind[0] in (_M1, _G))
-            net_demands = {}
-            if (not any(self.graph[nid].kind[0] == _M1
-                        for nid in terms)):
-                net_demands = self._gate_only_forced(net.index, net.name)
+            # every gate node needs a crossing; when the corridor is the
+            # sole surviving crossing track, its endpoint nodes are
+            # forced (M2 cannot lift a gate contact)
+            net_demands = self._gate_forced(net.index, net.name)
             if (len(terms) < 2):
                 # a single-terminal net (gate-only) has no pairwise
                 # connectivity requirement -- its demand is the gate
@@ -1657,12 +1813,11 @@ class _RouteGrid(object):
                 for c, users in sorted(contests.items()))
             parts.append(
                 "; structural: corridor T3 over-subscribed at %s -- "
-                "zero-conflict routing is inexpressible in the "
-                "7-track/9-bar contract (single N<->P crossover; power "
-                "stripes wall every other track at their access "
-                "columns); the missing freedom is ASTRAN's metal2 "
-                "z-layer (node-level vias + M2 track changes, "
-                "router.cpp:53-55), not corridor width" % detail)
+                "the metal2 freedom (node-level vias + M2 track changes, "
+                "router.cpp:53-55) does not dissolve these demands: a "
+                "gate contact's crossing must be M1/poly (M2 never "
+                "touches gates) and power stripes are pinned, so the "
+                "remaining freedom is the placement itself" % detail)
         return "".join(parts)
     def build_result(self):
         """Build the RouteResult-compatible solution from the trees."""
@@ -1671,6 +1826,8 @@ class _RouteGrid(object):
         pj = {}
         m2 = {}
         via = {}
+        m2v = {}
+        m2via = {}
         for net in self.nets:               # sorted-name order
             mine = set(net.tree)
             for t in range(N_TRACKS):
@@ -1687,11 +1844,47 @@ class _RouteGrid(object):
                           and self._node((_PJ, t, c + 1)) in mine):
                         hseg[(t, c)] = net.name
                         pj[(t, c)] = True
+            # M1<->M2 junctions: the both-side segment pairs emit the
+            # old via form; every other real pair (both sides own
+            # drawable metal at the point -- the post-pass's node-via
+            # rule) emits a node via
             for t in range(N_TRACKS):
-                for c in range(1, width - 1):
-                    if (self._m1(t, c) in mine
-                            and self._node((_M2, t, c)) in mine):
+                for c in range(width):
+                    m1c, m2c = self._m1(t, c), self._node((_M2, t, c))
+                    if (m1c not in mine or m2c not in mine):
+                        continue
+                    if (c > 0 and c < width - 1
+                            and ((self._m1(t, c - 1) in mine
+                                  and self._node((_M2, t, c + 1)) in mine)
+                                 or (self._node((_M2, t, c - 1)) in mine
+                                     and self._m1(t, c + 1) in mine))):
                         via[(t, c)] = True
+                    else:
+                        m2via[(t, c)] = True
+            # metal2 vertical spans: maximal contiguous M2 runs per
+            # column (a run of one track is a segment endpoint or a
+            # dead point -- never a span)
+            cols = {}
+            for nid in mine:
+                kind = self.graph[nid].kind
+                if (kind[0] == _M2):
+                    cols.setdefault(kind[2], set()).add(kind[1])
+            for c in sorted(cols):
+                tracks = sorted(cols[c])
+                runs = []
+                start = prev = None
+                for t in tracks:
+                    if (start is None):
+                        start = t
+                    elif (t != prev + 1):
+                        runs.append((start, prev))
+                        start = t
+                    prev = t
+                if (start is not None):
+                    runs.append((start, prev))
+                for t1, t2 in runs:
+                    if (t2 > t1):
+                        m2v[(c, t1, t2)] = net.name
         owner_n = [None] * width
         owner_p = [None] * width
         lo_n = [0] * width
@@ -1715,11 +1908,13 @@ class _RouteGrid(object):
                 * H_MET_COST
                 + sum(1 for k in hseg if m2.get(k)) * M2_H_COST
                 + sum(1 for k in hseg if pj.get(k)) * POLY_ARC_COST
-                + len(via) * VIA_COST)
+                + len(via) * VIA_COST
+                + len(m2via) * VIA_COST
+                + sum(t2 - t1 for (_c, t1, t2) in m2v) * M2_V_COST)
         result = RouteResult(
             "FEASIBLE", owner_n, owner_p, lo_n, hi_n, lo_p, hi_p,
             hseg, pj, m2, via, reachB_n, reachB_p, width, len(hseg),
-            vseg, len(pj), len(m2), len(via))
+            vseg, len(pj), len(m2), len(via), m2v=m2v, m2via=m2via)
         result.route_cost = cost
         result.attempts_used = getattr(self, "attempts_used", 0)
         return result
@@ -1758,6 +1953,15 @@ def route_cell(netlist, placement, width_cols, leg_widths=None,
     (device name -> (legs, leg_width_cols)); the fold is already realized
     in the placement, so the router consumes it for provenance only.
 
+    Two phases (AGENTS.md invariants 8/9 discipline): phase 1 is the
+    pre-freedom router -- graph, negotiation and emitted vocabulary are
+    byte-for-byte the historical ones, so every cell that closed before
+    keeps its exact route.  Only on a phase-1 stall does phase 2 rebuild
+    the grid WITH the metal2 vertical freedom (via-up at any node, M2
+    vertical hops, node-level vias, M2-bridge dual fills) and re-route
+    from scratch; its failure note (with the metal2-aware structural
+    diagnosis) is the honest residual.
+
     Invariant: the returned RouteResult always covers every placement
     column -- ``width_cols >= max(p.end_col for p in placement.values())``
     -- success and failure alike, so consumers deriving columns from the
@@ -1770,7 +1974,15 @@ def route_cell(netlist, placement, width_cols, leg_widths=None,
     width_cols = max(width_cols,
                      max((p.end_col for p in placement.values()), default=0))
     grid = _RouteGrid(netlist, placement, width_cols,
-                      height_um=height_um, grid_um=grid_um)
+                      height_um=height_um, grid_um=grid_um,
+                      metal2_verticals=False)
+    if (grid.route(max_attempts=max_attempts)):
+        return grid.build_result()
+    # phase 2: the metal2 vertical freedom (router.cpp:53-55) on a
+    # fresh grid -- the negotiation restarts, nothing carries over
+    grid = _RouteGrid(netlist, placement, width_cols,
+                      height_um=height_um, grid_um=grid_um,
+                      metal2_verticals=True)
     if (grid.route(max_attempts=max_attempts)):
         return grid.build_result()
     return grid.failed_result()
@@ -1795,4 +2007,11 @@ def route_signature(route):
     for key in sorted(route.via):
         if (route.via[key]):
             parts.append("v%s" % (key,))
+    # the metal2 vertical freedom: spans + node vias join the signature
+    # only when present, so routes without them serialize byte-identically
+    for key in sorted(getattr(route, "m2v", {}) or {}):
+        parts.append("s%s=%s" % (key, route.m2v[key]))
+    for key in sorted(getattr(route, "m2via", {}) or {}):
+        if (route.m2via[key]):
+            parts.append("n%s" % (key,))
     return "\n".join(parts)

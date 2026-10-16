@@ -181,6 +181,21 @@ def cell_gds(netlist, placement, route, grid_um=0.19, height_um=2.47,
         rect(c * g - VIA_S / 2, trackY[t] - VIA_S / 2,
              c * g + VIA_S / 2, trackY[t] + VIA_S / 2, LAYER["via1"])
 
+    # --- metal2 vertical freedom (additive: routes without it draw
+    # exactly as before): a span is metal2 occupying one COLUMN across a
+    # track range (the column-stripe primitive on metal2, enabling track
+    # changes via-up -> M2 span -> via-down); a node via squares the
+    # M1<->M2 junction at a single (track, column) point ---
+    route_m2v = getattr(route, "m2v", {}) or {}
+    route_m2via = getattr(route, "m2via", {}) or {}
+    for (c, t1, t2), _net in sorted(route_m2v.items()):
+        rect(c * g - M2_W / 2, trackY[t1] - M2_W / 2,
+             c * g + M2_W / 2, trackY[t2] + M2_W / 2, LAYER["metal2"])
+    for (t, c), on in sorted(route_m2via.items()):
+        if (on):
+            rect(c * g - VIA_S / 2, trackY[t] - VIA_S / 2,
+                 c * g + VIA_S / 2, trackY[t] + VIA_S / 2, LAYER["via1"])
+
     # --- poly jumps: horizontal poly wires on the row tracks (they cross
     # foreign M1 stripes in a different layer and merge with same-net
     # gate stripes) ---

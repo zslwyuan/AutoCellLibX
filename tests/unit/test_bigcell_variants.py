@@ -416,13 +416,14 @@ def test_generate_candidates_appends_and_dedupes_extra_classes():
 # the acceptance evidence: ctrl/COMPLEX0 (real router)
 # --------------------------------------------------------------------------
 
-def test_ctrl_complex0_variant_candidate_beats_the_fixed_pool(flow_dir):
-    """THE acceptance: the fixed pool's best trial score for
-    ctrl/COMPLEX0 is 4 conflicts (seed-flip-both; 3 at full budget).
-    The variant pool must nominate a candidate the trial router scores
-    STRICTLY better, and the full-budget route from the selected
-    ordering must improve the residual (2 conflicts, a different,
-    smaller unresolved set)."""
+def test_ctrl_complex0_variant_candidate_closes_the_cell(flow_dir):
+    """THE acceptance, updated by the metal2 freedom: the fixed pool's
+    best trial score for ctrl/COMPLEX0 dropped from 4 conflicts to 1
+    (the corridor-locked escapes now lift onto metal2) but the fixed
+    pool still cannot close -- the gate-contact contest at col 1 is
+    beyond metal2 for those orientations.  The variant pool nominates a
+    candidate that routes FEASIBLE outright, and the full-budget route
+    from the selected ordering CLOSES the cell and verifies clean."""
     path = os.path.join(flow_dir, "outputs", "ctrl", "COMPLEX0.sp")
     nl3, lw, blocks = _pipeline(open(path).read())
     seeds = row_seeds(blocks, lw)
@@ -431,20 +432,19 @@ def test_ctrl_complex0_variant_candidate_beats_the_fixed_pool(flow_dir):
     fixed_p, fixed_n, fixed_report = select_orderings(bp, bn, eop, eon,
                                                       nl3, lw)
     assert not fixed_report["feasible"]
-    assert fixed_report["conflicts"] == 4     # today's trial floor
+    assert fixed_report["conflicts"] == 1     # the metal2-era trial floor
     sel_p, sel_n, report = select_orderings(bp, bn, eop, eon, nl3, lw,
                                             variant_classes=True)
-    assert not report["feasible"]
-    assert report["conflicts"] == 2           # STRICTLY better than 3
-    assert report["kind"].startswith("var:singles-align")
-    # the full-budget route from the selected ordering
+    assert report["feasible"]                 # STRICTLY better: closed
+    assert report["conflicts"] == 0
+    assert report["kind"].startswith("var:")
+    # the full-budget route from the selected ordering closes and verifies
     placements, width = layout_cell(sel_p, sel_n, lw)
-    r = route_cell(nl3, placements, width, lw, max_attempts=1000)
-    assert not r.ok                           # honest: still not closed
-    note = getattr(r, "fail_note", None) or ""
-    assert "best 2 conflicts" in note
-    assert "unresolved: cl0#a_2_6#" in note   # residual shrank
-    assert "cl0#B" not in note and "cl1#Y" not in note.split("unresolved")[-1]
+    r = route_cell(nl3, placements, width, lw)
+    assert r.ok and r.status_name == "FEASIBLE"
+    from smt_engine.verify import verify_cell
+    rep = verify_cell(nl3, placements, r, blocks=list(sel_p) + list(sel_n))
+    assert rep.ok(), rep.violations[:4]
 
 
 _SLOT_HASH_HELPER = """\
