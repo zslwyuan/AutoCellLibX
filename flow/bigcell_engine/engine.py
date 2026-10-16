@@ -25,6 +25,16 @@ Ladder per cell:
   grid router.  This is the doc section 2.2 composition and the path for
   cells the exact placement cannot serve (big/irregular).  Its placement
   is factored as :func:`_heuristic_placement` so tests can stub it.
+- **rungs 2.5 / 3.5 -- window fix**: when a grid-router attempt fails
+  (its honest ``fail_note``), the exact engine returns in its doc
+  section 2.4 rung-1 role as a WINDOW FIXER: the conflicted region is
+  re-solved exactly on a <=12-column window with the plateaued router
+  solution outside the window fixed as blockages
+  (smt_engine.route_model.solve_window_routing).  The merged route is
+  verify-gated like every other rung; an INFEASIBLE window is itself
+  decisive evidence (the region is exactly-unroutable -- the blocker is
+  the placement/vocabulary, not the router's heuristic) and is recorded
+  as a failed attempt.
 
 Nothing here re-implements a solve: this module only sequences rungs,
 records every attempt in ``meta`` (the benchmark report's provenance),
@@ -56,6 +66,157 @@ EXACT_MAX_NETS = 12
 _ENG_EXACT = "smt-exact"
 _ENG_GRID = "bigcell-grid"
 _ENG_FULL = "bigcell-full"
+_ENG_WINDOW = "bigcell-window-fix"
+_ENG_GRID_WINDOW = "bigcell-grid+window-fix"
+_ENG_FULL_WINDOW = "bigcell-full+window-fix"
+
+
+def parse_fail_nets(note):
+    """Conflicted net names from route_grid's fail_note.
+
+    The failed RouteResult's ``fail_note`` is route_grid's public
+    failure payload; this parses its three forms deterministically:
+    the stagnation note ("...(best N conflicts at attempt A; unresolved:
+    n1, n2)<suffix>"), a path failure ("impossible to find a path for
+    net X") and a build-time terminal clash ("terminal clash at (...):
+    X and Y").  The unresolved list terminates at its closing paren
+    (newer route_grid notes append a structural analysis after it).
+    """
+    if (not note):
+        return []
+    if ("unresolved:" in note):
+        tail = note.split("unresolved:", 1)[1].split(")", 1)[0].strip()
+        if (tail in ("", "-")):
+            return []
+        return [s.strip() for s in tail.split(",") if s.strip()]
+    marker = "impossible to find a path for net "
+    if (marker in note):
+        return [note.split(marker, 1)[1].strip()]
+    if ("terminal clash at" in note and ": " in note):
+        tail = note.split(": ", 1)[1]
+        return [p.strip() for p in tail.split(" and ") if p.strip()]
+    return []
+
+
+def window_region(cols, route_width, max_cols=None):
+    """(window, reason) from the conflicted nets' access columns.
+
+    The window is the access span padded by one column per side,
+    clipped to the route grid; None with an honest reason when the
+    region exceeds the window budget (doc section 2.4: <=12 columns).
+    """
+    if (max_cols is None):
+        from smt_engine.route_model import WINDOW_MAX_COLS
+        max_cols = WINDOW_MAX_COLS
+    if (not cols):
+        return None, "conflicted nets have no access columns"
+    w0 = max(0, min(cols) - 1)
+    w1 = min(route_width, max(cols) + 2)
+    if (w1 - w0 > max_cols):
+        return None, ("conflicted region spans %d columns > %d window "
+                      "budget" % (w1 - w0, max_cols))
+    return (w0, w1), "access span padded to [%d,%d) of %d" % (w0, w1,
+                                                              route_width)
+
+
+def _plateau_partial(netlist, placement, width_cols):
+    """The router's plateaued solution, recovered deterministically.
+
+    The failed RouteResult carries only the fail_note, but the window
+    fixer needs the per-column stripes and outside-window segments as
+    blockages.  route_grid is deterministic (AGENTS.md invariants 8/9),
+    so re-running _RouteGrid reproduces the failure state exactly; if
+    the re-run does NOT fail the same way, refuse to fix a moving
+    target.  Returns a RouteResult-shaped snapshot of the final trees
+    (build_result) or None.
+    """
+    from bigcell_engine.route_grid import _RouteGrid
+    grid = _RouteGrid(netlist, placement, width_cols)
+    if (grid._fail_note is not None):
+        return None              # build-time failure: no plateau state
+    if (grid.route()):
+        return None
+    return grid.build_result()
+
+
+def _window_fix_rung(meta, rung, netlist, placement, blocks, failed_route):
+    """One window-fix attempt: the exact engine on the conflicted region.
+
+    Derives the window from the failed route's fail_note (parsed via
+    :func:`parse_fail_nets`) and the conflicted nets' access columns,
+    solves it exactly (whole-cell windows need no plateau state; strict
+    sub-windows re-run the deterministic router for the blockage
+    geometry), and verify-gates the merged result like every other
+    rung.  Returns the merged RouteResult or None; every outcome is
+    recorded in ``meta`` with the window attached.
+    """
+    from smt_engine import route_model
+    from smt_engine.verify import verify_cell
+    route_width = getattr(failed_route, "width_cols", None) or max(
+        p.end_col for p in placement.values())
+    names = parse_fail_nets(getattr(failed_route, "fail_note", None))
+    if (not names):
+        _attempt(meta, rung, _ENG_WINDOW, False, status="SKIPPED",
+                 stage="routing",
+                 note="fail note names no conflicted nets")
+        return None
+    diffusion, gate, _power = route_model.verify_style_access_points(
+        netlist, placement, blocks)
+    cols = set()
+    for name in names:
+        cols.update(c for c, _dev in diffusion.get(name, ()))
+        cols.update(gate.get(name, ()))
+    window, reason = window_region(cols, route_width)
+    if (window is None):
+        _attempt(meta, rung, _ENG_WINDOW, False, status="SKIPPED",
+                 stage="routing", note=reason)
+        return None
+    partial = None
+    if (window != (0, route_width)):
+        partial = _plateau_partial(netlist, placement, route_width)
+        if (partial is None):
+            _attempt(meta, rung, _ENG_WINDOW, False, status="SKIPPED",
+                     stage="routing",
+                     note="plateau state not reproduced by the "
+                          "deterministic router re-run")
+            return None
+    t0 = time.time()
+    try:
+        fix = route_model.solve_window_routing(
+            netlist, placement, route_width, window, partial=partial,
+            blocks=blocks)
+    except Exception as exc:                       # noqa: BLE001
+        _attempt(meta, rung, _ENG_WINDOW, False, status="ERROR",
+                 stage="routing", window=list(window),
+                 note="%s: %s" % (type(exc).__name__, exc),
+                 seconds=time.time() - t0)
+        return None
+    seconds = time.time() - t0
+    if (fix.route is None):
+        _attempt(meta, rung, _ENG_WINDOW, False, status=fix.status_name,
+                 stage="routing", window=list(window), note=fix.note,
+                 seconds=seconds)
+        return None
+    try:
+        report = verify_cell(netlist, placement, fix.route, blocks=blocks)
+    except Exception as exc:                       # noqa: BLE001
+        _attempt(meta, rung, _ENG_WINDOW, False, status=fix.status_name,
+                 stage="routing", window=list(window),
+                 note="verify raised %s: %s" % (type(exc).__name__, exc),
+                 seconds=seconds)
+        return None
+    if (not report.ok()):
+        _attempt(meta, rung, _ENG_WINDOW, False, status=fix.status_name,
+                 stage="routing", window=list(window),
+                 note="merged verify failed: %s" % (report.violations[:2],),
+                 seconds=seconds)
+        return None
+    _attempt(meta, rung, _ENG_WINDOW, True, status=fix.status_name,
+             stage="routing", window=list(window),
+             note="window [%d,%d) fixed and verified (%.1fs)"
+                  % (window[0], window[1], fix.seconds),
+             seconds=seconds)
+    return fix.route
 
 
 def _default_grid_router():
@@ -89,7 +250,7 @@ def _heuristic_placement(netlist):
     seeds = row_seeds(blocks, leg_widths)
     ordering_p, ordering_n = euler_orderings(seeds, leg_widths)
     ordering_p, ordering_n, _cost = sa_refine_routable(
-        ordering_p, ordering_n, netlist3, leg_widths)
+        ordering_p, ordering_n, netlist3, leg_widths, variant_classes=True)
     placements, width_cols = geometry.layout_cell(
         ordering_p, ordering_n, leg_widths)
     blocks_view = list(ordering_p) + list(ordering_n)
@@ -130,7 +291,7 @@ def exact_routing_boundary(width_cols, net_count,
 
 
 def _attempt(meta, rung, engine, ok, status=None, stage=None, note=None,
-             seconds=None):
+             seconds=None, window=None):
     entry = {"rung": rung, "engine": engine, "ok": bool(ok)}
     if (status is not None):
         entry["status"] = status
@@ -138,6 +299,8 @@ def _attempt(meta, rung, engine, ok, status=None, stage=None, note=None,
         entry["stage"] = stage
     if (note is not None):
         entry["note"] = note
+    if (window is not None):
+        entry["window"] = window
     if (seconds is not None):
         entry["seconds"] = round(seconds, 1)
     meta["attempts"].append(entry)
@@ -149,7 +312,7 @@ def _diagnosis(cell_name, attempts):
     for a in attempts:
         if (a.get("ok")):
             continue
-        piece = "rung%d %s" % (a["rung"], a["engine"])
+        piece = "rung%s %s" % (a["rung"], a["engine"])
         if (a.get("stage")):
             piece += "/%s" % a["stage"]
         piece += " %s" % a.get("status", "FAILED")
@@ -182,14 +345,16 @@ def synth_cell(netlist, exact_budget_s=60.0, grid_budget_s=120.0,
     benchmark consume the output unchanged.
 
     ``meta`` records every attempt (rung, engine, stage, status, verify
-    outcome, seconds) and the winning engine/width; on failure
-    :class:`UnsupportedCell` is raised with the same ``meta`` attached.
+    outcome, seconds, window for the window-fix rungs) and the winning
+    engine/width; on failure :class:`UnsupportedCell` is raised with the
+    same ``meta`` attached.
 
     Rung 1 verifies its own route (verify_cell must be clean before the
     rung counts as closed).  Rung 2's route is returned unverified --
     verification is the caller's continuous-verification gate (the
     benchmark runs verify_cell on every produced cell); the attempt
-    record marks it accordingly.
+    record marks it accordingly.  Rungs 2.5/3.5 (the window fixer)
+    verify-gate their merged route inside the ladder like rung 1.
 
     ``grid_budget_s`` is recorded in meta and reserved for the real
     route_grid budget; the injected router's signature is fixed at
@@ -308,6 +473,17 @@ def synth_cell(netlist, exact_budget_s=60.0, grid_budget_s=120.0,
                          status=getattr(route2, "status_name", "UNKNOWN"),
                          note=getattr(route2, "fail_note", None),
                          seconds=time.time() - t0)
+                # rung 2.5: the exact engine as a window fixer on the
+                # conflicted region of the exact-engine placement
+                if (using_real_router):
+                    fixed2 = _window_fix_rung(meta, 2.5, netlist,
+                                              layout.devices, None,
+                                              route2)
+                    if (fixed2 is not None):
+                        meta["engine"] = _ENG_GRID_WINDOW
+                        meta["width_cols"] = fixed2.width_cols
+                        meta["width_um"] = fixed2.width_cols * GRID_UM
+                        return layout.devices, fixed2, meta
             else:
                 vnote = "verify deferred to the caller"
                 if (using_real_router):
@@ -400,5 +576,23 @@ def synth_cell(netlist, exact_budget_s=60.0, grid_budget_s=120.0,
                  status=getattr(route3, "status_name", "UNKNOWN"),
                  stage="routing", note=getattr(route3, "fail_note", None),
                  seconds=time.time() - t0)
+
+    # --- rung 3.5: the exact engine as a window fixer on the failed
+    # rung-3 route's conflicted region (doc section 2.4, rung 1's
+    # narrowed role).  Fires only on a router FAILURE carrying the
+    # honest fail_note; a verify-dirty router success has no plateau
+    # payload and is left to the ladder's honest failure.
+    if (route3 is not None and not getattr(route3, "ok", True)):
+        fixed3 = _window_fix_rung(meta, 3.5, netlist3, placements3,
+                                  blocks3, route3)
+        if (fixed3 is not None):
+            meta["engine"] = _ENG_FULL_WINDOW
+            meta["width_cols"] = fixed3.width_cols
+            meta["width_um"] = fixed3.width_cols * GRID_UM
+            meta["slot_emit"] = {"width_cols": width3,
+                                 "ordering_p": orderings3[0],
+                                 "ordering_n": orderings3[1],
+                                 "leg_widths": leg_widths3}
+            return placements3, fixed3, meta
 
     raise UnsupportedCell(_diagnosis(cell_name, meta["attempts"]), meta=meta)

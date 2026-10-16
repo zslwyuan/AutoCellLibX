@@ -775,6 +775,28 @@ def _slot_state(sp):
     return _heuristic_placement(nl)
 
 
+def _pure_cost_state(sp):
+    """(netlist3, placement, width, leg_widths, blocks) via the
+    pre-variant production path: sa_refine_routable over the fixed
+    candidate pool (variant_classes=False) -- the structural-diagnosis
+    tests pin the arrangements the diagnosis was derived on, decoupled
+    from the variant phase."""
+    from bigcell_engine import geometry
+    from bigcell_engine.netlist_ext import (build_bigcell_blocks,
+                                            fold_devices, row_seeds)
+    from bigcell_engine.place_euler import euler_orderings
+    from bigcell_engine.place_sa import sa_refine_routable
+    nl = CellNetlist(parse_spice_subckt(sp))
+    nl3, lws = fold_devices(nl)
+    blocks = build_bigcell_blocks(nl3)
+    seeds = row_seeds(blocks, lws)
+    op, on = euler_orderings(seeds, lws)
+    op, on, _cost = sa_refine_routable(op, on, nl3, lws,
+                                       variant_classes=False)
+    pl, w = geometry.layout_cell(op, on, lws)
+    return nl3, pl, w, lws, list(op) + list(on)
+
+
 def _lib_subckt(cell, flow_dir):
     import os
     import re
@@ -892,10 +914,8 @@ def test_structural_diagnosis_names_corridor_contest_on_ctrl(flow_dir):
     (ASTRAN's metal2 z-layer) instead of only counting conflicts."""
     import os
 
-    from bigcell_engine.engine import _heuristic_placement
-    path = os.path.join(flow_dir, "outputs", "ctrl", "COMPLEX0.sp")
-    nl = CellNetlist(parse_spice_subckt(open(path).read()))
-    nl3, pl, w, lws, _blocks, _orderings = _heuristic_placement(nl)
+    nl3, pl, w, lws, _blocks = _pure_cost_state(open(os.path.join(
+        flow_dir, "outputs", "ctrl", "COMPLEX0.sp")).read())
     r = route_cell(nl3, pl, w, lws, max_attempts=5)
     assert not r.ok
     note = getattr(r, "fail_note", None) or ""
@@ -932,12 +952,11 @@ def test_structural_note_is_deterministic(flow_dir):
     byte-identical across repeated in-process runs (invariant 9)."""
     import os
 
-    from bigcell_engine.engine import _heuristic_placement
-    path = os.path.join(flow_dir, "outputs", "max", "COMPLEX5.sp")
-    nl = CellNetlist(parse_spice_subckt(open(path).read()))
+    sp_text = open(os.path.join(flow_dir, "outputs", "max",
+                                "COMPLEX5.sp")).read()
     notes = set()
     for _run in range(2):
-        nl3, pl, w, lws, _blocks, _orderings = _heuristic_placement(nl)
+        nl3, pl, w, lws, _blocks = _pure_cost_state(sp_text)
         r = route_cell(nl3, pl, w, lws, max_attempts=5)
         assert not r.ok
         notes.add(r.fail_note)
@@ -953,10 +972,8 @@ def test_adder_bfs_fail_names_caged_gate_contact(flow_dir):
     endpoint vs cl2#a_2_54#'s walled N-access escape)."""
     import os
 
-    from bigcell_engine.engine import _heuristic_placement
-    path = os.path.join(flow_dir, "outputs", "adder", "COMPLEX0.sp")
-    nl = CellNetlist(parse_spice_subckt(open(path).read()))
-    nl3, pl, w, lws, _blocks, _orderings = _heuristic_placement(nl)
+    nl3, pl, w, lws, _blocks = _pure_cost_state(open(os.path.join(
+        flow_dir, "outputs", "adder", "COMPLEX0.sp")).read())
     r = route_cell(nl3, pl, w, lws, max_attempts=1)
     assert not r.ok
     note = getattr(r, "fail_note", None) or ""

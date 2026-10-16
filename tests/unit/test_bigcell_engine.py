@@ -289,3 +289,60 @@ def test_boundary_skips_exact_routing_but_grid_runs(monkeypatch):
     assert skipped[0]["rung"] == 1 and skipped[0]["stage"] == "routing"
     assert "width 20 > 14" in skipped[0]["note"]
     assert meta["engine"] == "bigcell-grid"
+
+
+# --- rungs 2.5 / 3.5: the exact engine as a window fixer ----------------
+
+def _failed_shell(width, note):
+    """A route_grid-shaped failure carrying the public fail_note."""
+    from smt_engine.route_model import BAR_LEVELS, RouteResult
+    result = RouteResult(
+        "UNKNOWN", [None] * width, [None] * width,
+        [0] * width, [0] * width, [BAR_LEVELS - 1] * width,
+        [BAR_LEVELS - 1] * width, {}, {}, {}, {},
+        [False] * width, [False] * width, width, 0, 0, 0, 0, 0)
+    result.fail_note = note
+    return result
+
+
+def test_window_fix_never_fires_for_injected_routers(monkeypatch):
+    """Rungs 2.5/3.5 respond to the REAL router's plateau; an injected
+    router is test scaffolding with a verify-deferred contract, not a
+    failure to fix."""
+    _fail_exact_routing(monkeypatch)
+    meta = synth_cell(_netlist(NAND2), exact_budget_s=20.0,
+                      grid_router=lambda *a: _FakeRoute(ok=False))[2]
+    assert not [a for a in meta["attempts"] if a["rung"] == 2.5]
+    assert not [a for a in meta["attempts"] if a["rung"] == 3.5]
+
+
+def test_rung25_honesty_guard_and_rung35_close(monkeypatch):
+    """A real-router failure fires rung 2.5: the window fixer re-runs
+    the deterministic router for the plateau state and REFUSES when the
+    failure does not reproduce (the tiny NAND2 placement actually
+    routes -- no plateau to fix, no moving target).  The ladder then
+    closes through rung 3.5's whole-cell window on the slot placement."""
+    import bigcell_engine.route_grid as rg
+
+    def failing_route_cell(netlist, placement, width_cols, leg_widths):
+        width = max(width_cols,
+                    max(p.end_col for p in placement.values())) + 1
+        return _failed_shell(
+            width, "no conflict-free routing after 4 attempts (best 2 "
+                   "conflicts at attempt 2; unresolved: Y)")
+
+    monkeypatch.setattr(eng, "solve_routing",
+                        lambda *a, **k: eng._failed_route("INFEASIBLE"))
+    monkeypatch.setattr(rg, "route_cell", failing_route_cell)
+    placement, route, meta = synth_cell(_netlist(NAND2),
+                                        exact_budget_s=20.0)
+    rung25 = [a for a in meta["attempts"] if a["rung"] == 2.5]
+    assert rung25 and rung25[-1]["ok"] is False
+    assert rung25[-1]["status"] == "SKIPPED"
+    assert "not reproduced" in rung25[-1]["note"]
+    # the ladder still closes: rung 3.5's whole-cell window (a strict
+    # sub-window would need the plateau; the whole cell needs nothing)
+    assert meta["engine"] == "bigcell-full+window-fix"
+    assert route.ok
+    fix = [a for a in meta["attempts"] if a["rung"] == 3.5][-1]
+    assert fix["ok"] is True and fix["window"] == [0, 3]
