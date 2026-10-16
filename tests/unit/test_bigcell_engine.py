@@ -112,28 +112,31 @@ def test_exact_failure_falls_to_injected_grid_router(monkeypatch):
     nl = _netlist(NAND2)
     placement, route, meta = synth_cell(nl, exact_budget_s=20.0,
                                         grid_router=fake_router)
-    assert meta["engine"] == "bigcell-grid"
-    assert route is not None and route.width_cols == 7
-    assert meta["width_cols"] == 7
+    # the injected router is consulted exactly once and stays
+    # verify-deferred; its result is a CANDIDATE -- the ladder returns
+    # the narrowest verified closing result, and rung 3's slot chain is
+    # narrower than the fake's 7 columns on NAND2
     assert len(calls) == 1
     called_nl, called_pl, width_cols, leg_widths = calls[0]
     assert called_nl is nl
     assert width_cols == real_layout_width(called_pl)
-    # the router receives the rung-1 placement and its fold decision
     assert leg_widths == {dev.name: (p.legs, p.leg_width_cols)
                           for dev, p in called_pl.items()}
-    # meta records every attempt in order: layout ok, routing failed,
-    # grid ok
+    grid = _rung_attempt(meta, 2)
+    assert grid["ok"] is True and "verify deferred" in grid["note"]
+    assert meta["engine"] == "bigcell-full"
+    assert meta["width_cols"] <= 7
     runs = [(a["rung"], a.get("stage"), a["ok"]) for a in meta["attempts"]]
-    assert runs == [(1, "layout", True), (1, "routing", False),
-                    (2, None, True)]
+    assert runs[0] == (1, "layout", True)
+    assert runs[1] == (1, "routing", False)
+    assert (2, None, True) in runs
 
 
 def test_grid_route_returned_unverified_note_present(monkeypatch):
     _fail_exact_routing(monkeypatch)
     meta = synth_cell(_netlist(NAND2), exact_budget_s=20.0,
                       grid_router=lambda *a: _FakeRoute())[2]
-    grid_attempt = meta["attempts"][-1]
+    grid_attempt = _rung_attempt(meta, 2)
     assert grid_attempt["rung"] == 2 and grid_attempt["ok"] is True
     assert "verify deferred" in grid_attempt["note"]
 
@@ -161,13 +164,17 @@ def test_grid_stub_not_implemented_is_unavailable(monkeypatch):
 
 def test_default_router_is_real_and_closes_rung2(monkeypatch):
     """grid_router=None resolves to the real route_grid and its route is
-    verify-gated inside the ladder."""
+    verify-gated inside the ladder.  With the narrowest-closing policy
+    the returned cell is rung 3's slot placement (3 cols) -- narrower
+    than rung 2's exact-engine placement -- and the rung-2 attempt stays
+    in the record as the verify-ok candidate it was."""
     _fail_exact_routing(monkeypatch)
     placement, route, meta = synth_cell(_netlist(NAND2),
                                         exact_budget_s=20.0)
     grid = _rung_attempt(meta, 2)
     assert grid["ok"] is True and grid["note"] == "verify ok"
-    assert meta["engine"] == "bigcell-grid"
+    assert meta["engine"] == "bigcell-full"
+    assert meta["width_cols"] == 2          # the slot chain's NAND2 width
     assert route.width_cols >= real_layout_width(placement)
 
 
@@ -288,7 +295,9 @@ def test_boundary_skips_exact_routing_but_grid_runs(monkeypatch):
     assert len(skipped) == 1
     assert skipped[0]["rung"] == 1 and skipped[0]["stage"] == "routing"
     assert "width 20 > 14" in skipped[0]["note"]
-    assert meta["engine"] == "bigcell-grid"
+    # the ladder returns the narrowest verified closing result: the fake
+    # router's 20-column candidate loses to rung 3's slot placement
+    assert meta["engine"] == "bigcell-full"
 
 
 # --- rungs 2.5 / 3.5: the exact engine as a window fixer ----------------

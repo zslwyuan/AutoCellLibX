@@ -362,6 +362,7 @@ def synth_cell(netlist, exact_budget_s=60.0, grid_budget_s=120.0,
     """
     cell_name = getattr(getattr(netlist, "subckt", None), "subckt_name",
                         "?")
+    best = None   # narrowest verified closing candidate so far (rung 2/2.5)
     meta = {
         "cell": cell_name,
         "engine": None,
@@ -480,10 +481,13 @@ def synth_cell(netlist, exact_budget_s=60.0, grid_budget_s=120.0,
                                               layout.devices, None,
                                               route2)
                     if (fixed2 is not None):
-                        meta["engine"] = _ENG_GRID_WINDOW
-                        meta["width_cols"] = fixed2.width_cols
-                        meta["width_um"] = fixed2.width_cols * GRID_UM
-                        return layout.devices, fixed2, meta
+                        # candidate, not a return: the slot chain may still
+                        # be narrower -- the ladder returns the narrowest
+                        # VERIFIED closing result, not the first closing one
+                        best = {"placements": layout.devices,
+                                "route": fixed2,
+                                "engine": _ENG_GRID_WINDOW,
+                                "width_cols": fixed2.width_cols}
             else:
                 vnote = "verify deferred to the caller"
                 if (using_real_router):
@@ -511,10 +515,12 @@ def synth_cell(netlist, exact_budget_s=60.0, grid_budget_s=120.0,
                     _attempt(meta, 2, _ENG_GRID, True,
                              status=getattr(route2, "status_name", "OK"),
                              note=vnote, seconds=time.time() - t0)
-                    meta["engine"] = _ENG_GRID
-                    meta["width_cols"] = width_cols
-                    meta["width_um"] = width_cols * GRID_UM
-                    return layout.devices, route2, meta
+                    best = {"placements": layout.devices, "route": route2,
+                            "engine": _ENG_GRID, "width_cols": width_cols}
+                    # no early return: rung 3's slot placement is often
+                    # much narrower (the exact-engine placement draws W
+                    # horizontally) -- the ladder picks the narrowest
+                    # verified closing result
 
     # --- rung 3: heuristic placement chain + the grid router ------------
     t0 = time.time()
@@ -557,17 +563,25 @@ def synth_cell(netlist, exact_budget_s=60.0, grid_budget_s=120.0,
             vnote = ("verify ok" if report3.ok()
                      else "verify failed: %s" % (report3.violations[:2],))
         if (report3 is not None and report3.ok()):
-            _attempt(meta, 3, _ENG_FULL, True,
-                     status=getattr(route3, "status_name", "OK"),
-                     stage="routing", note=vnote, seconds=time.time() - t0)
-            meta["engine"] = _ENG_FULL
-            meta["width_cols"] = width3
-            meta["width_um"] = width3 * GRID_UM
-            meta["slot_emit"] = {"width_cols": width3,
-                                 "ordering_p": orderings3[0],
-                                 "ordering_n": orderings3[1],
-                                 "leg_widths": leg_widths3}
-            return placements3, route3, meta
+            if (best is not None and best["width_cols"] <= width3):
+                _attempt(meta, 3, _ENG_FULL, True,
+                         status=getattr(route3, "status_name", "OK"),
+                         stage="routing",
+                         note=vnote + "; rung-%s candidate already narrower"
+                              % best["engine"], seconds=time.time() - t0)
+            else:
+                _attempt(meta, 3, _ENG_FULL, True,
+                         status=getattr(route3, "status_name", "OK"),
+                         stage="routing", note=vnote,
+                         seconds=time.time() - t0)
+                meta["engine"] = _ENG_FULL
+                meta["width_cols"] = width3
+                meta["width_um"] = width3 * GRID_UM
+                meta["slot_emit"] = {"width_cols": width3,
+                                     "ordering_p": orderings3[0],
+                                     "ordering_n": orderings3[1],
+                                     "leg_widths": leg_widths3}
+                return placements3, route3, meta
         _attempt(meta, 3, _ENG_FULL, False,
                  status=getattr(route3, "status_name", "UNKNOWN"),
                  stage="routing", note=vnote, seconds=time.time() - t0)
@@ -585,7 +599,9 @@ def synth_cell(netlist, exact_budget_s=60.0, grid_budget_s=120.0,
     if (route3 is not None and not getattr(route3, "ok", True)):
         fixed3 = _window_fix_rung(meta, 3.5, netlist3, placements3,
                                   blocks3, route3)
-        if (fixed3 is not None):
+        if (fixed3 is not None and (best is None
+                                    or fixed3.width_cols
+                                    < best["width_cols"])):
             meta["engine"] = _ENG_FULL_WINDOW
             meta["width_cols"] = fixed3.width_cols
             meta["width_um"] = fixed3.width_cols * GRID_UM
@@ -594,5 +610,17 @@ def synth_cell(netlist, exact_budget_s=60.0, grid_budget_s=120.0,
                                  "ordering_n": orderings3[1],
                                  "leg_widths": leg_widths3}
             return placements3, fixed3, meta
+
+    if (best is not None):
+        # the slot chain did not beat the earlier closing rung -- hand
+        # back its result with a consistent meta (legacy writer path:
+        # exact-engine IR has no slot emit context)
+        meta["engine"] = best["engine"]
+        meta["width_cols"] = best["width_cols"]
+        meta["width_um"] = best["width_cols"] * GRID_UM
+        meta.pop("slot_emit", None)
+        meta["cell_netlist"] = netlist
+        meta["blocks"] = None
+        return best["placements"], best["route"], meta
 
     raise UnsupportedCell(_diagnosis(cell_name, meta["attempts"]), meta=meta)
