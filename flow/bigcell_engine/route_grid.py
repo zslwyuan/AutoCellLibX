@@ -111,7 +111,13 @@ route_cell runs the negotiation in TWO phases: phase 1 is this router
 byte for byte as it was before the metal2 freedom (no M2 vertical arcs,
 the both-side via rule, the forced dual fill), so every cell that closed
 before keeps its exact route; only a phase-1 stall rebuilds the grid
-with the freedom (below) and re-routes from scratch.
+with the freedom (below) and re-routes from scratch.  Since the 2026-10
+runtime tuning, the static diagnosis below ALSO gates phase 1: when it
+reports a contested corridor column or a caged terminal on the phase-1
+grid (a proven floor of the pre-freedom vocabulary), the doomed
+phase-1 negotiation is skipped and phase 2 runs directly -- provenance
+lands on the RouteResult (``phase1_skipped`` / ``phase1_skip_reason``),
+never in the fail_note.
 
 Residual structural class: the corridor-locked terminal
 -------------------------------------------------------
@@ -1943,6 +1949,27 @@ class _RouteGrid(object):
         return result
 
 
+def _phase1_skip_reason(contests, walled):
+    """Deterministic provenance string for a phase-1 skip decision.
+
+    Built from sorted structures only (invariant 9); recorded on the
+    RouteResult as ``phase1_skip_reason`` when route_cell skipped
+    phase 1 on the static diagnosis.
+    """
+    parts = []
+    if (contests):
+        cols = ", ".join(str(c) for c in sorted(contests))
+        names = sorted({name for users in contests.values()
+                        for name in users})
+        parts.append("contested corridor cols [%s] (%s)"
+                     % (cols, ", ".join(names)))
+    if (walled):
+        names = sorted({name for name, _label in walled})
+        parts.append("%d statically caged terminal(s) (%s)"
+                     % (len(walled), ", ".join(names)))
+    return "; ".join(parts)
+
+
 def route_cell(netlist, placement, width_cols, leg_widths=None,
                height_um=2.47, grid_um=0.19, max_attempts=MAX_ATTEMPTS):
     """Route one placed cell; returns a RouteResult (solve_routing's type).
@@ -1962,6 +1989,26 @@ def route_cell(netlist, placement, width_cols, leg_widths=None,
     from scratch; its failure note (with the metal2-aware structural
     diagnosis) is the honest residual.
 
+    Phase-1 skip gate (runtime tuning 2026-10): BEFORE phase 1, the
+    static forced-demand diagnosis (:meth:`structural_diagnosis`) runs
+    on the PHASE-1 grid.  The phase-1 cage graph is a sub-graph of the
+    phase-2 one (no M2 vertical arcs, node vias forbidden by the phase-1
+    post-pass rule (d)), and the diagnosis only ever over-states
+    reachability, so a contested corridor column or a statically caged
+    terminal it reports is a PROVEN floor for the phase-1 vocabulary --
+    the pre-freedom negotiation cannot reach zero conflicts (a
+    phase-1-closing route implies a clean diagnosis, so a clean gate
+    keeps the exact two-phase order and every closing route stays
+    byte-identical).  On a dirty diagnosis phase 1 is skipped entirely
+    (it could only burn its full attempt budget on a proven stall) and
+    phase 2 -- whose negotiation is independent of phase 1's -- runs
+    unchanged, producing byte-identical results and notes.  The skip is
+    recorded in the route's provenance: ``result.phase1_skipped`` (bool,
+    always set on route_cell results) and ``result.phase1_skip_reason``
+    (the diagnosis summary, only when skipped).  The fail_note is NOT
+    modified: the window fixer (engine.parse_fail_nets) and the pinned
+    note fragments see exactly the pre-tuning payloads.
+
     Invariant: the returned RouteResult always covers every placement
     column -- ``width_cols >= max(p.end_col for p in placement.values())``
     -- success and failure alike, so consumers deriving columns from the
@@ -1976,16 +2023,31 @@ def route_cell(netlist, placement, width_cols, leg_widths=None,
     grid = _RouteGrid(netlist, placement, width_cols,
                       height_um=height_um, grid_um=grid_um,
                       metal2_verticals=False)
-    if (grid.route(max_attempts=max_attempts)):
-        return grid.build_result()
+    # the phase-1 skip gate: a build-time failure needs no diagnosis
+    # (route() fails on it deterministically and phase 2 repeats it), so
+    # the diagnosis only runs where a negotiation could actually start
+    skip_reason = None
+    if (grid._fail_note is None):
+        contests, walled = grid.structural_diagnosis()
+        if (contests or walled):
+            skip_reason = _phase1_skip_reason(contests, walled)
+    if (skip_reason is None and grid.route(max_attempts=max_attempts)):
+        result = grid.build_result()
+        result.phase1_skipped = False
+        return result
     # phase 2: the metal2 vertical freedom (router.cpp:53-55) on a
     # fresh grid -- the negotiation restarts, nothing carries over
     grid = _RouteGrid(netlist, placement, width_cols,
                       height_um=height_um, grid_um=grid_um,
                       metal2_verticals=True)
     if (grid.route(max_attempts=max_attempts)):
-        return grid.build_result()
-    return grid.failed_result()
+        result = grid.build_result()
+    else:
+        result = grid.failed_result()
+    result.phase1_skipped = skip_reason is not None
+    if (skip_reason is not None):
+        result.phase1_skip_reason = skip_reason
+    return result
 
 
 def route_signature(route):

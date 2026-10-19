@@ -627,13 +627,14 @@ DECOMPOSITION_VARIANTS = ("base", "parallel_phase", "split_parallel",
 #: cost optimum (measured: the ctrl 8T cell's variant SA plateaus at the
 #: default's own ordering in a fraction of the main budget).  The
 #: iteration count additionally shrinks with the problem size so one
-#: variant's refine stays within VARIANT_SA_MOVES moves (see
-#: _variant_sa_iterations) -- measured on adder/COMPLEX10 (36T, 18x18
-#: blocks) the unshrunk budget alone cost ~30 s per variant.
+#: variant's refine stays within the size-aware move budget of
+#: _variant_sa_moves -- measured on adder/COMPLEX10 (36T, 18x18 blocks)
+#: the unshrunk budget alone cost ~30 s per variant.
 VARIANT_SA_ITERATIONS = 12
 
-#: move budget for ONE variant's Threshold-Accept refine (the
-#: initial-threshold search's own bounded pass comes on top)
+#: move budget for ONE variant's Threshold-Accept refine on a SMALL cell
+#: (the initial-threshold search's own bounded pass comes on top); big
+#: cells scale it down, see _VARIANT_SA_FULL_PROBLEM / _variant_sa_moves
 VARIANT_SA_MOVES = 6000
 
 #: problem-size cap (P blocks x N blocks of the variant's seed) beyond
@@ -644,6 +645,21 @@ VARIANT_SA_MOVES = 6000
 #: adder/COMPLEX10: 18x18 blocks).  Big cells still get every variant's
 #: euler-seed ordering as a candidate, at euler's own bounded cost.
 _VARIANT_SA_PROBLEM_CAP = 120
+
+#: problem size (P blocks x N blocks of a variant's seed) up to which a
+#: variant keeps the FULL per-variant budgets (VARIANT_SA_MOVES,
+#: VARIANT_SA_ITERATIONS, _ALIGN_PAIR_CAP): any cell with at most ~12
+#: blocks total has a worst-case split of 6 x 6 = 36, so every small
+#: cell keeps today's constants (the pinned ctrl/COMPLEX0
+#: var:singles-align4 win among them).  Above it the per-variant
+#: budgets shrink linearly with the size -- the doc's windowed
+#: philosophy: on big cells a variant is a cheap probe of a different
+#: STRUCTURE, not a full refinement -- reaching the euler-only floor at
+#: _VARIANT_SA_PROBLEM_CAP (measured on the round-5 heavy cells: the
+#: per-variant refine is the whole variant-build cost, 1-1.4 s each on
+#: the 22-30T cells; builds/seeds/euler/alignment enumeration are
+#: ~0.05 s).
+_VARIANT_SA_FULL_PROBLEM = 36
 
 #: alignment-nomination search caps.  Per variant, EVERY per-row block
 #: ordering (permutations x flips) is enumerated up to _ALIGN_ROW_CAP
@@ -737,15 +753,16 @@ def _row_orderings(blocks):
 
 
 def alignment_candidates(p_blocks, n_blocks, leg_widths,
-                         limit=ALIGN_CANDIDATES):
+                         limit=ALIGN_CANDIDATES, pair_cap=None):
     """Routability-nominated orderings for one variant's decomposition.
 
     SA's cost cannot see routability (the proven NAND2X1/ctrl-plateau
     mechanism), so the variant's aligned-terminal orderings are nominated
     directly: every per-row ordering is enumerated (bounded by
-    _ALIGN_ROW_CAP rows per side and _ALIGN_PAIR_CAP pair scorings --
-    beyond them the nomination is skipped for that variant) and pairs
-    rank by
+    _ALIGN_ROW_CAP rows per side and ``pair_cap`` pair scorings --
+    beyond them the nomination is skipped for that variant; the caller
+    passes the size-aware cap of :func:`_alignment_pair_cap`, default
+    the flat _ALIGN_PAIR_CAP) and pairs rank by
 
         1. aligned gate columns   (a merged P/N poly crossing is free),
         2. aligned signal diffusion edges (a shared M1 stub),
@@ -761,15 +778,15 @@ def alignment_candidates(p_blocks, n_blocks, leg_widths,
     """
     if not p_blocks or not n_blocks:
         return []
-    if (math.factorial(len(p_blocks)) * 2 ** len(p_blocks)
-            > _ALIGN_ROW_CAP
-            or math.factorial(len(n_blocks)) * 2 ** len(n_blocks)
-            > _ALIGN_ROW_CAP):
+    if (pair_cap is None):
+        pair_cap = _ALIGN_PAIR_CAP
+    n_p_rows = math.factorial(len(p_blocks)) * 2 ** len(p_blocks)
+    n_n_rows = math.factorial(len(n_blocks)) * 2 ** len(n_blocks)
+    if (n_p_rows > _ALIGN_ROW_CAP or n_n_rows > _ALIGN_ROW_CAP
+            or n_p_rows * n_n_rows > pair_cap):
         return []
     p_rows = _row_orderings(p_blocks)
     n_rows = _row_orderings(n_blocks)
-    if len(p_rows) * len(n_rows) > _ALIGN_PAIR_CAP:
-        return []
     p_maps = [(_row_terminals(r, leg_widths),
                ordering_signature(r, [])) for r in p_rows]
     n_maps = [(_row_terminals(r, leg_widths),
@@ -814,15 +831,46 @@ def alignment_candidates(p_blocks, n_blocks, leg_widths,
     return out
 
 
+def _variant_sa_moves(problem_size):
+    """Per-variant TA move budget at ``problem_size`` (pure, invariant 9).
+
+    The full VARIANT_SA_MOVES while the cell is small (see
+    _VARIANT_SA_FULL_PROBLEM), shrinking linearly to 0 at
+    _VARIANT_SA_PROBLEM_CAP, where the refine is skipped outright."""
+
+    if (problem_size <= _VARIANT_SA_FULL_PROBLEM):
+        return VARIANT_SA_MOVES
+    span = _VARIANT_SA_PROBLEM_CAP - _VARIANT_SA_FULL_PROBLEM
+    frac = (_VARIANT_SA_PROBLEM_CAP - problem_size) / float(span)
+    return max(0, int(VARIANT_SA_MOVES * frac))
+
+
 def _variant_sa_iterations(problem_size, cap=VARIANT_SA_ITERATIONS):
     """Deterministic per-variant TA iteration count: the full ``cap``
     while the cell is small, shrinking so one refine's move count
-    (problem_size x DEFAULT_QUALITY per iteration) stays within
-    VARIANT_SA_MOVES.  Pure function (invariant 9)."""
+    (problem_size x DEFAULT_QUALITY per iteration) stays within the
+    size-aware move budget of :func:`_variant_sa_moves`.  Pure function
+    (invariant 9)."""
     reps = int(problem_size * DEFAULT_QUALITY)
     if reps <= 0:
         return cap
-    return max(1, min(int(cap), VARIANT_SA_MOVES // reps))
+    return max(1, min(int(cap), _variant_sa_moves(problem_size) // reps))
+
+
+def _alignment_pair_cap(problem_size):
+    """Size-aware cap on the alignment nomination's scored pairs.
+
+    The full _ALIGN_PAIR_CAP while the cell is small (at most ~12
+    blocks -- see _VARIANT_SA_FULL_PROBLEM), shrinking linearly to 0 at
+    _VARIANT_SA_PROBLEM_CAP: on big cells the alignment nominees are a
+    cheap probe too (the per-row enumeration cap already skips rows
+    beyond 5 blocks, so this bounds the small-row variants of mid-size
+    cells).  Pure function (invariant 9)."""
+    if (problem_size <= _VARIANT_SA_FULL_PROBLEM):
+        return _ALIGN_PAIR_CAP
+    span = _VARIANT_SA_PROBLEM_CAP - _VARIANT_SA_FULL_PROBLEM
+    frac = (_VARIANT_SA_PROBLEM_CAP - problem_size) / float(span)
+    return max(0, int(_ALIGN_PAIR_CAP * frac))
 
 
 def decomposition_variant_classes(netlist, leg_widths,
@@ -834,7 +882,11 @@ def decomposition_variant_classes(netlist, leg_widths,
     For every decomposition variant (netlist_ext.BLOCK_VARIANTS minus
     "default", which IS the main pool): build blocks -> row seeds ->
     euler -> a budget-bounded Threshold-Accept refine (the same
-    content-hash seed discipline as the main path) and nominate
+    content-hash seed discipline as the main path; the move budget and
+    the alignment pair cap are size-aware -- full on small cells, i.e.
+    at most ~12 blocks, shrinking linearly with the P x N problem size
+    to the euler-only / no-nominee floor at _VARIANT_SA_PROBLEM_CAP,
+    see _variant_sa_moves / _alignment_pair_cap) and nominate
 
         1. the variant's SA best ("var:<name>"; above the
            _VARIANT_SA_PROBLEM_CAP problem size the euler seed stands
@@ -878,7 +930,9 @@ def decomposition_variant_classes(netlist, leg_widths,
                     _row_die_mirror(bp), _row_die_mirror(bn))]
         for j, (op, on) in enumerate(
                 alignment_candidates(p_blocks, n_blocks, leg_widths,
-                                     limit=align_limit), start=1):
+                                     limit=align_limit,
+                                     pair_cap=_alignment_pair_cap(
+                                         problem_size)), start=1):
             classes.append(("var:%s-align%d" % (name, j), op, on))
         for kind, op, on in classes:
             sig = ordering_signature(op, on)
