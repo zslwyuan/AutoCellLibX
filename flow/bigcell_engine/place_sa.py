@@ -91,6 +91,36 @@ Throughput note: DEFAULT_QUALITY is 20, not ASTRAN's 150 -- Python
 applies ~5k moves/s where ASTRAN's C applies ~10^6/s; the budget is set
 by measured convergence on the benchmark corpus (doc section 6, risk 1),
 not by copying ASTRAN's constant.  ``quality`` stays a parameter.
+
+The gate-cage lever (AUDIT 5.46 -- the 22-36T COMPLEX wall): the
+round-6 diagnosis proved the heavy cells fail against REAL 7-track
+walls -- gate contacts whose every legal crossing track sits inside a
+pre-built power-stripe span at one of the crossing's two endpoint
+columns -- and the lever is the PLACEMENT: arrangements whose gate
+columns dodge the power-access columns.  This module ports the
+forced-coverage census (scratch diag_forced_census.py) as the static
+predicate :func:`gate_cage_penalty` (O(width x tracks), no router) and
+applies it at three points:
+
+- the SA cost: ``_SAState(..., netlist=...)`` carries
+  ``CAGE_WEIGHT * caged_gates`` -- the term DOMINATES the legacy terms
+  (which stay term-for-term ASTRAN's below it) so past the initial
+  threshold the search never wanders into a power-caged arrangement;
+  ``sa_refine(..., cage=True)`` / ``sa_refine_routable(..., cage=True)``
+  opt in, the default keeps the pure ASTRAN cost byte-for-byte (the
+  pure-cost research path and its pinned phase-1 specimens);
+- the speculate selection (:func:`select_orderings`): every candidate
+  carries its census count; FEASIBLE + cage-free wins immediately, a
+  FEASIBLE-but-caged candidate loses to a cage-free one regardless of
+  legacy cost, and the no-route fallback ranks by
+  (conflicts, cage, cost, index) -- the router's honest conflict floor
+  leads, the cage breaks the floor ties;
+- the candidate classes: the per-block flip combinations rank
+  cage-aware (:func:`generate_candidates` ``netlist``) and the
+  alignment finalists break (cost, cage) ties cage-free-first
+  (:func:`alignment_candidates` ``netlist``) -- pinned to the rank TAIL
+  because the ctrl/COMPLEX0 M2-fingerprint closure rides a
+  census-caged nominee.
 """
 
 import hashlib
@@ -99,9 +129,10 @@ import math
 import random
 import re
 
-from smt_engine.netlist import BlockMember
+from smt_engine.netlist import BlockMember, exposed_net_set
 
-from bigcell_engine.geometry import BREAK_GAP_COLS, N_ROW, P_ROW
+from bigcell_engine.geometry import (BREAK_GAP_COLS, GRID_UM, HEIGHT_UM,
+                                     MID_UM, N_ROW, P_ROW, WELL_GAP_UM)
 from bigcell_engine.netlist_ext import mirror_block
 
 ENGINE_VERSION = "bigcell-sa/2"     # /2: the slot-model cost (half-slots)
@@ -122,6 +153,319 @@ DEFAULT_ITERATIONS = 40
 DEFAULT_QUALITY = 20.0
 
 _MAX_INT = 0xFFFFFFF
+
+# --------------------------------------------------------------------------
+# the gate-cage predicate (AUDIT 5.46: the 22-36T COMPLEX wall)
+# --------------------------------------------------------------------------
+# The round-6 diagnosis (commit 6b35cee, scratch diag_forced_census.py)
+# proved WHY every 22-36T COMPLEX placement fails against the real 7-track
+# walls: gate contacts whose every legal crossing track sits inside a
+# pre-built power-stripe span at one of the crossing's two endpoint
+# columns.  Power stripes are pinned geometry (a GND access spans the
+# whole N half up to its rail track, a VCC access the whole P half), a
+# signal diffusion access pins its own rail node, and a same-net dual
+# access column's merged bars span rail-to-rail through the corridor --
+# so the covered tracks are FORCED, independent of the router's freedom.
+# A gate whose legal tracks are all forced-covered at c or c+1 can never
+# be crossed at that placement: the wall is the PLACEMENT's, and the
+# search must prefer arrangements whose gate columns dodge the power
+# access columns.  This file ports the census as a static predicate over
+# an ordering pair.
+
+#: weight of the cage term in the cost.  Provenance: "proven structural
+#: wall" (AUDIT 5.46) -- unlike the ASTRAN weights above this term is not
+#: a proxy for area/wirelength but a routability floor measured on the
+#: benchmark, so it is weighted to DOMINATE: one caged gate costs more
+#: than any legacy cost a plausibly-sized cell can reach (legacy totals
+#: are bounded by ~10^6 for the corpus; the term is an integer count).
+CAGE_WEIGHT = 10 ** 7
+
+#: the shared 7-track / 9-bar RouteResult contract the census speaks
+#: (smt_engine.route_model: N_TRACKS, BOUNDARY_T, ROW_TRACK -- T3 is the
+#: well-boundary corridor; diffusion rails sit on tracks 0/2 (N rows
+#: 0/1) and 4/6 (P rows 0/1)).  Frozen constants, re-declared here so
+#: the placement-side predicate stays standalone (no router import in
+#: the cost path); route_grid's track-count-parametric widening is the
+#: documented extension path and must widen this map in lockstep.
+CAGE_N_TRACKS = 7
+CAGE_BOUNDARY_T = 3
+CAGE_RAIL_TRACK = {0: 0, 1: 2, 2: 4, 3: 6}
+#: the poly-jump row tracks (route_model.ROW_TRACKS) and the diffusion
+#: row each carries (route_grid._ROW_OF_TRACK) -- a gate contact may
+#: cross on the POLY layer where M1 is walled (route_grid._gate_forced's
+#: ``m1_ok or pj_ok`` disjunction, the authority this predicate mirrors)
+CAGE_ROW_TRACKS = (0, 2, 4, 6)
+
+GND_NAMES = ("GND", "VSS")
+VCC_NAMES = ("VCC", "VDD")
+
+_TRACK_MODEL = None
+
+
+def _track_model():
+    """(span_n, span_p, span_np, corridor).
+
+    span_*: the raw gate-stripe y-spans' covered row tracks for a gate
+    carried by the N row only / P row only / both rows -- a gate with
+    this span blocks foreign poly jumps on exactly these row tracks
+    (route_grid._spans_track over route_grid._gate_span).  corridor:
+    the well-boundary tracks an ALIGNED P/N gate pair's merged poly
+    offers (route_grid._gate_maps' strip_pol branch).  Rows are uniform
+    in polarity (P row 0, N row 1 -- geometry.place_row's contract), so
+    a gate's contributing bands are one of exactly three merges.
+    Cached; pure."""
+    global _TRACK_MODEL
+    if _TRACK_MODEL is None:
+        from smt_engine.gds import CONTACT_S, POLY_OVERHANG
+        from smt_engine.gds import row_geometry, track_geometry
+        trackY, _bar = track_geometry(HEIGHT_UM, GRID_UM)
+        _rails, rows = row_geometry(HEIGHT_UM, GRID_UM)
+
+        def _span(bands):
+            y0 = min(b[0] for b in bands) - POLY_OVERHANG
+            y1 = max(b[1] for b in bands) + POLY_OVERHANG
+            return frozenset(t for t in CAGE_ROW_TRACKS
+                             if y0 <= trackY[t] <= y1)
+
+        n_band = rows[(False, N_ROW)]
+        p_band = rows[(True, P_ROW)]
+        half = CONTACT_S / 2.0
+        corridor = frozenset(
+            t for t in range(CAGE_N_TRACKS)
+            if MID_UM - WELL_GAP_UM + half <= trackY[t]
+            <= MID_UM + WELL_GAP_UM - half)
+        _TRACK_MODEL = (_span((n_band,)), _span((p_band,)),
+                        _span((n_band, p_band)), corridor)
+    return _TRACK_MODEL
+
+
+_DEVICE_CROSS_CACHE = {}
+
+
+def _device_cross_tracks(dev):
+    """The tracks ONE device's drawn strip offers its gate contact --
+    route_grid._gate_maps' slot math verbatim: the W-tall strip
+    intersected with the device's row band, shrunk by CONTACT_S/2.
+    Depends only on (polarity, width); cached (pure, invariant 9)."""
+    key = (dev.is_p, dev.width_um)
+    got = _DEVICE_CROSS_CACHE.get(key)
+    if got is None:
+        from smt_engine.gds import CONTACT_S, POLY_OVERHANG
+        from smt_engine.gds import row_geometry, track_geometry
+        trackY, _bar = track_geometry(HEIGHT_UM, GRID_UM)
+        _rails, rows = row_geometry(HEIGHT_UM, GRID_UM)
+        half = CONTACT_S / 2.0
+        y0, y1 = rows[(dev.is_p, P_ROW if dev.is_p else N_ROW)]
+        w = dev.width_um
+        if dev.is_p:
+            sy0 = MID_UM + WELL_GAP_UM
+        else:
+            sy0 = MID_UM - WELL_GAP_UM - w
+        sy1 = sy0 + w
+        lo = max(sy0, y0) - POLY_OVERHANG + half
+        hi = min(sy1, y1) + POLY_OVERHANG - half
+        got = frozenset(t for t in range(CAGE_N_TRACKS)
+                        if lo <= trackY[t] <= hi)
+        if len(_DEVICE_CROSS_CACHE) > 4096:   # keep the cache bounded
+            _DEVICE_CROSS_CACHE.clear()
+        _DEVICE_CROSS_CACHE[key] = got
+    return got
+
+
+def _cage_row_view(entries, is_p, exposed):
+    """One row's cage view (edges, counts, gates, forced, active, width).
+
+    ``entries`` is the row's oriented _Entry sequence (the same objects
+    _SAState.rows holds).  Walked exactly like _row_picture /
+    geometry.place_row: one break column where the facing end nets
+    differ.  ``gates`` maps (gate net, column) -> the union of the
+    carrying devices' crossing tracks (route_grid._gate_maps' per-device
+    strip math).  ``forced`` maps column -> {track: set(nets)} for the
+    build-time metal THIS row pins: a power access covers its
+    half-domain up to the device's rail track (GND: tracks 0..rail in
+    the N slot, VCC: rail..6 in the P slot) and a contactable signal
+    diffusion access (per-row contactability, the die_slot_access_points
+    rule: multi-region within the row, or an exposed block-end net) pins
+    its own rail node.  ``active`` is the row's diffusion-span columns
+    (route_grid._field_map's active set)."""
+    edges = {}
+    counts = {}
+    gates = {}
+    rail = CAGE_RAIL_TRACK[P_ROW + 2 if is_p else N_ROW]
+    forced = {}
+    active = set()
+    col = 0
+    prev_right = None
+    for entry in entries:
+        if prev_right is not None \
+                and entry.members[0][1] != prev_right:
+            col += 1
+        for dev, lnet, rnet, w, centres in entry.members:
+            edges[col] = lnet
+            tracks = _device_cross_tracks(dev)
+            for off in centres:
+                key = (dev.gate, col + off)
+                got = gates.get(key)
+                if got is None:
+                    gates[key] = set(tracks)
+                else:
+                    got.update(tracks)
+            col += w
+            edges[col] = rnet
+            active.update(range(col - w, col))
+        prev_right = entry.members[-1][2]
+    for c, net in edges.items():
+        counts[net] = counts.get(net, 0) + 1
+    for c, net in edges.items():
+        if net in POWER_NETS:
+            slots = forced.setdefault(c, {})
+            if net in GND_NAMES:
+                for t in range(0, rail + 1):
+                    slots.setdefault(t, set()).add(net)
+            else:
+                for t in range(rail, CAGE_N_TRACKS):
+                    slots.setdefault(t, set()).add(net)
+        elif counts[net] > 1 or net in exposed:
+            forced.setdefault(c, {}).setdefault(rail, set()).add(net)
+    return edges, counts, gates, forced, active, col
+
+
+def _cage_from_views(vp, vn, exposed):
+    """The census over two row views (see :func:`gate_cage_penalty` for
+    the model).  Split from it so the alignment nomination can score
+    pairs from per-row precomputed views without re-walking."""
+    span_n, span_p, span_np, corridor = _track_model()
+    span_of = {False: span_p, True: span_np}   # keyed by "carries P row"
+    B = CAGE_BOUNDARY_T
+    ep, counts_p, gates_p, forced_p, active_p, wp = vp
+    en, counts_n, gates_n, forced_n, active_n, wn = vn
+    rw = (wp if wp >= wn else wn) + 1  # slot model: the edge axis
+    # same-net dual access columns: a net exposed on BOTH rows at one
+    # column (contactable per row in each) merges its bars rail-to-rail
+    # through the corridor at that column -- the tie stripe spans from
+    # its N rail up to its P rail (the census docstring's spelling; the
+    # census CODE covered the whole P half, which produced false cages
+    # on closing arrangements -- ctrl/COMPLEX0's M2-fingerprint winner)
+    duals = {}
+    for c, net_n in en.items():
+        if net_n in POWER_NETS or ep.get(c) != net_n:
+            continue
+        if not (counts_n[net_n] > 1 or net_n in exposed):
+            continue
+        if not (counts_p[net_n] > 1 or net_n in exposed):
+            continue
+        duals[c] = (net_n, CAGE_RAIL_TRACK[P_ROW + 2])
+    # gate contacts: (gate net, column) -> merged crossing tracks +
+    # which rows carry it; per column the raw poly spans of every gate
+    # stripe (the foreign side of the poly-jump legality)
+    legal_of = {}
+    gspans = {}
+    for (net, c), tracks in gates_p.items():     # P row
+        legal_of[(net, c)] = [tracks, False, True]
+        gspans.setdefault(c, {})[net] = span_of[True]
+    for (net, c), tracks in gates_n.items():     # N row
+        got = legal_of.get((net, c))
+        if got is None:
+            legal_of[(net, c)] = [tracks, True, False]
+        else:
+            got[0] = got[0] | tracks
+            got[1] = True
+        gspans.setdefault(c, {}).setdefault(net, span_of[False])
+    caged = 0
+    columns = set()
+    for (net, c), (legal, in_n, in_p) in legal_of.items():
+        if in_n and in_p:
+            legal = legal | corridor
+        if not legal:
+            continue                   # the census counts only non-empty gt
+        free = False
+        for t in legal:
+            blocked = False
+            for cc in (c, c + 1):
+                if cc >= rw:
+                    continue
+                slots = (forced_n if t < B else forced_p).get(cc)
+                if slots:
+                    others = slots.get(t)
+                    if others and (len(others) > 1 or net not in others):
+                        blocked = True
+                        break
+                dual = duals.get(cc)
+                if (dual is not None and dual[0] != net
+                        and CAGE_RAIL_TRACK[N_ROW] <= t <= dual[1]):
+                    blocked = True
+                    break
+            if blocked:
+                # the poly escape: a row-track jump over field oxide
+                # whose column c hosts no foreign gate stripe on t.
+                # Tracks 0/6 belong to the unused outer rows (no active
+                # anywhere); 2/4 are the used N/P rows.
+                if t in CAGE_ROW_TRACKS:
+                    row_active = (active_n if t == 2
+                                  else active_p if t == 4 else ())
+                    if ((c + 1) not in row_active
+                            and all(n == net
+                                    for n, sp in gspans[c].items()
+                                    if t in sp)):
+                        free = True
+                        break
+                continue
+            free = True
+            break
+        if not free:
+            caged += 1
+            columns.add(c)
+    return caged, tuple(sorted(columns))
+
+
+def gate_cage_penalty(ordering_p, ordering_n, netlist, leg_widths=None):
+    """Static gate-cage census over one ordering pair (AUDIT 5.46).
+
+    Returns ``(caged_gates, blocked_columns)``: how many gate contacts
+    are hard-blocked and which columns host them -- 0/() when every
+    gate contact has a free lane.  O(width x tracks) per call, no
+    router involved.
+
+    The model (port of flow/_stage3_check/diag_forced_census.py's
+    forced-coverage census, derived from the ordering pair via the same
+    walk geometry.place_row / _row_picture use):
+
+    - per-column FORCED coverage (see :func:`_cage_row_view`): power
+      accesses pin their half-domain, contactable signal accesses pin
+      their rail node, same-net dual access columns pin rail-to-rail
+      through the corridor;
+    - a gate contact at column c is HARD-BLOCKED iff no legal track t
+      survives, where t survives when its crossing endpoints c, c+1 are
+      free of foreign forced coverage in the track's slot (N slot for
+      t < 3, P slot for t >= 3; the gate's own net never blocks itself),
+      OR the poly escape exists (route_grid._gate_forced's
+      ``m1_ok or pj_ok`` disjunction: t is a row track whose (c+1) end
+      is field oxide in the track's row and no foreign gate stripe spans
+      t at c -- the census's M1-only spelling, extended because the
+      closers' gates cross exactly through that escape, INVX1 being the
+      minimal case);
+    - the legal tracks are the router's own slot-model set
+      (route_grid._gate_maps: per-device strip x row band, plus the
+      corridor where an aligned P/N pair merges the poly).
+
+    ``ordering_p``/``ordering_n`` are the oriented block sequences
+    (mirror_block state included -- the edge nets are read as they sit);
+    ``netlist`` is the (folded) CellNetlist the orderings decompose (it
+    supplies the exposed-net set); ``leg_widths`` the fold map
+    (device name -> (legs, leg_width_cols)), defaulting to the slot
+    model's (1, 1).  Pure and deterministic (invariant 9)."""
+    if leg_widths is None:
+        devices = [m.device for row in (ordering_p, ordering_n)
+                   for b in row for m in b.members]
+        leg_widths = {dev.name: (1, 1) for dev in devices}
+    exposed = exposed_net_set(netlist) if netlist is not None else None
+    if exposed is None:
+        return 0, ()
+    vp = _cage_row_view([_entry(b, False, leg_widths)
+                         for b in ordering_p], True, exposed)
+    vn = _cage_row_view([_entry(b, False, leg_widths)
+                         for b in ordering_n], False, exposed)
+    return _cage_from_views(vp, vn, exposed)
 
 
 def cell_seed(netlist):
@@ -238,9 +582,23 @@ def _bounds_from_pics(dnet, gate, power):
 
 
 class _SAState(object):
-    """Dual-row ordering + cached cost.  All arithmetic is integer."""
+    """Dual-row ordering + cached cost.  All arithmetic is integer.
 
-    def __init__(self, ordering_p, ordering_n, leg_widths):
+    With ``netlist`` given, the cost carries the gate-cage term
+    (:func:`gate_cage_penalty`, weight CAGE_WEIGHT -- the proven
+    structural wall of AUDIT 5.46): total = legacy total +
+    CAGE_WEIGHT * caged_gates, so a placement that cages a gate contact
+    under power metal loses against ANY cage-free arrangement
+    regardless of the legacy terms, which stay term-for-term ASTRAN's.
+    The scan is refreshed exactly (full recompute of the census) on
+    every picture change, so the incremental delta the TA loop accepts
+    on includes the cage delta and ``sa_refine``'s check (incremental
+    == full) keeps holding.  ``netlist=None`` (the default) skips the
+    scan: the cost is byte-identical legacy -- the pure-cost path's
+    contract, consumed by tests that construct the state directly.
+    """
+
+    def __init__(self, ordering_p, ordering_n, leg_widths, netlist=None):
         if leg_widths is None:
             # geometry.default_leg_widths' slot-model semantics: one leg
             # of one column per device (W is vertical).
@@ -251,6 +609,11 @@ class _SAState(object):
         self.rows = [[_entry(b, False, leg_widths) for b in ordering_p],
                      [_entry(b, False, leg_widths) for b in ordering_n]]
         self.power = frozenset(POWER_NETS)
+        # the census's exposure set, frozen once (None disables the term)
+        self.exposed = None if netlist is None else \
+            frozenset(exposed_net_set(netlist))
+        self._cage_cache = None
+        self._view_cache = [None, None]
         total_w = sum(e.width for row in self.rows for e in row)
         breaks_ub = sum(max(0, len(row) - 1) for row in self.rows)
         # the pictures live in half-slots (edges 2e, gates 2c+1)
@@ -350,7 +713,40 @@ class _SAState(object):
             self._refresh_net(net)
         self.local_cong = sum(v * v for v in self.cong)
         self.max_cong = max(self.cong)
-        self.total = self._total_from_terms()
+        self._refresh_cage()
+        self.total = self._total_from_terms() + CAGE_WEIGHT * self.caged
+
+    def _refresh_cage(self):
+        """Re-run the gate-cage census over the current rows.
+
+        The census is a pure function of the two rows' ENTRY sequences,
+        and an undone move restores the exact previous entry objects
+        (_entry caches by (block, flip)), so the last scan is cached by
+        row content: the TA loop's reject path (apply + apply(inverse))
+        pays one list comparison instead of a second scan.  Per-row
+        views are cached the same way, so a single-row move rebuilds
+        only the moved row's view."""
+        if self.exposed is None:
+            self.caged = 0
+            self.cage_cols = ()
+            return
+        cache = self._cage_cache
+        if cache is not None \
+                and cache[0] == self.rows[0] and cache[1] == self.rows[1]:
+            self.caged, self.cage_cols = cache[2], cache[3]
+            return
+        vc = self._view_cache
+        views = []
+        for r in (0, 1):
+            got = vc[r]
+            if got is None or got[1] != self.rows[r]:
+                vc[r] = (_cage_row_view(self.rows[r], r == 0, self.exposed),
+                         list(self.rows[r]))
+            views.append(vc[r][0])
+        self.caged, self.cage_cols = _cage_from_views(
+            views[0], views[1], self.exposed)
+        self._cage_cache = (list(self.rows[0]), list(self.rows[1]),
+                            self.caged, self.cage_cols)
 
     def _refresh_net(self, net):
         """Merge a net's changed per-row bounds into its global bbox;
@@ -414,6 +810,7 @@ class _SAState(object):
             "span": self.w_routing,
             "max_congestion": self.max_cong,
             "local_congestion": self.local_cong,
+            "caged_gates": self.caged,
             "total": self.total,
         }
 
@@ -442,7 +839,8 @@ class _SAState(object):
         g0, g1 = self.pic[0][1], self.pic[1][1]
         self.gate_mismatch = sum(
             1 for col in set(g0) & set(g1) if g0[col] != g1[col])
-        self.total = self._total_from_terms()
+        self._refresh_cage()
+        self.total = self._total_from_terms() + CAGE_WEIGHT * self.caged
         return self.total
 
     # -- snapshot / restore ---------------------------------------------
@@ -504,7 +902,7 @@ def _find_initial_threshold(state, rng, moves):
 
 def sa_refine(ordering_p, ordering_n, netlist, leg_widths, iterations=None,
               quality=DEFAULT_QUALITY, init_moves=None, seed=None,
-              check=True):
+              check=True, cage=False):
     """Refine the seed orderings with Threshold Accept; returns
     (ordering_p, ordering_n, cost_breakdown).
 
@@ -517,8 +915,17 @@ def sa_refine(ordering_p, ordering_n, netlist, leg_widths, iterations=None,
     threshold search (ASTRAN: 5000).  ``check`` asserts the incremental
     cost against a full recompute at every iteration boundary -- a
     mismatch is an engine bug and raises.
+
+    ``cage=True`` adds the gate-cage term (CAGE_WEIGHT, :func:`_SAState`)
+    to the search's cost: the TA acceptance then sees a caged move as
+    ~10^7 worse, so past the initial threshold the search never wanders
+    into a power-caged arrangement, and the best-snapshot prefers
+    cage-free states over cheaper caged ones.  The default False keeps
+    the pure ASTRAN cost byte-for-byte (the pure-cost research path and
+    its pinned phase-1 specimens; the production chain opts in).
     """
-    state = _SAState(ordering_p, ordering_n, leg_widths)
+    state = _SAState(ordering_p, ordering_n, leg_widths,
+                     netlist=netlist if cage else None)
     rng = random.Random(seed if seed is not None else cell_seed(netlist))
     problem_size = len(state.rows[0]) * len(state.rows[1])
     num_reps = max(1, int(problem_size * quality))
@@ -753,7 +1160,8 @@ def _row_orderings(blocks):
 
 
 def alignment_candidates(p_blocks, n_blocks, leg_widths,
-                         limit=ALIGN_CANDIDATES, pair_cap=None):
+                         limit=ALIGN_CANDIDATES, pair_cap=None,
+                         netlist=None):
     """Routability-nominated orderings for one variant's decomposition.
 
     SA's cost cannot see routability (the proven NAND2X1/ctrl-plateau
@@ -771,7 +1179,15 @@ def alignment_candidates(p_blocks, n_blocks, leg_widths,
                                    cheap-ranked finalists, so the exact
                                    cost never runs on the full pair
                                    space),
-        5. lexicographic ordering signature (deterministic tie-break).
+        5. gate-cage ASC          (with ``netlist``: the static
+                                   :func:`gate_cage_penalty` census -- a
+                                   finalist whose gate columns dodge the
+                                   power-access columns beats an equal
+                                   alignment/cost finalist that cages
+                                   one; pinned to the TAIL of the rank
+                                   because the ctrl/COMPLEX0 M2-fingerprint
+                                   closure rides a census-caged nominee),
+        6. lexicographic ordering signature (deterministic tie-break).
 
     Returns up to ``limit`` distinct (ordering_p, ordering_n) pairs.
     Pure and deterministic (invariant 9); no router is invoked.
@@ -791,6 +1207,18 @@ def alignment_candidates(p_blocks, n_blocks, leg_widths,
                ordering_signature(r, [])) for r in p_rows]
     n_maps = [(_row_terminals(r, leg_widths),
                ordering_signature([], r)) for r in n_rows]
+    # per-row cage views, built once for the finalist stage (the census
+    # then costs two view merges per FINALIST, not per pair -- the pair
+    # space itself is ranked alignment-only, exactly as before)
+    exposed = None
+    if netlist is not None:
+        exposed = exposed_net_set(netlist)
+    p_views = [_cage_row_view([_entry(b, False, leg_widths)
+                               for b in r], True, exposed)
+               for r in p_rows] if exposed is not None else None
+    n_views = [_cage_row_view([_entry(b, False, leg_widths)
+                               for b in r], False, exposed)
+               for r in n_rows] if exposed is not None else None
     scored = []
     for (gp, ep, bp, wp), sp in p_maps:
         for (gn, en, bn, wn), sn in n_maps:
@@ -804,19 +1232,26 @@ def alignment_candidates(p_blocks, n_blocks, leg_widths,
     scored.sort(key=lambda t: (t[0], t[1], t[2], t[3]), reverse=True)
     finalists = scored[:_ALIGN_COST_POOL]
     # exact SA cost for the finalists, final rank (alignment, corridors,
-    # cost, signature), truncate
+    # cost, cage, signature), truncate
     p_by_sig = {sp: r for (_m, sp), r in zip(p_maps, p_rows)}
     n_by_sig = {sn: r for (_m, sn), r in zip(n_maps, n_rows)}
+    p_view_by_sig = {sp: v for v, (_m, sp) in zip(p_views, p_maps)} \
+        if p_views is not None else None
+    n_view_by_sig = {sn: v for v, (_m, sn) in zip(n_views, n_maps)} \
+        if n_views is not None else None
     ranked = []
     for ga, da, br, wp, sp, sn in finalists:
         op = p_by_sig[sp]
         on = n_by_sig[sn]
         cost = _SAState(op, on, leg_widths).total
-        ranked.append(((ga, da, br, cost, sp, sn), op, on))
-    # stable two-stage final rank: cost (then signature) ascending, then
-    # the alignment/corridor key descending -- ties keep the cheaper,
-    # lexicographically smaller ordering
-    ranked.sort(key=lambda t: (t[0][3], t[0][4], t[0][5]))
+        cage = _cage_from_views(p_view_by_sig[sp], n_view_by_sig[sn],
+                                exposed)[0] \
+            if p_view_by_sig is not None else 0
+        ranked.append(((ga, da, br, cost, cage, sp, sn), op, on))
+    # stable two-stage final rank: (cost, cage, signature) ascending,
+    # then the alignment/corridor key descending -- ties keep the
+    # cheaper, cage-free, lexicographically smaller ordering
+    ranked.sort(key=lambda t: (t[0][3], t[0][4], t[0][5], t[0][6]))
     ranked.sort(key=lambda t: (t[0][0], t[0][1], t[0][2]), reverse=True)
     out = []
     seen = set()
@@ -876,7 +1311,8 @@ def _alignment_pair_cap(problem_size):
 def decomposition_variant_classes(netlist, leg_widths,
                                   variant_names=DECOMPOSITION_VARIANTS,
                                   sa_iterations=VARIANT_SA_ITERATIONS,
-                                  align_limit=ALIGN_CANDIDATES):
+                                  align_limit=ALIGN_CANDIDATES,
+                                  cage=False):
     """The per-variant candidate classes for the speculate pool.
 
     For every decomposition variant (netlist_ext.BLOCK_VARIANTS minus
@@ -920,7 +1356,8 @@ def decomposition_variant_classes(netlist, leg_widths,
         if problem_size <= _VARIANT_SA_PROBLEM_CAP:
             bp, bn, _bd = sa_refine(eop, eon, netlist, leg_widths,
                                     iterations=_variant_sa_iterations(
-                                        problem_size, cap=sa_iterations))
+                                        problem_size, cap=sa_iterations),
+                                    cage=cage)
         else:
             bp, bn = eop, eon
         classes = [("var:%s" % name, bp, bn),
@@ -932,7 +1369,8 @@ def decomposition_variant_classes(netlist, leg_widths,
                 alignment_candidates(p_blocks, n_blocks, leg_widths,
                                      limit=align_limit,
                                      pair_cap=_alignment_pair_cap(
-                                         problem_size)), start=1):
+                                         problem_size),
+                                     netlist=netlist), start=1):
             classes.append(("var:%s-align%d" % (name, j), op, on))
         for kind, op, on in classes:
             sig = ordering_signature(op, on)
@@ -945,7 +1383,7 @@ def decomposition_variant_classes(netlist, leg_widths,
 
 def generate_candidates(best_p, best_n, seed_p, seed_n, leg_widths,
                         candidate_count=DEFAULT_CANDIDATES,
-                        extra_classes=None):
+                        extra_classes=None, netlist=None):
     """The deterministic top-K candidate pool (speculate stage, step 1).
 
     ``best_p``/``best_n`` are the SA cost-best orderings;
@@ -962,7 +1400,10 @@ def generate_candidates(best_p, best_n, seed_p, seed_n, leg_widths,
     5. further per-block flip combinations of the SA best, ranked by
        SA cost then lexicographic bit order (only below the fixed
        classes when ``candidate_count`` allows, and only when
-       2**(nP+nN) <= _MAX_FLIP_COMBOS);
+       2**(nP+nN) <= _MAX_FLIP_COMBOS).  With ``netlist`` given the
+       cost is the cage-aware total (:func:`_SAState`), so the
+       combinations sort cage-free-first -- the flip space is where a
+       cage-free orientation of the SA basin most often lives;
     6. ``extra_classes`` -- pre-built (kind, ordering_p, ordering_n)
        entries appended after the flip combinations and deduped like
        every class (the decomposition-variant classes of
@@ -995,7 +1436,8 @@ def generate_candidates(best_p, best_n, seed_p, seed_n, leg_widths,
                   for b, bit in zip(best_p, bits[:len(best_p)])]
             on = [b if not bit else mirror_block(b)
                   for b, bit in zip(best_n, bits[len(best_p):])]
-            combos.append((_SAState(op, on, leg_widths).total, bits, op, on))
+            combos.append((_SAState(op, on, leg_widths,
+                                    netlist=netlist).total, bits, op, on))
         combos.sort(key=lambda t: (t[0], t[1]))
         pool.extend(("flip%s" % ("".join(map(str, t[1])),), t[2], t[3])
                     for t in combos)
@@ -1042,18 +1484,39 @@ def _default_trial_router():
 def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
                      candidate_count=DEFAULT_CANDIDATES,
                      trial_attempts=DEFAULT_TRIAL_ATTEMPTS,
-                     trial_router=None, variant_classes=False):
+                     trial_router=None, variant_classes=False,
+                     cage=False):
     """Speculate stage (doc section 2.2 "Composition"): score the
     candidate pool by a fast trial route and pick the winner.
 
-    Returns ``(ordering_p, ordering_n, report)``.  A candidate that
-    routes FEASIBLE at ``trial_attempts`` wins immediately, in pool
-    priority order (the SA-best candidate is tried first, so a cell
-    whose cost-optimal orientation already routes is unaffected --
-    INVX1/NAND2 stay on the pure-cost path).  When nothing routes
-    within the trial budget the candidate with the lowest
-    (conflicts, SA cost, pool index) is returned: the caller's
-    full-budget route then starts from the best-known orientation.
+    Returns ``(ordering_p, ordering_n, report)``.  Ranking policy (the
+    gate-cage lever, AUDIT 5.46):
+
+    - every candidate carries its :func:`gate_cage_penalty` count in the
+      report entry (``cage``) -- the static census of the placement-side
+      wall (gate contacts hard-blocked under power metal);
+    - a candidate that routes FEASIBLE **and** cages no gate wins
+      immediately, in pool priority order (the SA-best candidate is
+      tried first, so a cell whose cost-optimal orientation already
+      routes cage-free is unaffected -- INVX1/NAND2 stay on the
+      pure-cost path);
+    - when the first FEASIBLE candidate cages gates, the scan continues:
+      a FEASIBLE candidate that does NOT cage loses to nothing -- a
+      candidate that cages a gate where another doesn't loses even with
+      better legacy cost -- and among equal-cage FEASIBLE candidates the
+      earlier pool entry wins (the pool priority survives within a cage
+      tier);
+    - when nothing routes within the trial budget, the candidate with
+      the best floor key is returned.  Candidates with a real conflict
+      count (a negotiation plateau -- the router's honest floor) keep
+      today's (conflicts, SA cost, pool index) rank.  Candidates with
+      NO floor (_UNROUTABLE: the router could not even negotiate --
+      the build-time structural-failure class the census diagnoses)
+      rank by (cage, SA cost, pool index): with no measured floor the
+      static census is the best signal, and a candidate that cages a
+      gate where another doesn't loses even with better legacy cost.
+      A real floor always beats _UNROUTABLE.  The caller's full-budget
+      route then starts from the best-known orientation.
 
     ``variant_classes`` extends the pool with the decomposition-variant
     classes (:func:`decomposition_variant_classes`) when the fixed
@@ -1061,9 +1524,9 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
     plateaus that survive every ordering of ONE decomposition, so the
     alternative decompositions join as a lazy second phase (a cell that
     closes in the fixed classes never pays for them).  Variants rank
-    exactly like the mirror classes: first FEASIBLE wins, fallback =
-    lowest (conflicts, cost, pool index).  Candidates are deduped by
-    :func:`ordering_signature` (content-only: two decompositions
+    exactly like the mirror classes.  ``cage`` steers the variant
+    refines' SA cost (see :func:`sa_refine`).  Candidates are deduped
+    by :func:`ordering_signature` (content-only: two decompositions
     producing the same ordering route identically, so one trial
     covers both; the report's ``kind`` carries the first occurrence's
     provenance).
@@ -1076,8 +1539,8 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
     placement.
 
     ``report`` (plain data, no wall-clock -- invariant 9):
-    ``selected``/``kind``/``feasible``/``conflicts`` of the winner plus
-    per-trialed-candidate entries.  Pure and deterministic.
+    ``selected``/``kind``/``feasible``/``conflicts``/``cage`` of the
+    winner plus per-trialed-candidate entries.  Pure and deterministic.
     """
     router = trial_router if trial_router is not None \
         else _default_trial_router()
@@ -1087,10 +1550,11 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
             [m.device for row in (best_p, best_n, seed_p, seed_n)
              for b in row for m in b.members])
     pool = generate_candidates(best_p, best_n, seed_p, seed_n, leg_widths,
-                               candidate_count)
+                               candidate_count, netlist=netlist)
     from bigcell_engine.geometry import layout_cell
     entries = []
-    fallback = None                     # (conflicts, cost, index) -> entry
+    fallback = None               # (conflicts, cage, cost, index) -> entry
+    feasible = None               # (cage, index) -> entry, FEASIBLE tier
 
     def _trial(idx):
         """Trial-route pool[idx]; append the report entry; return it."""
@@ -1110,6 +1574,7 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
         cost = _SAState(op, on, leg_widths).total
         entry = {"index": idx, "kind": kind, "cost": cost,
                  "width_cols": width, "conflicts": conflicts,
+                 "cage": gate_cage_penalty(op, on, netlist, leg_widths)[0],
                  "feasible": conflicts == 0,
                  "attempts": getattr(result, "attempts_used", None),
                  "note": note}
@@ -1117,21 +1582,40 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
         return entry
 
     def _keep(entry, op, on):
-        """Short-circuit on FEASIBLE; track the fallback winner."""
-        nonlocal fallback
+        """Short-circuit on FEASIBLE cage-free; track the tier winners."""
+        nonlocal fallback, feasible
         if entry["conflicts"] == 0:
-            return op, on, {
-                "selected": entry["index"], "kind": entry["kind"],
-                "feasible": True, "conflicts": 0,
-                "trial_attempts": trial_attempts,
-                "candidate_count": len(pool), "candidates": entries,
-            }
-        if fallback is None or (entry["conflicts"], entry["cost"],
-                                entry["index"]) < \
-                (fallback["conflicts"], fallback["cost"],
-                 fallback["index"]):
-            fallback = entry
+            key = (entry["cage"], entry["index"])
+            if entry["cage"] == 0:
+                return op, on, {
+                    "selected": entry["index"], "kind": entry["kind"],
+                    "feasible": True, "conflicts": 0, "cage": 0,
+                    "trial_attempts": trial_attempts,
+                    "candidate_count": len(pool), "candidates": entries,
+                }
+            if feasible is None or key < (feasible["cage"],
+                                          feasible["index"]):
+                feasible = entry
+            return None
+        if entry["conflicts"] == _UNROUTABLE:
+            # no measured floor: the census leads, then cost, then order
+            key = (1, entry["cage"], entry["cost"], entry["index"])
+        else:
+            # a real negotiation plateau: today's floor rank verbatim
+            key = (0, entry["conflicts"], entry["cost"], entry["index"])
+        if fallback is None or key < fallback[0]:
+            fallback = (key, entry)
         return None
+
+    def _won(entry, op, on):
+        """The winner report for a tracked tier entry."""
+        return op, on, {
+            "selected": entry["index"], "kind": entry["kind"],
+            "feasible": entry["conflicts"] == 0,
+            "conflicts": entry["conflicts"], "cage": entry["cage"],
+            "trial_attempts": trial_attempts,
+            "candidate_count": len(pool), "candidates": entries,
+        }
 
     for idx in range(len(pool)):
         entry = _trial(idx)
@@ -1141,7 +1625,8 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
     if variant_classes:
         # phase 2: the decomposition-variant classes, deduped against
         # everything already trialed
-        extra = decomposition_variant_classes(netlist, leg_widths)
+        extra = decomposition_variant_classes(netlist, leg_widths,
+                                              cage=cage)
         known = {ordering_signature(op, on) for _k, op, on in pool}
         for kind, op, on in extra:
             if ordering_signature(op, on) in known:
@@ -1153,12 +1638,9 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
             won = _keep(entry, pool[idx][1], pool[idx][2])
             if won is not None:
                 return won
-    return pool[fallback["index"]][1], pool[fallback["index"]][2], {
-        "selected": fallback["index"], "kind": fallback["kind"],
-        "feasible": False, "conflicts": fallback["conflicts"],
-        "trial_attempts": trial_attempts,
-        "candidate_count": len(pool), "candidates": entries,
-    }
+    winner = feasible[1] if feasible is not None else fallback[1]
+    op, on = pool[winner["index"]][1], pool[winner["index"]][2]
+    return _won(winner, op, on)
 
 
 def sa_refine_routable(ordering_p, ordering_n, netlist, leg_widths,
@@ -1166,7 +1648,8 @@ def sa_refine_routable(ordering_p, ordering_n, netlist, leg_widths,
                        trial_attempts=DEFAULT_TRIAL_ATTEMPTS,
                        trial_router=None, iterations=None,
                        quality=DEFAULT_QUALITY, init_moves=None,
-                       seed=None, check=True, variant_classes=False):
+                       seed=None, check=True, variant_classes=False,
+                       cage=None):
     """``sa_refine`` + the speculate selection stage: the rung-3 entry
     point for routability-aware placement.
 
@@ -1191,16 +1674,31 @@ def sa_refine_routable(ordering_p, ordering_n, netlist, leg_widths,
     ``variant_classes=True`` additionally joins the decomposition-
     variant classes (see :func:`select_orderings`) when the fixed
     classes all fail -- the upstream lever for the one-decomposition
-    routing plateaus.
+    routing plateaus.  ``cage`` runs the refine AND the
+    decomposition-variant refines with the gate-cage term in their cost
+    (see :func:`sa_refine`) -- the placement-side avoidance lever for
+    the power-stripe-caged gate contacts of AUDIT 5.46.  ``cage=None``
+    (the default) binds the steering to the full production chain
+    (``variant_classes=True``): the engine's rung-3 chain prefers
+    cage-free arrangements end to end, while the fixed-pool path keeps
+    the pure ASTRAN cost byte-for-byte -- the structural-diagnosis
+    specimens are derived on THOSE arrangements and pinned so.  An
+    explicit ``cage`` (True/False) overrides the binding everywhere.
+    ``cage=None`` (the default) binds the steering to the full
+    production chain (``variant_classes=True``); see the docstring
+    above.  An explicit ``cage`` overrides it.
     """
+    if cage is None:
+        cage = bool(variant_classes)
     cost_p, cost_n, _bd = sa_refine(
         ordering_p, ordering_n, netlist, leg_widths,
         iterations=iterations, quality=quality, init_moves=init_moves,
-        seed=seed, check=check)
+        seed=seed, check=check, cage=cage)
     sel_p, sel_n, sel = select_orderings(
         cost_p, cost_n, ordering_p, ordering_n, netlist, leg_widths,
         candidate_count=candidate_count, trial_attempts=trial_attempts,
-        trial_router=trial_router, variant_classes=variant_classes)
+        trial_router=trial_router, variant_classes=variant_classes,
+        cage=cage)
     breakdown = _SAState(sel_p, sel_n, leg_widths).breakdown()
     breakdown["selection"] = sel
     return sel_p, sel_n, breakdown
