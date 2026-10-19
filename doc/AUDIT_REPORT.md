@@ -1445,3 +1445,33 @@ M2 双柱交叉（verify 已接受、build_routing_model 无法表达）+ 布局
 **下一轮杠杆（按优先级）**：布局侧回避电源笼蔽栅列（place_sa 代价/
 选择加 census 谓词）→ 精确模型 M2 双柱交叉（时序/XOR 类）→ 验证
 侧 blocks 转发后接通引擎 diff。全量 667 绿。
+
+## §5.47 双盆地与幻影闭合判决（2026-10-20）
+
+**(1) §5.45 的重要勘误**：bench_int6 的 29→27 不是回归——四个"损失"
+闭合（CLKBUF1/2/3、COMPLEX4）是**前 6b35cee die 视图的幻影**：把
+round-5 树（c4b3e9c）抽出重跑，胜者全是 parallel_phase 类排布，而
+parallel_phase 重排并联对使 pristine 重建在器件邻接上失败——round-5
+树上 router 与 verifier 共享同一个镜像（错误）视图，自洽但非所画
+die。旧闭合从未真实存在；**诚实轨迹 = 25（幻影折减）→ 27（第六轮），
++2 而非 −2**。教训：router==verifier 自洽不等于正确——两者必须同时
+对齐真实 die。
+
+**(2) 双盆地落地**：sa_refine_routable(cage=True) 双重 refine
+（steered 领跑；cage=False 的 legacy 最优以 best-legacy{,-flip-both,
+-die-both} 进固定池）；无 cage-free FEASIBLE 胜者时惰性第三阶段加
+variant legacy 孪生（现有闭合的池/试布/选择零改动）；选择保持试布
+裁决、盆地盲；顺带修掉 select_orderings 在 caged-FEASIBLE 胜者上的
+`feasible[1]` KeyError 潜伏崩溃（旧钉从未触达）。
+
+**(3) 证据**：COMPLEX4 双盆地链达 round-5 宽度（10 列 1.90µm）且
+路由 floor=1 冲突、walled=0——距闭合一个杠杆；CLKBUF1/2/3 达
+2.09/2.28/3.04µm（floor 13/10/14）；COMPLEX1 回退项全面占优
+（floor 136→125、宽 22→17）；max/COMPLEX1、TBUFX2 增益保持；ctrl
+M2 指纹不变。700 绿。
+
+**(4) 已知路由/验证契约缺口（下一杠杆）**：COMPLEX4-align3 的
+true-view 路由通过但 verify 失败（"diffusion access cl2#Y@1: no
+stripe"）——verify 需把 block_objs 转发进 die_view（G2 交付的引擎
+1 行 diff 随后解锁）。精确模型 M2 双柱交叉仍是 COMPLEX10/时序/XOR
+类的杠杆。
