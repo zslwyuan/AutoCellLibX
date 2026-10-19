@@ -76,6 +76,20 @@ block's flip is recovered from place_row's abutment gaps (gap 0 <=> the
 facing end nets are equal, one break column <=> they differ), defaulting
 to pristine when no constraint pins it -- the one case the die cannot
 distinguish, where every consumer of die_view makes the same assumption.
+The reconstruction CHECKS itself against the die's device-level
+adjacency and, for TREE arrangements no orientation of the pristine
+decomposition explains (bigcell_engine.netlist_ext's tree blocks, which
+rearrange which device sits at which block boundary), rebuilds the view
+from the device trails -- the phantom "terminal clash at ('M1', 4, 1):
+cl3#Y and VCC" class that blocked the 22-36T COMPLEX cells came from
+exactly this gap.  ``blocks`` (the orientation-aware view the placement
+was built from, engine meta["blocks"]) can be forwarded to
+route_cell/die_view to override the trail where the die is ambiguous --
+but ONLY do so once the verifier consumes the same view
+(smt_engine.verify derives its slot-model requirements from a
+blocks-less die_view call, so a blocks-wired router could disagree with
+its verifier on a die-ambiguous single's flip); the production engine
+therefore routes without blocks and stays in exact agreement.
 
 Per column there are also: a poly node per gate stripe (contacted by M1
 crossings, merged by poly jumps), a 0-cost ``inoutCnt`` hub wired to every
@@ -248,7 +262,8 @@ def _row_track_ranges(height_um, grid_um):
             for key, (y0, y1) in rows.items()}
 
 
-def _die_orientation(netlist, placement, break_cols=BREAK_GAP_COLS):
+def _die_orientation(netlist, placement, break_cols=BREAK_GAP_COLS,
+                     blocks=None):
     """Per-device die orientation: {device name: (left_net, right_net)}.
 
     The reconstruction (multi-member mirror detection + the
@@ -256,9 +271,14 @@ def _die_orientation(netlist, placement, break_cols=BREAK_GAP_COLS):
     distinguish) lives in smt_engine.die_view -- the SHARED view the
     verifier's access derivation consumes too, so both engines always
     agree on which net sits at which terminal column.  This adapter
-    keeps the router-local signature.
+    keeps the router-local signature.  ``blocks`` (the orientation-aware
+    block view the placement was built from, bigcell_engine.engine's
+    meta["blocks"]) is forwarded for die_view's tree-arrangement
+    fallback; on every placement the pristine model explains it changes
+    nothing (byte-identical).
     """
-    return die_view.die_orientation_map(netlist, placement, break_cols)
+    return die_view.die_orientation_map(netlist, placement, break_cols,
+                                        blocks)
 
 
 def _oriented_diffusion_access_points(netlist, placement, orientation):
@@ -338,9 +358,14 @@ class _RouteGrid(object):
     """The routing graph + Pathfinder solver for one cell."""
 
     def __init__(self, netlist, placement, width_cols,
-                 height_um=2.47, grid_um=0.19, metal2_verticals=True):
+                 height_um=2.47, grid_um=0.19, metal2_verticals=True,
+                 blocks=None):
         self.netlist = netlist
         self.placement = placement
+        # the orientation-aware block view the placement was built from
+        # (bigcell_engine.engine meta["blocks"]), forwarded to die_view's
+        # tree-arrangement fallback; None keeps the pure reconstruction
+        self.blocks = blocks
         self.slot = die_view.is_slot_placement(placement)
         if self.slot:
             # slot geometry (doc/BIGCELL_SLOT_GEOMETRY.md section 8): the
@@ -468,9 +493,11 @@ class _RouteGrid(object):
             # tied.  The shared die view -- smt_engine.verify derives its
             # access requirements from the same function.
             diff_sig, diff_pow = die_view.die_slot_access_points(
-                netlist, placement, break_cols=BREAK_GAP_COLS)
+                netlist, placement, break_cols=BREAK_GAP_COLS,
+                blocks=self.blocks)
         else:
-            orientation = _die_orientation(netlist, placement)
+            orientation = _die_orientation(netlist, placement,
+                                           blocks=self.blocks)
             diff_sig, diff_pow = _oriented_diffusion_access_points(
                 netlist, placement, orientation)
         gate_pts = gate_access_points(netlist, placement)
@@ -1971,7 +1998,8 @@ def _phase1_skip_reason(contests, walled):
 
 
 def route_cell(netlist, placement, width_cols, leg_widths=None,
-               height_um=2.47, grid_um=0.19, max_attempts=MAX_ATTEMPTS):
+               height_um=2.47, grid_um=0.19, max_attempts=MAX_ATTEMPTS,
+               blocks=None):
     """Route one placed cell; returns a RouteResult (solve_routing's type).
 
     ``netlist`` is a smt_engine CellNetlist, ``placement`` maps
@@ -1979,6 +2007,11 @@ def route_cell(netlist, placement, width_cols, leg_widths=None,
     placement width in 0.19 um columns and ``leg_widths`` the fold map
     (device name -> (legs, leg_width_cols)); the fold is already realized
     in the placement, so the router consumes it for provenance only.
+    ``blocks`` optionally supplies the orientation-aware block view the
+    placement was built from (bigcell_engine.engine's meta["blocks"]);
+    it feeds die_view's tree-arrangement fallback -- see
+    :meth:`_RouteGrid.__init__`.  None (the default, and every
+    exact-engine placement) keeps the pure reconstruction byte-identical.
 
     Two phases (AGENTS.md invariants 8/9 discipline): phase 1 is the
     pre-freedom router -- graph, negotiation and emitted vocabulary are
@@ -2022,7 +2055,7 @@ def route_cell(netlist, placement, width_cols, leg_widths=None,
                      max((p.end_col for p in placement.values()), default=0))
     grid = _RouteGrid(netlist, placement, width_cols,
                       height_um=height_um, grid_um=grid_um,
-                      metal2_verticals=False)
+                      metal2_verticals=False, blocks=blocks)
     # the phase-1 skip gate: a build-time failure needs no diagnosis
     # (route() fails on it deterministically and phase 2 repeats it), so
     # the diagnosis only runs where a negotiation could actually start
@@ -2039,7 +2072,7 @@ def route_cell(netlist, placement, width_cols, leg_widths=None,
     # fresh grid -- the negotiation restarts, nothing carries over
     grid = _RouteGrid(netlist, placement, width_cols,
                       height_um=height_um, grid_um=grid_um,
-                      metal2_verticals=True)
+                      metal2_verticals=True, blocks=blocks)
     if (grid.route(max_attempts=max_attempts)):
         result = grid.build_result()
     else:

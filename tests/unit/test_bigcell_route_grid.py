@@ -1070,3 +1070,204 @@ def test_m2_route_is_byte_stable_across_processes(flow_dir, tmp_path):
                               check=True)
         digests.add(proc.stdout.strip().splitlines()[-1])
     assert len(digests) == 1, digests
+
+
+# ------------- tree-arrangement regressions (the 22-36T class) -----------
+#
+# adder/COMPLEX10 (36T) died at route BUILD time with the phantom
+# "terminal clash at ('M1', 4, 1): cl3#Y and VCC": the cl3 tree block
+# rearranges which device sits at which block boundary, no orientation
+# of the pristine decomposition is consistent with the die, and the
+# block-level reconstruction silently left the members pristine --
+# claiming cl3#Y's diffusion access on the column where the VCC stripe
+# was pre-built.  The deck + placement below are the deterministic
+# _heuristic_placement output that reproduced it (embedded verbatim so
+# the regression pins the ROUTER, not the independently evolving
+# placement chain; COMPLEX ids are per-run, invariant 6).
+
+C10_DECK = '.subckt COMPLEX10 GND VCC cl1#B cl1#A cl2#A cl2#B cl2#C cl3#A cl3#Y cl3#C\nMcl0#0 VCC cl1#Y cl0#a_2_6# VCC PMOS W=1u L=0.05u\n+ ad=0p pd=0u as=0p ps=0u \nMcl0#1 cl0#a_18_54# cl0#a_12_41# VCC VCC PMOS W=1u L=0.05u\n+ ad=0p pd=0u as=0p ps=0u \nMcl0#2 cl0#Y cl0#a_2_6# cl0#a_18_54# VCC PMOS W=1u L=0.05u\n+ ad=0p pd=0u as=0p ps=0u \nMcl0#3 cl0#a_35_54# cl1#Y cl0#Y VCC PMOS W=1u L=0.05u\n+ ad=0p pd=0u as=0p ps=0u \nMcl0#4 VCC cl2#Y cl0#a_35_54# VCC PMOS W=1u L=0.05u\n+ ad=0p pd=0u as=0p ps=0u \nMcl0#5 cl0#a_12_41# cl2#Y VCC VCC PMOS W=1u L=0.05u\n+ ad=0p pd=0u as=0p ps=0u \nMcl0#6 GND cl1#Y cl0#a_2_6# GND NMOS W=0.5u L=0.05u\n+ ad=0p pd=0u as=0p ps=0u \nMcl0#7 cl0#a_18_6# cl0#a_12_41# GND GND NMOS W=0.5u L=0.05u\n+ ad=0p pd=0u as=0p ps=0u \nMcl0#8 cl0#Y cl1#Y cl0#a_18_6# GND NMOS W=0.5u L=0.05u\n+ ad=0p pd=0u as=0p ps=0u \nMcl0#9 cl0#a_35_6# cl0#a_2_6# cl0#Y GND NMOS W=0.5u L=0.05u\n+ ad=0p pd=0u as=0p ps=0u \nMcl0#10 GND cl2#Y cl0#a_35_6# GND NMOS W=0.5u L=0.05u\n+ ad=0p pd=0u as=0p ps=0u \nMcl0#11 cl0#a_12_41# cl2#Y GND GND NMOS W=0.5u L=0.05u\n+ ad=0p pd=0u as=0p ps=0u \nMcl1#0 VCC cl1#A cl1#a_2_6# VCC PMOS W=1u L=0.05u\n+ ad=0p pd=0u as=0p ps=0u \nMcl1#1 cl1#a_18_54# cl1#a_13_43# VCC VCC PMOS W=1u L=0.05u\n+ ad=0p pd=0u as=0p ps=0u \nMcl1#2 cl1#Y cl1#A cl1#a_18_54# VCC PMOS W=1u L=0.05u\n+ ad=0p pd=0u as=0p ps=0u \nMcl1#3 cl1#a_35_54# cl1#a_2_6# cl1#Y VCC PMOS W=1u L=0.05u\n+ ad=0p pd=0u as=0p ps=0u \nMcl1#4 VCC cl1#B cl1#a_35_54# VCC PMOS W=1u L=0.05u\n+ ad=0p pd=0u as=0p ps=0u \nMcl1#5 cl1#a_13_43# cl1#B VCC VCC PMOS W=1u L=0.05u\n+ ad=0p pd=0u as=0p ps=0u \nMcl1#6 GND cl1#A cl1#a_2_6# GND NMOS W=0.5u L=0.05u\n+ ad=0p pd=0u as=0p ps=0u \nMcl1#7 cl1#a_18_6# cl1#a_13_43# GND GND NMOS W=0.5u L=0.05u\n+ ad=0p pd=0u as=0p ps=0u \nMcl1#8 cl1#Y cl1#a_2_6# cl1#a_18_6# GND NMOS W=0.5u L=0.05u\n+ ad=0p pd=0u as=0p ps=0u \nMcl1#9 cl1#a_35_6# cl1#A cl1#Y GND NMOS W=0.5u L=0.05u\n+ ad=0p pd=0u as=0p ps=0u \nMcl1#10 GND cl1#B cl1#a_35_6# GND NMOS W=0.5u L=0.05u\n+ ad=0p pd=0u as=0p ps=0u \nMcl1#11 cl1#a_13_43# cl1#B GND GND NMOS W=0.5u L=0.05u\n+ ad=0p pd=0u as=0p ps=0u \nMcl2#0 cl2#a_9_54# cl2#A VCC VCC PMOS W=1u L=0.05u\n+ ad=0p pd=0u as=0p ps=0u \nMcl2#1 cl2#Y cl2#B cl2#a_9_54# VCC PMOS W=1u L=0.05u\n+ ad=0p pd=0u as=0p ps=0u \nMcl2#2 VCC cl2#C cl2#Y VCC PMOS W=0.5u L=0.05u\n+ ad=0p pd=0u as=0p ps=0u \nMcl2#3 GND cl2#A cl2#a_2_6# GND NMOS W=0.5u L=0.05u\n+ ad=0p pd=0u as=0p ps=0u \nMcl2#4 cl2#a_2_6# cl2#B GND GND NMOS W=0.5u L=0.05u\n+ ad=0p pd=0u as=0p ps=0u \nMcl2#5 cl2#Y cl2#C cl2#a_2_6# GND NMOS W=0.5u L=0.05u\n+ ad=0p pd=0u as=0p ps=0u \nMcl3#0 VCC cl3#A cl3#a_2_54# VCC PMOS W=1u L=0.05u\n+ ad=0p pd=0u as=0p ps=0u \nMcl3#1 cl3#a_2_54# cl2#Y VCC VCC PMOS W=1u L=0.05u\n+ ad=0p pd=0u as=0p ps=0u \nMcl3#2 cl3#Y cl3#C cl3#a_2_54# VCC PMOS W=1u L=0.05u\n+ ad=0p pd=0u as=0p ps=0u \nMcl3#3 cl3#a_12_6# cl3#A GND GND NMOS W=0.5u L=0.05u\n+ ad=0p pd=0u as=0p ps=0u \nMcl3#4 cl3#Y cl2#Y cl3#a_12_6# GND NMOS W=0.5u L=0.05u\n+ ad=0p pd=0u as=0p ps=0u \nMcl3#5 GND cl3#C cl3#Y GND NMOS W=0.25u L=0.05u\n+ ad=0p pd=0u as=0p ps=0u \n.ends COMPLEX10\n'
+
+C10_PLACEMENT = {
+    "Mcl3#2": (0, 0, 1, 1),
+    "Mcl3#1": (0, 1, 1, 1),
+    "Mcl3#0": (0, 2, 1, 1),
+    "Mcl2#0": (0, 4, 1, 1),
+    "Mcl2#1": (0, 5, 1, 1),
+    "Mcl2#2": (0, 6, 1, 1),
+    "Mcl0#5": (0, 8, 1, 1),
+    "Mcl0#1": (0, 9, 1, 1),
+    "Mcl0#2": (0, 10, 1, 1),
+    "Mcl0#4": (0, 12, 1, 1),
+    "Mcl0#3": (0, 13, 1, 1),
+    "Mcl0#0": (0, 15, 1, 1),
+    "Mcl1#1": (0, 16, 1, 1),
+    "Mcl1#2": (0, 17, 1, 1),
+    "Mcl1#3": (0, 18, 1, 1),
+    "Mcl1#4": (0, 19, 1, 1),
+    "Mcl1#5": (0, 20, 1, 1),
+    "Mcl1#0": (0, 22, 1, 1),
+    "Mcl3#5": (1, 0, 1, 1),
+    "Mcl3#4": (1, 1, 1, 1),
+    "Mcl3#3": (1, 2, 1, 1),
+    "Mcl2#3": (1, 4, 1, 1),
+    "Mcl2#4": (1, 5, 1, 1),
+    "Mcl2#5": (1, 6, 1, 1),
+    "Mcl0#11": (1, 8, 1, 1),
+    "Mcl0#9": (1, 10, 1, 1),
+    "Mcl0#10": (1, 11, 1, 1),
+    "Mcl0#7": (1, 12, 1, 1),
+    "Mcl0#8": (1, 13, 1, 1),
+    "Mcl0#6": (1, 15, 1, 1),
+    "Mcl1#7": (1, 16, 1, 1),
+    "Mcl1#8": (1, 17, 1, 1),
+    "Mcl1#9": (1, 18, 1, 1),
+    "Mcl1#10": (1, 19, 1, 1),
+    "Mcl1#11": (1, 20, 1, 1),
+    "Mcl1#6": (1, 22, 1, 1),
+}
+C10_WIDTH = 23
+
+
+CL3_SLICE_DECK = """.subckt CL3SLICE VCC cl3#Y cl3#A cl3#C cl2#Y GND
+Mcl3#0 VCC cl3#A cl3#a_2_54# VCC PMOS W=1u L=0.05u
+Mcl3#1 cl3#a_2_54# cl2#Y VCC VCC PMOS W=1u L=0.05u
+Mcl3#2 cl3#Y cl3#C cl3#a_2_54# VCC PMOS W=1u L=0.05u
+Mcl3#3 cl3#a_12_6# cl3#A GND GND NMOS W=0.5u L=0.05u
+Mcl3#4 cl3#Y cl2#Y cl3#a_12_6# GND NMOS W=0.5u L=0.05u
+Mcl3#5 GND cl3#C cl3#Y GND NMOS W=0.25u L=0.05u
+.ends CL3SLICE
+"""
+
+
+def _cl3_grid():
+    nl = CellNetlist(parse_spice_subckt(CL3_SLICE_DECK))
+    by = {d.name: d for d in nl.devices}
+    placement = {by["Mcl3#2"]: PlacedTransistor(0, 0, 1, 1),
+                 by["Mcl3#1"]: PlacedTransistor(0, 1, 1, 1),
+                 by["Mcl3#0"]: PlacedTransistor(0, 2, 1, 1),
+                 by["Mcl3#5"]: PlacedTransistor(1, 0, 1, 1),
+                 by["Mcl3#4"]: PlacedTransistor(1, 1, 1, 1),
+                 by["Mcl3#3"]: PlacedTransistor(1, 2, 1, 1)}
+    return nl, placement
+
+
+def test_tree_slice_grid_has_no_build_clash_and_routes():
+    """The cl3 arrangement routes: no build-time terminal clash (the
+    pre-fix reconstruction claimed cl3#Y's diffusion at edge 1 where
+    VCC's stripe was pre-built -- "terminal clash at ('M1', 4, 1)"), the
+    die-true power edges carry the stripes, and the negotiation closes."""
+    nl, placement = _cl3_grid()
+    g = _RouteGrid(nl, placement, 3)
+    assert g._fail_note is None
+    # the die-true P-row edges (track 4 = P row 0 rail): cl3#Y@0,
+    # cl3#a_2_54#@1/3 (multi-region), VCC@2 -- and NO bogus VCC claim on
+    # cl3#Y's or cl3#a_2_54#'s edges (the pre-fix reconstruction put
+    # VCC@1 + cl3#Y@1, clashing at ('M1', 4, 1))
+    assert _owner(g, ("M1", 4, 0)) == "cl3#Y"
+    assert _owner(g, ("M1", 4, 1)) == "cl3#a_2_54#"
+    assert _owner(g, ("M1", 4, 2)) == "VCC"
+    assert _owner(g, ("M1", 4, 3)) == "cl3#a_2_54#"
+    # the N-row chain (track 2 = N row 1 rail): GND@0 and GND@3
+    assert _owner(g, ("M1", 2, 0)) == "GND"
+    assert _owner(g, ("M1", 2, 3)) == "GND"
+    assert g.route(max_attempts=3000)
+    assert g._fail_note is None
+
+
+def _c10_state():
+    nl = CellNetlist(parse_spice_subckt(C10_DECK))
+    by = {d.name: d for d in nl.devices}
+    placement = {by[name]: PlacedTransistor(row, start, legs, legw)
+                 for name, (row, start, legs, legw) in
+                 C10_PLACEMENT.items()}
+    return nl, placement, C10_WIDTH
+
+
+def test_complex10_tree_clash_is_gone_and_the_failure_is_honest():
+    """The 36T adder COMPLEX regression: the router must never again
+    report the phantom power-vs-signal build clash on the tree-arranged
+    placement; whatever failure remains is the honest plateau/BFS note
+    with the structural diagnosis attached, and the width invariant
+    holds.  (The residual after the fix is REAL: statically caged gate
+    contacts under pre-built power stripes -- placement work, not a
+    terminal-derivation defect.)"""
+    nl, pl, w = _c10_state()
+    r = route_cell(nl, pl, w, {})
+    note = getattr(r, "fail_note", None) or ""
+    assert "terminal clash" not in note
+    assert r.ok or note                       # a failure is explained
+    assert r.width_cols >= max(p.end_col for p in pl.values())
+    if not r.ok:
+        # the honest-failure contract: plateau (best + unresolved) or a
+        # BFS dead end naming the structural walls
+        assert ("no conflict-free routing" in note
+                or "impossible to find a path" in note)
+
+
+def test_complex10_route_state_is_byte_stable_in_process():
+    """In-process determinism (invariant 9) on the 36T regression cell:
+    two independent route_cell calls agree byte for byte (the failure
+    digest included)."""
+    import hashlib
+    nl, pl, w = _c10_state()
+    r1 = route_cell(nl, pl, w, {})
+    r2 = route_cell(nl, pl, w, {})
+    assert (hashlib.sha256(route_signature(r1).encode()).hexdigest()
+            == hashlib.sha256(route_signature(r2).encode()).hexdigest())
+
+
+# ------------- die-view fix: no-regression pins (2026-10) ----------------
+
+def test_closures_die_view_gate_stays_silent(flow_dir):
+    """The reconstruction check (die_view's consistency gate) must stay
+    SILENT on every closing arrangement: no trail fallback, block-level
+    views byte-identical.  Guards the byte-identical closures contract."""
+    from smt_engine import die_view as dv
+
+    for sp in (INVX1_SP, INLINE_NAND2_SP):
+        nl3, pl, w, _lws, _blocks, _orderings = _slot_state(sp)
+        adjacency = dv._device_adjacency(nl3, pl)
+        views = dv._reconstruct_views(nl3, pl)
+        assert dv._map_satisfies_adjacency(
+            adjacency, dv._views_to_map(views)), sp
+        assert _shape(dv.die_orientation(nl3, pl)) == _shape(views)
+    # the library NAND2X1's speculate-selected orientation too
+    import os
+    nl3, pl, w, _lws, _blocks, _orderings = _slot_state(
+        _lib_subckt("NAND2X1", flow_dir))
+    adjacency = dv._device_adjacency(nl3, pl)
+    views = dv._reconstruct_views(nl3, pl)
+    assert dv._map_satisfies_adjacency(
+        adjacency, dv._views_to_map(views))
+    assert _shape(dv.die_orientation(nl3, pl)) == _shape(views)
+
+
+def _shape(views):
+    return tuple((v.kind, v.flipped, v.flips,
+                  tuple((m.device.name, m.left_net, m.right_net)
+                        for m in v.members))
+                 for v in views)
+
+
+def test_ctrl_complex0_m2_closure_fingerprint(flow_dir):
+    """The ctrl/COMPLEX0 heuristic-chain closure keeps its metal2
+    fingerprint: ONE m2v span + four node vias, verify clean, clean
+    static diagnosis -- the M2-freedom acceptance evidence (scratch
+    m2_acceptance.py) is unchanged by the die-view fix."""
+    import os
+    from smt_engine.verify import verify_cell
+
+    path = os.path.join(flow_dir, "outputs", "ctrl", "COMPLEX0.sp")
+    nl = CellNetlist(parse_spice_subckt(open(path).read()))
+    from bigcell_engine.engine import _heuristic_placement
+    nl3, pl, w, lws, blocks, _orderings = _heuristic_placement(nl)
+    r = route_cell(nl3, pl, w, lws)
+    assert r.ok and r.status_name == "FEASIBLE", (r.status_name,
+                                                  r.fail_note)
+    assert sorted(r.m2v.items()) == [((5, 0, 4), "cl0#Y")]
+    assert sorted(k for k, v in r.m2via.items() if v)         == [(0, 5), (1, 5), (2, 5), (4, 5)]
+    rep = verify_cell(nl3, pl, r, blocks=blocks)
+    assert rep.ok(), rep.violations
+    g = _RouteGrid(nl3, pl, w)
+    contests, walled = g.structural_diagnosis()
+    assert contests == {} and walled == []

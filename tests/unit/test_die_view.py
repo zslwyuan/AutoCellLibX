@@ -312,3 +312,193 @@ def test_access_edges_agree_with_geometry_row_edges(netlist_sp, spec):
             expected.setdefault(net, []).append(edge)
     for net, edges in expected.items():
         assert sorted(edges) == got[net], (net, edges, got[net])
+
+
+
+
+# ---------------- tree arrangements: the trail reconstruction ----------
+#
+# The block-level reconstruction models the die as an ORIENTATION of the
+# base decomposition.  Tree-coupled blocks (bigcell_engine.netlist_ext)
+# violate that model -- they rearrange WHICH device sits at which block
+# boundary -- so no orientation assignment is consistent with the die
+# and the old fixpoint silently left the members pristine, scrambling
+# net->column across the rearranged region.  That phantom built power
+# stripes on foreign signal columns and killed the whole 22-36T COMPLEX
+# class at route build time ("terminal clash at ('M1', 4, 1): cl3#Y and
+# VCC", adder/COMPLEX10 rung 3).
+
+# the exact cl3 P-row arrangement of adder/COMPLEX10 (36T), isolated:
+# the pristine decomposition of the P side is parallel
+# [Mcl3#0 (VCC|a_54), Mcl3#1 (a_54|VCC)] + single Mcl3#2 (a_54|Y); the
+# die lays out Mcl3#2@0, Mcl3#1@1, Mcl3#0@2 -- a TREE rearrangement the
+# pristine model cannot orient.  The exposed P edges are cl3#Y@0,
+# cl3#a_2_54#@1/3, VCC@2.
+CL3_SLICE = """\
+.subckt CL3SLICE VCC cl3#Y cl3#A cl3#C cl2#Y GND
+Mcl3#0 VCC cl3#A cl3#a_2_54# VCC PMOS W=1u L=0.05u
+Mcl3#1 cl3#a_2_54# cl2#Y VCC VCC PMOS W=1u L=0.05u
+Mcl3#2 cl3#Y cl3#C cl3#a_2_54# VCC PMOS W=1u L=0.05u
+Mcl3#3 cl3#a_12_6# cl3#A GND GND NMOS W=0.5u L=0.05u
+Mcl3#4 cl3#Y cl2#Y cl3#a_12_6# GND NMOS W=0.5u L=0.05u
+Mcl3#5 GND cl3#C cl3#Y GND NMOS W=0.25u L=0.05u
+.ends CL3SLICE
+"""
+
+
+def _cl3_state():
+    nl = _netlist(CL3_SLICE)
+    by = {d.name: d for d in nl.devices}
+    placement = {by["Mcl3#2"]: PlacedTransistor(0, 0, 1, 1),
+                 by["Mcl3#1"]: PlacedTransistor(0, 1, 1, 1),
+                 by["Mcl3#0"]: PlacedTransistor(0, 2, 1, 1),
+                 by["Mcl3#5"]: PlacedTransistor(1, 0, 1, 1),
+                 by["Mcl3#4"]: PlacedTransistor(1, 1, 1, 1),
+                 by["Mcl3#3"]: PlacedTransistor(1, 2, 1, 1)}
+    return nl, placement
+
+
+def test_tree_arrangement_reconstructed_from_trails():
+    """The cl3 tree arrangement (adder/COMPLEX10's phantom-clash block)
+    must reconstruct the die truth: cl3#Y@0, cl3#a_2_54#@1/3, VCC@2 on
+    the P row.  The pristine-model reconstruction flipped the parallel
+    pair instead and put cl3#Y@1 (against VCC@1) -- the phantom."""
+    nl, placement = _cl3_state()
+    mapping = die_orientation_map(nl, placement)
+    assert mapping["Mcl3#2"] == ("cl3#Y", "cl3#a_2_54#")
+    assert mapping["Mcl3#1"] == ("cl3#a_2_54#", "VCC")
+    assert mapping["Mcl3#0"] == ("VCC", "cl3#a_2_54#")
+    # the N-row chain (no rearrangement) comes out equally true through
+    # the same trail solve
+    assert mapping["Mcl3#5"] == ("GND", "cl3#Y")
+    assert mapping["Mcl3#4"] == ("cl3#Y", "cl3#a_12_6#")
+    assert mapping["Mcl3#3"] == ("cl3#a_12_6#", "GND")
+
+
+def test_tree_arrangement_slot_access_edges():
+    """The mandated edge set: cl3#Y@0, cl3#a_2_54#@1/3, VCC@2 (P row);
+    N row GND@0/3, cl3#Y@1, cl3#a_12_6#@2."""
+    nl, placement = _cl3_state()
+    sig, power = die_slot_access_points(nl, placement)
+    by = {d.name: d for d in nl.devices}
+    assert sig["cl3#Y"] == [(0, by["Mcl3#2"]), (1, by["Mcl3#5"])]
+    # the shared edge slot @1 keeps its first (leftmost) device
+    assert sig["cl3#a_2_54#"] == [(1, by["Mcl3#2"]), (3, by["Mcl3#0"])]
+    assert power["VCC"] == [(2, by["Mcl3#1"])]
+    assert power["GND"] == [(0, by["Mcl3#5"]), (3, by["Mcl3#3"])]
+    # the #4|#3 junction is a single internal slot: electrically
+    # complete through diffusion, no access point
+    assert "cl3#a_12_6#" not in sig
+
+
+def test_tree_reconstruction_is_deterministic():
+    nl, placement = _cl3_state()
+    assert (die_orientation_map(nl, placement)
+            == die_orientation_map(nl, placement))
+    assert (die_slot_access_points(nl, placement)
+            == die_slot_access_points(nl, placement))
+
+
+def test_consistent_placement_ignores_blocks_arg():
+    """On every placement the pristine model explains (all exact-engine
+    placements, all non-tree slot placements) the reconstruction is
+    returned untouched even when a (possibly wrong) blocks view is
+    supplied -- the router/verifier agreement contract: smt_engine.verify
+    derives its slot-model requirements from a blocks-less call, so the
+    blocks argument may only ever change the fallback's answer."""
+    nl = _netlist(MIRROPAR)
+    by = {d.name: d for d in nl.devices}
+    placement = {by["MpA"]: PlacedTransistor(0, 3, 1, 3),
+                 by["MpB"]: PlacedTransistor(0, 0, 1, 3),
+                 by["MnA"]: PlacedTransistor(1, 0, 1, 3),
+                 by["MnB"]: PlacedTransistor(1, 3, 1, 3)}
+    from smt_engine.netlist import build_diffusion_blocks
+    pristine_blocks = build_diffusion_blocks(nl)
+    without = die_orientation(nl, placement)
+    with_blocks = die_orientation(nl, placement, blocks=pristine_blocks)
+    assert _shape(without) == _shape(with_blocks)
+
+
+def test_blocks_view_resolves_a_die_ambiguous_single():
+    """In a tree-arranged strip (the fallback fires) a trailing single
+    whose flip no adjacency constraint pins stays pristine on the
+    default trail path -- the documented die-invisible convention -- but
+    a supplied orientation-aware block view (engine meta["blocks"])
+    carries the true flip.  A partial or duplicated view is rejected
+    wholesale (falls back to the trail), never half-applied."""
+    nl = _netlist("""\
+.subckt AMBTREE VCC Q S Y A GND
+Mp0 a A VCC VCC PMOS W=0.5u L=0.05u
+Mp1 VCC A a VCC PMOS W=0.5u L=0.05u
+Ms Y A a VCC PMOS W=0.5u L=0.05u
+MpX VCC A S VCC PMOS W=0.5u L=0.05u
+Mn Y A GND GND NMOS W=0.5u L=0.05u
+.ends AMBTREE
+""")
+    by = {d.name: d for d in nl.devices}
+    placement = {by["Ms"]: PlacedTransistor(0, 0, 1, 1),
+                 by["Mp1"]: PlacedTransistor(0, 1, 1, 1),
+                 by["Mp0"]: PlacedTransistor(0, 2, 1, 1),
+                 by["MpX"]: PlacedTransistor(0, 4, 1, 1),
+                 by["Mn"]: PlacedTransistor(1, 0, 1, 1)}
+    # the pristine model cannot orient the pair+single rearrangement:
+    # the fallback fires ...
+    from smt_engine import die_view as dv
+    adjacency = dv._device_adjacency(nl, placement)
+    assert not dv._map_satisfies_adjacency(
+        adjacency, dv._views_to_map(dv._reconstruct_views(nl, placement)))
+    # ... and the die-unknowable trailing single stays pristine
+    assert die_orientation_map(nl, placement)["MpX"] == ("S", "VCC")
+    # the true view (engine meta["blocks"]) knows the flip
+    from smt_engine.netlist import BlockMember, DiffusionBlock
+    true_blocks = [
+        DiffusionBlock("single", [BlockMember(by["Ms"], "Y", "a")]),
+        DiffusionBlock("single", [BlockMember(by["Mp1"], "a", "VCC")]),
+        DiffusionBlock("single", [BlockMember(by["Mp0"], "VCC", "a")]),
+        DiffusionBlock("single", [BlockMember(by["MpX"], "VCC", "S")]),
+        DiffusionBlock("single", [BlockMember(by["Mn"], "GND", "Y")]),
+    ]
+    mapping = die_orientation_map(nl, placement, blocks=true_blocks)
+    assert mapping["MpX"] == ("VCC", "S")
+    # the die-determined part is identical under both paths
+    for name in ("Ms", "Mp0", "Mp1"):
+        assert mapping[name] == die_orientation_map(nl, placement)[name]
+    # a partial view (missing Mn) is refused: the default view comes back
+    partial = true_blocks[:4]
+    assert (die_orientation_map(nl, placement, blocks=partial)
+            == die_orientation_map(nl, placement))
+
+
+def test_exact_engine_interleaved_rows_are_separate_strips():
+    """The exact engine interleaves P and N devices in ONE placement row
+    (overlapping x-ranges, disjoint y-strips).  Diffusion adjacency must
+    key on (row, is_p) -- facing terminals of DIFFERENT strips never
+    touch, so the P/N pairs sharing a column carry no constraint and the
+    reconstruction stays byte-identical on exact-engine placements."""
+    nl = _netlist("""\
+.subckt NAND3 VCC Y A B C GND
+MpA Y A VCC VCC PMOS W=0.5u L=0.05u
+MpB Y B VCC VCC PMOS W=0.5u L=0.05u
+MpC Y C VCC VCC PMOS W=0.5u L=0.05u
+MnA n1 A GND GND NMOS W=0.5u L=0.05u
+MnB n2 B n1 GND NMOS W=0.5u L=0.05u
+MnC Y C n2 GND NMOS W=0.5u L=0.05u
+.ends NAND3
+""")
+    by = {d.name: d for d in nl.devices}
+    # P and N devices share row 0 and overlap in x: MpA/MnA both @0-2
+    placement = {by["MpA"]: PlacedTransistor(0, 0, 1, 3),
+                 by["MpB"]: PlacedTransistor(0, 3, 1, 3),
+                 by["MpC"]: PlacedTransistor(0, 6, 1, 3),
+                 by["MnA"]: PlacedTransistor(0, 0, 1, 3),
+                 by["MnB"]: PlacedTransistor(0, 3, 1, 3),
+                 by["MnC"]: PlacedTransistor(0, 6, 1, 3)}
+    from smt_engine import die_view as dv
+    adjacency = dv._device_adjacency(nl, placement)
+    # the strips abut within their own type only
+    assert all(a.is_p == b.is_p for a, b, _eq in adjacency)
+    # the reconstruction is consistent (gate silent) and returned as-is
+    views = dv._reconstruct_views(nl, placement)
+    mapping = dv._views_to_map(views)
+    assert dv._map_satisfies_adjacency(adjacency, mapping)
+    assert _shape(die_orientation(nl, placement)) == _shape(views)

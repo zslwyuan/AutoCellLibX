@@ -24,6 +24,31 @@ pure and deterministic (AGENTS.md invariants 8/9):
   makes the same assumption (so the router and the verifier always
   agree, even there).
 
+The reconstruction above models the die as an ORIENTATION of the base
+smt_engine.netlist decomposition.  Tree-coupled arrangements
+(bigcell_engine.netlist_ext's "tree" blocks) violate that model: the
+tree rearranges WHICH device sits at which block boundary, so no
+orientation assignment of the pristine decomposition is consistent with
+the die -- the abutment constraints contradict each other and the
+fixpoint silently leaves the members pristine, scrambling net->column
+across the rearranged region (the phantom "terminal clash at
+('M1', 4, 1): cl3#Y and VCC" that blocked the 22-36T COMPLEX class).
+The reconstruction therefore CHECKS its own output against the die's
+device-level adjacency (facing nets equal across a 0 gap / different
+across a break) and, when the pristine model cannot explain the die,
+falls back to a TRAIL reconstruction: per-device orientation unknowns
+over the device's own {source, drain} terminals, pinned by the same
+adjacency constraints -- which the rearrangement's shared internal
+edges pin exactly where the die can distinguish them.  Callers holding
+the orientation-aware block view the placement was actually built from
+(bigcell_engine.engine meta["blocks"]) can pass it as ``blocks``: it is
+consulted ONLY in the fallback, replacing the trail solution with the
+exact die state -- on every placement the pristine model explains (all
+exact-engine placements, all non-tree slot placements) the historical
+reconstruction is returned untouched, so routes stay byte-identical and
+the router and the verifier keep seeing the same view even where the
+die cannot distinguish a single's flip.
+
 Consumers: bigcell_engine.route_grid (terminal slots on the die
 orientation) and smt_engine.verify (orientation-aware diffusion access
 points); both must see the SAME view for the same placement, which is
@@ -46,15 +71,20 @@ class DieBlockView(object):
 
     ``members`` are the block's BlockMembers reordered the way the die
     lays them out; ``flipped`` is True (mirrored), False (pristine) or
-    None (the die cannot distinguish -- pristine assumed).
+    None (the die cannot distinguish -- pristine assumed).  ``flips``
+    optionally carries PER-MEMBER flips (aligned with ``members``) for
+    the trail reconstruction, where a rearranged block's members need
+    not all face the same way; None means "use ``flipped`` for every
+    member" (the historical block-level behaviour).
     """
 
-    __slots__ = ("block", "members", "flipped")
+    __slots__ = ("block", "members", "flipped", "flips")
 
-    def __init__(self, block, members, flipped):
+    def __init__(self, block, members, flipped, flips=None):
         self.block = block
         self.members = list(members)
         self.flipped = flipped
+        self.flips = list(flips) if flips is not None else None
 
     @property
     def kind(self):
@@ -75,14 +105,63 @@ def is_slot_placement(placement):
         p.leg_width_cols == 1 for p in placement.values())
 
 
-def die_orientation(netlist, placement, break_cols=DEFAULT_BREAK_COLS):
+def die_orientation(netlist, placement, break_cols=DEFAULT_BREAK_COLS,
+                    blocks=None):
     """Per-block die view: [DieBlockView] in build_diffusion_blocks order.
 
     Pure and deterministic: constraints are visited in a fixed sorted
     order, every pin is permanent, and the joint enumeration of the
     remaining unknowns takes the pristine-first vector (per block index
     order).  Identical inputs give an identical output (invariant 9).
+
+    The reconstruction models the die as an orientation of the base
+    decomposition; its output is CHECKED against the die's device-level
+    adjacency (facing nets equal across a 0 gap, different across a
+    break).  On the pass -- every exact-engine placement and every
+    non-tree slot placement -- the historical result is returned
+    untouched (byte-identical).  On the fail (the placement is a TREE
+    arrangement no orientation of the pristine decomposition explains)
+    the view is rebuilt: from ``blocks`` -- the orientation-aware view
+    the placement was actually built from, whose members already carry
+    their die edge nets -- when supplied, else from the device TRAILS
+    (:func:`_trail_views`).
     """
+    blocks = _check_blocks_arg(netlist, placement, blocks)
+    views = _reconstruct_views(netlist, placement, break_cols)
+    adjacency = _device_adjacency(netlist, placement, break_cols)
+    if _map_satisfies_adjacency(adjacency, _views_to_map(views)):
+        return views
+    if blocks is not None:
+        return _blocks_views(blocks, placement)
+    return _trail_views(netlist, placement, break_cols)
+
+
+def _check_blocks_arg(netlist, placement, blocks):
+    """The orientation-aware block view, or None.
+
+    Accepted: any iterable of DiffusionBlock-compatible objects covering
+    exactly the netlist's devices once (bigcell_engine.engine's
+    meta["blocks"], list(ordering_p) + list(ordering_n)).  Anything else
+    (None, or a view that does not cover the placement's devices) falls
+    back to the trail reconstruction -- a partial view would silently
+    drop devices from the orientation map.
+    """
+    if (blocks is None):
+        return None
+    blocks = list(blocks)           # materialize: consumed twice below
+    seen = set()
+    for blk in blocks:
+        for member in blk.members:
+            if (member.device.name in seen):
+                return None             # not a total decomposition
+            seen.add(member.device.name)
+    if (seen != {d.name for d in netlist.devices}):
+        return None
+    return blocks
+
+
+def _reconstruct_views(netlist, placement, break_cols=DEFAULT_BREAK_COLS):
+    """The historical block-level reconstruction (see die_orientation)."""
     blocks = build_diffusion_blocks(netlist)
     flipped = []                      # block index -> True / False / None
     die_members = []                  # block index -> members in die order
@@ -176,19 +255,189 @@ def die_orientation(netlist, placement, break_cols=DEFAULT_BREAK_COLS):
             for idx in range(len(blocks))]
 
 
-def die_orientation_map(netlist, placement, break_cols=DEFAULT_BREAK_COLS):
-    """{device name: (die_left_net, die_right_net)} per die_orientation."""
+def _device_adjacency(netlist, placement, break_cols=DEFAULT_BREAK_COLS):
+    """The die's device-level abutment constraints: sorted
+    [(left_dev, right_dev, equal)] over each diffusion strip's devices
+    ordered by start_col, where the inter-device gap is 0 (facing
+    terminals sit on ONE shared diffusion node: nets equal) or
+    ``break_cols`` (a diffusion break: nets differ).  Wider gaps carry
+    no information.  Strips key on (row, is_p): the exact engine
+    interleaves P and N devices in one placement row (overlapping
+    x-ranges, disjoint y-strips), so ``row`` alone is not a strip.
+    Deterministic: strips in sorted order, devices by (start_col, name).
+    """
+    strips = {}
+    for dev in netlist.devices:
+        p = placement[dev]
+        strips.setdefault((p.row, dev.is_p), []).append(dev)
+    adjacency = []
+    for strip in sorted(strips):
+        devs = sorted(strips[strip],
+                      key=lambda d: (placement[d].start_col, d.name))
+        for a, b in zip(devs, devs[1:]):
+            gap = placement[b].start_col - placement[a].end_col
+            if gap == 0 or gap == break_cols:
+                adjacency.append((a, b, gap == 0))
+    return adjacency
+
+
+def _map_satisfies_adjacency(adjacency, mapping):
+    """Whether every device adjacency holds under the orientation map."""
+    for a, b, equal in adjacency:
+        if ((mapping[a.name][1] == mapping[b.name][0]) != equal):
+            return False
+    return True
+
+
+def _views_to_map(views):
+    """{device name: (die_left_net, die_right_net)} from DieBlockViews."""
     mapping = {}
-    for view in die_orientation(netlist, placement, break_cols):
-        for member in view.members:
+    for view in views:
+        for i, member in enumerate(view.members):
+            flip = (view.flips[i] if view.flips is not None
+                    else view.flipped)
             mapping[member.device.name] = (
-                (member.right_net, member.left_net) if view.flipped
+                (member.right_net, member.left_net) if flip
                 else (member.left_net, member.right_net))
     return mapping
 
 
+def _blocks_views(blocks, placement):
+    """Die views straight from the orientation-aware block view.
+
+    The refined orderings' blocks carry each member's DIE edge nets in
+    die order (place_row laid the members out in member-list order), so
+    every view is unflipped as carried; members are re-sorted by
+    start_col defensively (a no-op for place_row-built orderings).
+    """
+    views = []
+    for blk in blocks:
+        die = sorted(blk.members,
+                     key=lambda m: (placement[m.device].start_col,
+                                    m.device.name))
+        views.append(DieBlockView(blk, die, False))
+    return views
+
+
+def _trail_views(netlist, placement, break_cols=DEFAULT_BREAK_COLS):
+    """Die views rebuilt from the device TRAILS (the fallback for tree
+    arrangements the pristine decomposition cannot orient).
+
+    Drops the block-membership fiction entirely: every device is one
+    binary unknown (which of ITS OWN {source, drain} terminals faces
+    left -- the pristine BlockMember orientation supplies the reference
+    order), constrained by :func:`_device_adjacency` exactly like the
+    block-level singles.  The rearrangement's shared internal edges are
+    gap-0 equalities that pin the trail members relative to each other,
+    so the die-determined part of the arrangement reconstructs TRUE
+    where the block-level model cannot even express it.
+
+    The adjacency graph is a union of paths (only column-consecutive
+    devices are constrained), so each component is solved EXACTLY by a
+    backward-feasibility DP followed by a forward greedy walk: the
+    lexicographically-first satisfying assignment in column order,
+    pristine orientation first per device.  A component with no
+    satisfying assignment (a die no orientation explains -- cannot come
+    out of place_row) keeps every member pristine, deterministically.
+    Devices no constraint touches stay pristine too (the shared
+    die-invisible convention).
+
+    Views come out in build_diffusion_blocks order with members in die
+    order and PER-MEMBER flips (a rearranged block's members need not
+    all face the same way); the block-level ``flipped`` is None there.
+    """
+    blocks = build_diffusion_blocks(netlist)
+    pristine = {}                     # device name -> (left, right) pristine
+    for blk in blocks:
+        for member in blk.members:
+            pristine[member.device.name] = (member.left_net,
+                                            member.right_net)
+    adjacency = _device_adjacency(netlist, placement, break_cols)
+
+    def die_nets(name, flip):
+        left, right = pristine[name]
+        return (right, left) if flip else (left, right)
+
+    def options(prev_name, prev_flip, name, equal):
+        """Flips of ``name`` satisfying the (prev, name) adjacency."""
+        need = die_nets(prev_name, prev_flip)[1]
+        return [flip for flip in (False, True)
+                if (die_nets(name, flip)[0] == need) == equal]
+
+    flipped = dict.fromkeys(sorted(pristine), None)
+    # components of the adjacency graph, in path (column) order: the
+    # constraints couple column-consecutive devices only, so walking
+    # each strip's sorted device list splits it into maximal runs
+    strips = {}
+    for dev in netlist.devices:
+        p = placement[dev]
+        strips.setdefault((p.row, dev.is_p), []).append(dev)
+    for strip in sorted(strips):
+        devs = sorted(strips[strip],
+                      key=lambda d: (placement[d].start_col, d.name))
+        by_name = {d.name: d for d in devs}
+        cons = {}
+        for a, b, equal in adjacency:
+            if a.name in by_name:               # same strip by construction
+                cons[(a.name, b.name)] = equal
+        run = []                                # (device, next-constraint)
+        for d in devs:
+            if run and (run[-1][0].name, d.name) not in cons:
+                _trail_solve_run(run, cons, options, flipped)
+                run = []
+            run.append((d, cons.get((run[-1][0].name, d.name))
+                        if run else None))
+        if run:
+            _trail_solve_run(run, cons, options, flipped)
+    views = []
+    for blk in blocks:
+        die = sorted(blk.members,
+                     key=lambda m: (placement[m.device].start_col,
+                                    m.device.name))
+        flips = [bool(flipped[m.device.name]) for m in die]
+        views.append(DieBlockView(blk, die, None, flips))
+    return views
+
+
+def _trail_solve_run(run, cons, options, flipped):
+    """Solve one maximal constraint path; internal to _trail_views.
+
+    ``run`` is [(device, constraint-to-predecessor)] in column order
+    (the first entry's constraint is None).  Backward feasibility per
+    flip, then the forward greedy walk taking the pristine orientation
+    wherever both remain feasible -- the lexicographically-first
+    satisfying assignment, deterministic (invariant 9).  A run with no
+    satisfying assignment keeps every member pristine.
+    """
+    names = [d.name for d, _c in run]
+    feas = [None] * len(names)                  # index -> {flip: bool}
+    feas[-1] = {False: True, True: True}
+    for i in range(len(names) - 2, -1, -1):
+        equal = cons[(names[i], names[i + 1])]
+        feas[i] = {f: any(feas[i + 1][g]
+                          for g in options(names[i], f, names[i + 1], equal))
+                   for f in (False, True)}
+    if not (feas[0][False] or feas[0][True]):
+        return                    # unorientable die: pristine (shared rule)
+    # pristine orientation unless the first constraint rejects it
+    flipped[names[0]] = False if feas[0][False] else True
+    for i in range(len(names) - 1):
+        equal = cons[(names[i], names[i + 1])]
+        opts = options(names[i], flipped[names[i]], names[i + 1], equal)
+        flip = next(g for g in (False, True)
+                    if g in opts and feas[i + 1][g])
+        flipped[names[i + 1]] = flip
+
+
+def die_orientation_map(netlist, placement, break_cols=DEFAULT_BREAK_COLS,
+                        blocks=None):
+    """{device name: (die_left_net, die_right_net)} per die_orientation."""
+    return _views_to_map(die_orientation(netlist, placement, break_cols,
+                                         blocks))
+
+
 def die_slot_access_points(netlist, placement,
-                           break_cols=DEFAULT_BREAK_COLS):
+                           break_cols=DEFAULT_BREAK_COLS, blocks=None):
     """Slot-model diffusion access points on the DIE orientation.
 
     Returns ({signal_net: [(edge_col, device)]},
@@ -208,7 +457,8 @@ def die_slot_access_points(netlist, placement,
     (column, device name).
     """
     exposed = exposed_net_set(netlist)
-    orientation = die_orientation_map(netlist, placement, break_cols)
+    orientation = die_orientation_map(netlist, placement, break_cols,
+                                      blocks)
     signal = {}
     power = {}
     rows = sorted({p.row for p in placement.values()})

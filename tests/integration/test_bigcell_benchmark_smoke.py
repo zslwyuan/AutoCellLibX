@@ -22,6 +22,9 @@ def _pick(cells, sources):
 
 
 def test_benchmark_end_to_end_exact_rung(in_flow, tmp_path):
+    """End-to-end through the ladder's narrowest-closing policy: rung 1
+    closes as a candidate, the slot chain wins on width, and the report
+    carries the slot-model artifacts with a same-semantics ratio."""
     cells = _pick(load_benchmark_cells(),
                   ["outputs/pdk_drc/inv.sp", "outputs/pdk_drc/nand2.sp"])
     out = os.path.join(str(tmp_path), "bench")
@@ -30,7 +33,7 @@ def test_benchmark_end_to_end_exact_rung(in_flow, tmp_path):
     recs = {r["source"]: r for r in report["cells"]}
     for src, rec in recs.items():
         assert rec["status"] == "ok", (src, rec.get("note"))
-        assert rec["engine"] == "smt-exact"
+        assert rec["engine"] == "bigcell-full"
         assert rec["python_um"] and rec["python_um"] > 0
         assert rec["astran_um"] is None and \
             report["summary"]["baselines"]["missing_or_failed"] == 2
