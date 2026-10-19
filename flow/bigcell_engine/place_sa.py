@@ -121,6 +121,37 @@ applies it at three points:
   (:func:`alignment_candidates` ``netlist``) -- pinned to the rank TAIL
   because the ctrl/COMPLEX0 M2-fingerprint closure rides a
   census-caged nominee.
+
+Dual-basin pool (bench_int5 -> bench_int6 restoration): the steering is
+a DIFFERENT SEARCH BASIN, not a strict improvement -- where it lands
+well it wins (adder/COMPLEX1's zero-caged arrangement, the round-6
+gains), but the pool of a steered chain no longer contains the
+pure-cost (legacy) arrangements, so any cell whose closure lives in the
+legacy basin loses its candidate.  Both basins therefore join the pool
+of a steered chain:
+
+- the MAIN refine runs twice -- ``cage=True`` (the steered head, pool
+  priority unchanged) and ``cage=False`` (the pure ASTRAN cost); the
+  legacy best becomes fixed-pool classes (``best-legacy`` plus its
+  proven both-rows flip / die-mirror), ranked AFTER the ten steered
+  fixed classes and BEFORE the flip combinations, so a cell closing in
+  the steered head's classes is unaffected and a cell closing in the
+  legacy basin gets its candidate back;
+- the decomposition VARIANTS get legacy twins as a lazy THIRD phase:
+  phase 2a trials the steered-refined variant classes exactly as today
+  (every current closure rides it untouched); only when phase 2a finds
+  no FEASIBLE candidate do the ``cage=False``-refined twins
+  (``var:<name>-legacy`` and its proven mirrors) join -- the pure-cost
+  arrangement of each alternative decomposition.
+
+Selection stays trial-driven and basin-blind: the first FEASIBLE
+cage-free candidate in pool order wins, a FEASIBLE-but-caged candidate
+can only be beaten by a cage-free FEASIBLE one (never by a plateau),
+and a legacy-basin FEASIBLE therefore always outranks a steered
+plateau.  The added refines reuse agent E's size-aware budgets
+verbatim; on cells above _VARIANT_SA_PROBLEM_CAP the variant twins
+degenerate to the euler seed and dedupe away, so the doubling cost is
+the MAIN refine (measured in the bench reports).
 """
 
 import hashlib
@@ -1312,7 +1343,7 @@ def decomposition_variant_classes(netlist, leg_widths,
                                   variant_names=DECOMPOSITION_VARIANTS,
                                   sa_iterations=VARIANT_SA_ITERATIONS,
                                   align_limit=ALIGN_CANDIDATES,
-                                  cage=False):
+                                  cage=False, basin="steered"):
     """The per-variant candidate classes for the speculate pool.
 
     For every decomposition variant (netlist_ext.BLOCK_VARIANTS minus
@@ -1331,6 +1362,14 @@ def decomposition_variant_classes(netlist, leg_widths,
         3. up to ``align_limit`` alignment nominees
            ("var:<name>-align<j>") from :func:`alignment_candidates`.
 
+    ``basin`` picks the refine's cost: "steered" refines with the
+    ``cage`` flag (the production chain's cage term when True), "legacy"
+    always refines with the pure ASTRAN cost (``cage=False``) and
+    suffixes every kind with "-legacy" -- the dual-basin twins of a
+    steered chain (see :func:`sa_refine_routable`).  On cells above
+    _VARIANT_SA_PROBLEM_CAP both basins nominate the same euler seed, so
+    the legacy twins dedupe away at zero cost.
+
     Variants whose block shape equals the default decomposition's are
     skipped outright (their whole ordering space is the main pool's --
     the classes would only dedupe away).  Deduped internally by
@@ -1341,6 +1380,11 @@ def decomposition_variant_classes(netlist, leg_widths,
                                             build_bigcell_blocks,
                                             row_seeds)
     from bigcell_engine.place_euler import euler_orderings
+    if basin == "legacy":
+        cage = False
+    elif basin != "steered":
+        raise ValueError("unknown basin %r" % (basin,))
+    suffix = "" if basin == "steered" else "-legacy"
     default_shape = _block_shape(build_bigcell_blocks(netlist))
     out = []
     seen = set()
@@ -1360,10 +1404,10 @@ def decomposition_variant_classes(netlist, leg_widths,
                                     cage=cage)
         else:
             bp, bn = eop, eon
-        classes = [("var:%s" % name, bp, bn),
-                   ("var:%s-flip-both" % name,
+        classes = [("var:%s%s" % (name, suffix), bp, bn),
+                   ("var:%s%s-flip-both" % (name, suffix),
                     _row_flipped(bp), _row_flipped(bn)),
-                   ("var:%s-die-both" % name,
+                   ("var:%s%s-die-both" % (name, suffix),
                     _row_die_mirror(bp), _row_die_mirror(bn))]
         for j, (op, on) in enumerate(
                 alignment_candidates(p_blocks, n_blocks, leg_widths,
@@ -1371,7 +1415,8 @@ def decomposition_variant_classes(netlist, leg_widths,
                                      pair_cap=_alignment_pair_cap(
                                          problem_size),
                                      netlist=netlist), start=1):
-            classes.append(("var:%s-align%d" % (name, j), op, on))
+            classes.append(("var:%s%s-align%d" % (name, suffix, j),
+                            op, on))
         for kind, op, on in classes:
             sig = ordering_signature(op, on)
             if sig in seen:
@@ -1381,9 +1426,15 @@ def decomposition_variant_classes(netlist, leg_widths,
     return out
 
 
+#: classes added to the fixed pool for the legacy basin (best + its two
+#: proven both-rows mirrors) when a steered chain runs the dual refine
+LEGACY_BASIN_CLASSES = 3
+
+
 def generate_candidates(best_p, best_n, seed_p, seed_n, leg_widths,
                         candidate_count=DEFAULT_CANDIDATES,
-                        extra_classes=None, netlist=None):
+                        extra_classes=None, netlist=None,
+                        legacy_best=None):
     """The deterministic top-K candidate pool (speculate stage, step 1).
 
     ``best_p``/``best_n`` are the SA cost-best orderings;
@@ -1397,14 +1448,21 @@ def generate_candidates(best_p, best_n, seed_p, seed_n, leg_widths,
        class);
     3. single-row flip / die-mirror variants;
     4. the seed ordering and its flip / die-mirror variants;
-    5. further per-block flip combinations of the SA best, ranked by
+    5. with ``legacy_best`` (the ``cage=False`` refine's best of a
+       dual-basin chain, see :func:`sa_refine_routable`): the
+       legacy-basin specimen ``best-legacy`` and its proven both-rows
+       flip / die-mirror -- ranked AFTER the ten steered fixed classes
+       and BEFORE the flip combinations, so a steered-head closure is
+       unaffected and a legacy-basin closure gets its candidate back
+       (bench_int5 -> bench_int6 restoration);
+    6. further per-block flip combinations of the SA best, ranked by
        SA cost then lexicographic bit order (only below the fixed
        classes when ``candidate_count`` allows, and only when
        2**(nP+nN) <= _MAX_FLIP_COMBOS).  With ``netlist`` given the
        cost is the cage-aware total (:func:`_SAState`), so the
        combinations sort cage-free-first -- the flip space is where a
        cage-free orientation of the SA basin most often lives;
-    6. ``extra_classes`` -- pre-built (kind, ordering_p, ordering_n)
+    7. ``extra_classes`` -- pre-built (kind, ordering_p, ordering_n)
        entries appended after the flip combinations and deduped like
        every class (the decomposition-variant classes of
        :func:`decomposition_variant_classes`; the ``candidate_count``
@@ -1428,6 +1486,15 @@ def generate_candidates(best_p, best_n, seed_p, seed_n, leg_widths,
         ("seed-flip-both", _row_flipped(seed_p), _row_flipped(seed_n)),
         ("seed-die-both", _row_die_mirror(seed_p), _row_die_mirror(seed_n)),
     ]
+    if legacy_best is not None:
+        leg_p, leg_n = list(legacy_best[0]), list(legacy_best[1])
+        pool.extend([
+            ("best-legacy", leg_p, leg_n),
+            ("best-legacy-flip-both",
+             _row_flipped(leg_p), _row_flipped(leg_n)),
+            ("best-legacy-die-both",
+             _row_die_mirror(leg_p), _row_die_mirror(leg_n)),
+        ])
     n_blocks = len(best_p) + len(best_n)
     if 2 ** n_blocks <= _MAX_FLIP_COMBOS:
         combos = []
@@ -1485,7 +1552,7 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
                      candidate_count=DEFAULT_CANDIDATES,
                      trial_attempts=DEFAULT_TRIAL_ATTEMPTS,
                      trial_router=None, variant_classes=False,
-                     cage=False):
+                     cage=False, legacy_best=None):
     """Speculate stage (doc section 2.2 "Composition"): score the
     candidate pool by a fast trial route and pick the winner.
 
@@ -1525,7 +1592,17 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
     alternative decompositions join as a lazy second phase (a cell that
     closes in the fixed classes never pays for them).  Variants rank
     exactly like the mirror classes.  ``cage`` steers the variant
-    refines' SA cost (see :func:`sa_refine`).  Candidates are deduped
+    refines' SA cost (see :func:`sa_refine`).  ``legacy_best`` (the
+    ``cage=False`` refine's best of a dual-basin chain) joins the
+    legacy-basin specimen to the fixed pool (``best-legacy`` and its
+    proven both-rows mirrors, after the steered fixed classes) and, on
+    a steered chain whose steered classes leave no cage-free FEASIBLE
+    winner, runs the
+    lazy third phase: the ``cage=False``-refined variant twins
+    (``var:<name>-legacy`` ...).  The selection policy is basin-blind:
+    a legacy-basin FEASIBLE beats every steered plateau, and the cage
+    rank only ever breaks ties BETWEEN feasible candidates.  Candidates
+    are deduped
     by :func:`ordering_signature` (content-only: two decompositions
     producing the same ordering route identically, so one trial
     covers both; the report's ``kind`` carries the first occurrence's
@@ -1550,7 +1627,8 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
             [m.device for row in (best_p, best_n, seed_p, seed_n)
              for b in row for m in b.members])
     pool = generate_candidates(best_p, best_n, seed_p, seed_n, leg_widths,
-                               candidate_count, netlist=netlist)
+                               candidate_count, netlist=netlist,
+                               legacy_best=legacy_best)
     from bigcell_engine.geometry import layout_cell
     entries = []
     fallback = None               # (conflicts, cage, cost, index) -> entry
@@ -1638,7 +1716,31 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
             won = _keep(entry, pool[idx][1], pool[idx][2])
             if won is not None:
                 return won
-    winner = feasible[1] if feasible is not None else fallback[1]
+        # phase 3 (dual-basin chains only): the legacy-refined variant
+        # twins.  Fired only when the steered classes left no cage-free
+        # FEASIBLE winner -- every cell closing in phases 1/2 keeps its
+        # exact pool, trials and selection (the ctrl/COMPLEX0
+        # M2-fingerprint contract); a plateau cell gets the pure-cost
+        # arrangement of each alternative decomposition as a candidate.
+        # On a cage=False chain the twins would refine identically, so
+        # the phase is gated on the steering.
+        if cage and legacy_best is not None and \
+                (feasible is None or feasible["cage"] > 0):
+            extra = decomposition_variant_classes(netlist, leg_widths,
+                                                  cage=cage,
+                                                  basin="legacy")
+            for kind, op, on in extra:
+                if ordering_signature(op, on) in known:
+                    continue
+                known.add(ordering_signature(op, on))
+                pool.append((kind, op, on))
+            for idx in range(len(entries), len(pool)):
+                entry = _trial(idx)
+                won = _keep(entry, pool[idx][1], pool[idx][2])
+                if won is not None:
+                    return won
+    # feasible tracks the ENTRY dict; fallback tracks (key, entry)
+    winner = feasible if feasible is not None else fallback[1]
     op, on = pool[winner["index"]][1], pool[winner["index"]][2]
     return _won(winner, op, on)
 
@@ -1684,9 +1786,17 @@ def sa_refine_routable(ordering_p, ordering_n, netlist, leg_widths,
     the pure ASTRAN cost byte-for-byte -- the structural-diagnosis
     specimens are derived on THOSE arrangements and pinned so.  An
     explicit ``cage`` (True/False) overrides the binding everywhere.
-    ``cage=None`` (the default) binds the steering to the full
-    production chain (``variant_classes=True``); see the docstring
-    above.  An explicit ``cage`` overrides it.
+
+    Dual basin (bench_int5 -> bench_int6 restoration): a steered chain
+    (``cage=True``) refines the seed TWICE -- the steered cost leads
+    the pool exactly as before, and the ``cage=False`` refine's best
+    joins the fixed pool as ``best-legacy`` (plus its proven both-rows
+    mirrors) and, lazily, as the legacy twins of every decomposition
+    variant -- so a closure living in the pure-cost basin keeps its
+    candidate in the pool.  The extra refines reuse the caller's
+    budgets verbatim (agent E's size-aware variant scaling is
+    untouched); above _VARIANT_SA_PROBLEM_CAP the variant twins
+    degenerate to the euler seed and dedupe away.
     """
     if cage is None:
         cage = bool(variant_classes)
@@ -1694,11 +1804,20 @@ def sa_refine_routable(ordering_p, ordering_n, netlist, leg_widths,
         ordering_p, ordering_n, netlist, leg_widths,
         iterations=iterations, quality=quality, init_moves=init_moves,
         seed=seed, check=check, cage=cage)
+    legacy_best = None
+    eff_candidates = candidate_count
+    if cage:
+        leg_p, leg_n, _lbd = sa_refine(
+            ordering_p, ordering_n, netlist, leg_widths,
+            iterations=iterations, quality=quality, init_moves=init_moves,
+            seed=seed, check=check, cage=False)
+        legacy_best = (leg_p, leg_n)
+        eff_candidates = candidate_count + LEGACY_BASIN_CLASSES
     sel_p, sel_n, sel = select_orderings(
         cost_p, cost_n, ordering_p, ordering_n, netlist, leg_widths,
-        candidate_count=candidate_count, trial_attempts=trial_attempts,
+        candidate_count=eff_candidates, trial_attempts=trial_attempts,
         trial_router=trial_router, variant_classes=variant_classes,
-        cage=cage)
+        cage=cage, legacy_best=legacy_best)
     breakdown = _SAState(sel_p, sel_n, leg_widths).breakdown()
     breakdown["selection"] = sel
     return sel_p, sel_n, breakdown

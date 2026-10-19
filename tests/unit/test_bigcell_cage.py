@@ -23,9 +23,10 @@ columns.  This file pins
 - the per-cell acceptance evidence: adder/COMPLEX10 (36T) and
   adder/COMPLEX1 (30T) chains now produce arrangements the census calls
   cage-free -- COMPLEX1's full-budget residual is an honest corridor
-  contest only; COMPLEX10's residual is still a (net-connectivity)
-  caged gate the contact-level census cannot see -- the documented
-  exact-model M2 dual-crossover next round.
+  contest only (its selection is the dual-basin fallback winner, see
+  the chain test below); COMPLEX10's residual is still a
+  (net-connectivity) caged gate the contact-level census cannot see --
+  the documented exact-model M2 dual-crossover next round.
 
 Fast tests use ctrl/COMPLEX0 (8T) and injected trial routers; the heavy
 evidence runs the real router once per cell (module fixtures).  All
@@ -365,13 +366,26 @@ def test_adder_complex10_chain_produces_cage_free_arrangement(
 
 def test_adder_complex1_chain_fails_only_on_corridor_contests(
         complex1_evidence):
-    """The 30T cell's steered chain selects a (census-near-clean)
-    arrangement whose full-budget route fails ONLY on the honest
-    corridor contest -- no statically caged gate contact remains in the
-    residual."""
+    """The 30T cell's chain selects an arrangement whose full-budget
+    route fails ONLY on the honest corridor contest -- no statically
+    caged gate contact remains in the residual.
+
+    Updated by the dual-basin pool (bench_int5 -> bench_int6
+    restoration): the steered chain now also refines the pure ASTRAN
+    cost, and on this plateau cell the legacy-basin arrangement's
+    MEASURED floor is better than the steered one's at every budget
+    (trial 136 vs 202 conflicts, full route 125 vs 202, width 17 vs 22
+    columns), so the basin-blind (conflicts, cost, index) fallback rank
+    selects ``best-legacy-die-both`` (census cage 2) over the steered
+    ``die-both`` (census cage 1).  The residual class is unchanged:
+    corridor T3 contests only, ``walled == []`` on both -- the census
+    count is a steering heuristic, the router's diagnosis is the
+    authority."""
     _nl3, _lw, _op, _on, bd, r, walled = complex1_evidence
     sel = bd["selection"]
-    assert sel["cage"] <= 1                 # contact-level near-clean
+    assert sel["kind"] == "best-legacy-die-both"
+    assert sel["cage"] <= 2                 # contact-level near-clean
+    assert sel["conflicts"] <= 202          # the measured floor improved
     assert not r.ok
     note = getattr(r, "fail_note", None) or ""
     assert "corridor T3 over-subscribed" in note
