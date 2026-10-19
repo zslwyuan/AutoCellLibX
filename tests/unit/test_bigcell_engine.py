@@ -341,7 +341,8 @@ def test_rung25_honesty_guard_and_rung35_close(monkeypatch):
     closes through rung 3.5's whole-cell window on the slot placement."""
     import bigcell_engine.route_grid as rg
 
-    def failing_route_cell(netlist, placement, width_cols, leg_widths):
+    def failing_route_cell(netlist, placement, width_cols,
+                           leg_widths, blocks=None):
         width = max(width_cols,
                     max(p.end_col for p in placement.values())) + 1
         return _failed_shell(

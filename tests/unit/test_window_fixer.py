@@ -86,7 +86,10 @@ def _failed_shell(width, note):
 
 
 def _failing_router(note):
-    def router(netlist, placement, width_cols, leg_widths):
+    # blocks=None: the engine's rung-3 call forwards the
+    # orientation-aware view (route3 == verify's view contract)
+    def router(netlist, placement, width_cols, leg_widths,
+               blocks=None):
         width = max(width_cols,
                     max(p.end_col for p in placement.values())) + 1
         return _failed_shell(width, note)

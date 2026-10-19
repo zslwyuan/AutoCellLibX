@@ -116,8 +116,14 @@ def verify_cell(netlist, placement, route, grid_um=0.19, height_um=2.47,
     everywhere so their regions stay tied.  The derivation is the shared
     smt_engine.die_view reconstruction, so it also activates implicitly
     whenever ``blocks`` (the orientation-aware view bigcell passes) is
-    supplied for a slot-model placement -- the default path stays
-    byte-identical to the historical behaviour.
+    supplied for a slot-model placement -- and the supplied view is then
+    FORWARDED into the reconstruction, so on a tree arrangement (where
+    the pristine model fails and the reconstruction falls back) the
+    verifier derives its requirements from the exact die state the
+    router was given, not from the trail guess -- the router and the
+    verifier see the same view even there (bigcell_engine.route_grid
+    wires the same ``blocks`` into its grids).  The default path
+    (``blocks`` None) stays byte-identical to the historical behaviour.
     """
     violations = []
     trackY, barY = track_geometry(height_um, grid_um)
@@ -179,6 +185,11 @@ def verify_cell(netlist, placement, route, grid_um=0.19, height_um=2.47,
         return "M1"
 
     # ---- layout invariants ----
+    # the caller's ``blocks`` argument is captured before materialisation:
+    # the routing invariants below forward it (the caller's VIEW, None
+    # included) into the slot-model access derivation, while the layout
+    # checks here consume the materialised block list.
+    blocks_arg = blocks
     if blocks is None:
         blocks = build_diffusion_blocks(netlist)
     block_objs = blocks          # kept for orientation-aware _nets_touch
@@ -224,17 +235,20 @@ def verify_cell(netlist, placement, route, grid_um=0.19, height_um=2.47,
     # with, so the router's terminals and the verifier's requirements
     # agree even where the die cannot distinguish a single block's flip.
     # The supplied ``blocks`` stay authoritative for the LAYOUT
-    # invariants above (abutment, breaks, overlap).  A ``blocks`` view on
+    # invariants above (abutment, breaks, overlap) and are FORWARDED into
+    # the slot derivation, so its tree-arrangement fallback resolves the
+    # die from the exact view the placement was built from -- the same
+    # view route_grid's grids consume -- instead of the trail guess
+    # (router == verifier is the binding contract).  A ``blocks`` view on
     # a non-slot placement instead only re-orients the historical inset
     # walk (diffusion_access_points' blocks parameter); no ``blocks`` at
     # all keeps the byte-identical base behaviour.
-    if slot_model or (block_objs is not None
-                      and die_view.is_slot_placement(placement)):
+    if slot_model or die_view.is_slot_placement(placement):
         sig_diff, power_diff = die_view.die_slot_access_points(
-            netlist, placement)
-    elif block_objs is not None:
+            netlist, placement, blocks=blocks_arg)
+    elif blocks_arg is not None:
         sig_diff, power_diff = diffusion_access_points(
-            netlist, placement, block_objs)
+            netlist, placement, blocks_arg)
     else:
         sig_diff, power_diff = diffusion_access_points(netlist, placement)
     gate = gate_access_points(netlist, placement)

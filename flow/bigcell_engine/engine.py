@@ -119,19 +119,22 @@ def window_region(cols, route_width, max_cols=None):
                                                               route_width)
 
 
-def _plateau_partial(netlist, placement, width_cols):
+def _plateau_partial(netlist, placement, width_cols, blocks=None):
     """The router's plateaued solution, recovered deterministically.
 
     The failed RouteResult carries only the fail_note, but the window
     fixer needs the per-column stripes and outside-window segments as
     blockages.  route_grid is deterministic (AGENTS.md invariants 8/9),
-    so re-running _RouteGrid reproduces the failure state exactly; if
-    the re-run does NOT fail the same way, refuse to fix a moving
-    target.  Returns a RouteResult-shaped snapshot of the final trees
-    (build_result) or None.
+    so re-running _RouteGrid reproduces the failure state exactly -- on
+    the SAME view the failed run consumed: ``blocks`` is the
+    orientation-aware block view the rung-3 router was wired with
+    (route_cell forwards it into both of its phase grids), so the re-run
+    sees the identical graph; if the re-run does NOT fail the same way,
+    refuse to fix a moving target.  Returns a RouteResult-shaped
+    snapshot of the final trees (build_result) or None.
     """
     from bigcell_engine.route_grid import _RouteGrid
-    grid = _RouteGrid(netlist, placement, width_cols)
+    grid = _RouteGrid(netlist, placement, width_cols, blocks=blocks)
     if (grid._fail_note is not None):
         return None              # build-time failure: no plateau state
     if (grid.route()):
@@ -173,7 +176,8 @@ def _window_fix_rung(meta, rung, netlist, placement, blocks, failed_route):
         return None
     partial = None
     if (window != (0, route_width)):
-        partial = _plateau_partial(netlist, placement, route_width)
+        partial = _plateau_partial(netlist, placement, route_width,
+                                   blocks=blocks)
         if (partial is None):
             _attempt(meta, rung, _ENG_WINDOW, False, status="SKIPPED",
                      stage="routing",
@@ -550,8 +554,15 @@ def synth_cell(netlist, exact_budget_s=60.0, grid_budget_s=120.0,
 
     t0 = time.time()
     try:
+        # blocks3 (the orientation-aware view placements3 was built from)
+        # goes into the router exactly as it goes into verify_cell below:
+        # the router and the verifier must derive their slot accesses
+        # from the SAME view (route_grid threads it into both phase
+        # grids' die_view fallbacks); on every placement the pristine
+        # reconstruction explains, the route is byte-identical to the
+        # blocks-less run.
         route3 = _default_grid_router()(netlist3, placements3, width3,
-                                        leg_widths3)
+                                        leg_widths3, blocks=blocks3)
     except NotImplementedError as exc:
         _attempt(meta, 3, _ENG_FULL, False, status="UNAVAILABLE",
                  note=str(exc) or "router stub", seconds=time.time() - t0)
