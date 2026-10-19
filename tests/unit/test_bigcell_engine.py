@@ -61,10 +61,15 @@ def test_boundary_constants_and_logic():
 # --- rung 1 closes for real (tiny cell, real solve) ---------------------
 
 def test_exact_rung_closes_and_meta_records_attempts():
+    """Rung-1 success is a CANDIDATE under the narrowest-closing policy:
+    the ladder evaluates the slot chain (rung 3) and returns whichever
+    closing result is narrower -- on the inline INV that is the slot
+    chain (1 column, 0.575 um) versus the exact IR's 3 columns.  The
+    rung-1 attempt stays in the record as the verify-ok candidate."""
     placement, route, meta = synth_cell(_netlist(INV), exact_budget_s=20.0)
-    assert meta["engine"] == "smt-exact"
-    assert meta["width_cols"] == 3
-    assert abs(meta["width_um"] - 3 * 0.19) < 1e-9
+    assert meta["engine"] == "bigcell-full"
+    assert meta["width_cols"] < 3
+    assert meta["width_um"] == meta["width_cols"] * 0.19
     assert placement                     # Device -> PlacedTransistor
     assert route.ok
     runs = [(a["rung"], a.get("stage"), a["ok"]) for a in meta["attempts"]]
@@ -73,6 +78,9 @@ def test_exact_rung_closes_and_meta_records_attempts():
     # rung-1 success is its own verification gate
     assert any("verify ok" in (a.get("note") or "")
                for a in meta["attempts"])
+    # rung 2 skipped: rung 1 already closed this exact placement
+    rung2 = [a for a in meta["attempts"] if a["rung"] == 2]
+    assert rung2 and rung2[0]["status"] == "SKIPPED"
     for a in meta["attempts"]:
         assert {"rung", "engine", "ok"} <= set(a)
 

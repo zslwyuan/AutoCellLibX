@@ -432,10 +432,14 @@ def synth_cell(netlist, exact_budget_s=60.0, grid_budget_s=120.0,
                              status=getattr(route, "status_name"),
                              stage="routing", note="verify ok",
                              seconds=time.time() - t0)
-                    meta["engine"] = _ENG_EXACT
-                    meta["width_cols"] = layout.width_cols
-                    meta["width_um"] = layout.width_cols * GRID_UM
-                    return layout.devices, route, meta
+                    # candidate, not a return: rung 3's slot placement is
+                    # often narrower (the exact IR draws W horizontally) --
+                    # the ladder returns the narrowest verified closing
+                    # result.  Rung 2 is skipped: same placement, no new
+                    # information from a second router.
+                    best = {"placements": layout.devices, "route": route,
+                            "engine": _ENG_EXACT,
+                            "width_cols": layout.width_cols}
                 if (vnote is None):
                     vnote = "verify failed: %s" % (
                         report.violations[:2] if report else [])
@@ -447,8 +451,13 @@ def synth_cell(netlist, exact_budget_s=60.0, grid_budget_s=120.0,
     # --- rung 2: the grid router on the exact-engine placement ----------
     # grid_router: None = the real route_grid (verify-gated here);
     # False = explicitly disabled; callable = injected (verify deferred).
+    # Skipped entirely when rung 1 closed: same placement, no new
+    # information from a second router.
     using_real_router = grid_router is None
-    if (grid_router is False):
+    if (best is not None):
+        _attempt(meta, 2, _ENG_GRID, False, status="SKIPPED",
+                 note="rung 1 already closed this exact placement")
+    elif (grid_router is False):
         _attempt(meta, 2, _ENG_GRID, False, status="UNAVAILABLE",
                  note="router disabled")
     elif (grid_router is not None and not callable(grid_router)):
