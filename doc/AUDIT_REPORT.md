@@ -1598,3 +1598,27 @@ build_routing_model 加 assumption 字面量——尚未存在）；第三个墙
 **战略快照**：机械杠杆阶梯（词汇/谓词/试布/变体/对齐）已系统性穷举，
 每轮以 CP-SAT 证明收尾。剩余 ~19 cell 需要：假设核提取定因（新工具）
 → 针对性词汇/布局改动，或接受其暂驻 ASTRAN 回退档。诚实闭合 ~30/49。
+
+## §5.51 假设核提取：剩余 cell 全部是排布墙（2026-10-21）
+
+**(1) 工具**：build_routing_model 的 23 个约束族全部包成 CP-SAT
+assumption 字面量（assumptions=False 默认字节不变，COMPLEX0 proto
+hash 201ea3e1 不变）；INFEASIBLE 时 sufficient-assumptions 命名绑定族。
+
+**(2) 核表（全部不可约-certified；88 个 drop 见证全部 verify-dirty
+——零可干净松弛，option-3 先例不复现）**：普遍基底 = pwr（电源覆盖
+带，布局强制）+ csP（交叉安全）+ gate——TERMINAL/DRC 族，任何词汇都
+无法可靠松弛；两种连通性形状 H（bridge/tjoin）/ V（pres/pjanchor）。
+`dual` 仅出现在 TBUFX2-exact 的核里——恰是 m2_spans 唯一关闭的
+cell，完美自洽。九个槽位 cell 判决：**排布墙**（最廉价修复族 = 布
+局谓词，或 ASTRAN 回退档）；深类非独立机制——同一堵墙、连通性成员
+可见。
+
+**(3) 战略结论**：机械杠杆阶梯（词汇/谓词/试布/变体/对齐）+ 诊断工
+具（探针/窗口证明/假设核）已系统性穷举。剩余 ~19 cell 在当前分解/
+变体空间中已被证明无 (crossing=0, cage=0) 排布（XOR2X1 589,824 穷
+举）或核表绑定。它们留在 ASTRAN 回退档，除非：研究级的新排布空间
+（超出当前 folding/变体维度），或接受现状。诚实闭合 ~30/49，全部
+verify+sanity 清、同口径宽度中位 0.86、跨进程字节确定。**替换的架
+构、质量与诊断基础设施完整；覆盖率的最后一步是研究问题而非工程问
+题。**
