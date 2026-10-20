@@ -86,6 +86,13 @@ VSEG_WEIGHT = 3
 PJUMP_WEIGHT = 15
 M2_WEIGHT = 12
 VIA_WEIGHT = 5
+# the metal2 vertical-span vocabulary (build_routing_model m2_spans=True):
+# costs from the heuristic side's provenance -- the ASTRAN 3D grid's
+# layer table (Router::setup, router.cpp:53-55: M1 h=11/v=4, M2 h=4/v=11,
+# via-up 4 at any node).  A span costs M2_SPAN_V_WEIGHT per (t_hi - t_lo)
+# step, a node via M2_SPAN_VIA_WEIGHT.
+M2_SPAN_V_WEIGHT = 11
+M2_SPAN_VIA_WEIGHT = 4
 SOLVE_TIME_LIMIT_S = 60.0
 
 N_TRACKS_SET = (0, 1, 2, 3)
@@ -174,7 +181,9 @@ class RoutingModel(object):
 
     def __init__(self, model, owner_n, owner_p, lo_n, hi_n, lo_p, hi_p,
                  hseg, pj, m2, via, reachT3_n, reachT3_p, access,
-                 width_cols, nets, gate_tracks):
+                 width_cols, nets, gate_tracks,
+                 span_on=None, span_start=None, span_end=None,
+                 span_cmp=None, nv=None):
         self.model = model
         self.owner_n = owner_n
         self.owner_p = owner_p
@@ -192,6 +201,17 @@ class RoutingModel(object):
         self.width_cols = width_cols
         self.nets = nets
         self.gate_tracks = gate_tracks
+        # --- the metal2 vertical-span vocabulary (additive, default
+        # None = the vocabulary is absent): span_on[(net, col)] is the
+        # span presence literal, span_start/span_end the half-open track
+        # range [start, end) (start < end when present), span_cmp
+        # (net, col, track) -> (start<=track, track<end) reified
+        # comparisons, nv[(net, track, col)] the node-via literal. ---
+        self.span_on = span_on
+        self.span_start = span_start
+        self.span_end = span_end
+        self.span_cmp = span_cmp
+        self.nv = nv
 
 
 def _access_points(netlist, placement):
@@ -309,7 +329,7 @@ def _gm_lit(model, h_lit, m2, n, t, c, memo):
 
 def build_routing_model(netlist, placement, width_cols=None,
                         grid_um=0.19, height_um=2.47, poly_jumps=True,
-                        metal2=True, accesses=None):
+                        metal2=True, accesses=None, m2_spans=False):
     """Stage-2 CP-SAT model over the fixed placement.
 
     ``accesses`` optionally supplies the (diffusion, gate, power) access
@@ -319,6 +339,16 @@ def build_routing_model(netlist, placement, width_cols=None,
     smt_engine.verify checks, which for slot-model placements is the
     shared die view rather than the base walk.  Default None keeps the
     historical behaviour byte-identical.
+
+    ``m2_spans`` adds the metal2 vertical-span vocabulary (the
+    dual-crossover lever): one optional metal2 range per (net, column)
+    -- the heuristic side's RouteResult.m2v -- plus node vias
+    (RouteResult.m2via) joining the net's M1 point to its metal2, and
+    the same-net dual rule relaxes from "both bars reach T3" to "both
+    bars reach T3 OR an M2 span crossover connects the halves" (the
+    constraint the verify BFS's connectivity verdict already proved
+    sound).  Default False builds a model byte-identical to the
+    historical one: no new variables, constraints or objective terms.
 
     Returns RoutingModel; solve_routing wraps it.
     """
@@ -381,6 +411,7 @@ def build_routing_model(netlist, placement, width_cols=None,
             model.Add(v == 0)
         for v in via_l.values():
             model.Add(v == 0)
+    m2_spans = m2_spans and metal2      # a span is metal2: no M2, no spans
 
     # bar endpoints are y-ordered: lo <= hi (the old rail-index domain
     # allowed inverted (lo, hi) bars spanning half the cell)
@@ -527,8 +558,13 @@ def build_routing_model(netlist, placement, width_cols=None,
             dual[(n, c)] = b
     for n in nets:
         for c in range(width_cols):
-            model.Add(reachT3_n[c] >= dual[(n, c)])
-            model.Add(reachT3_p[c] >= dual[(n, c)])
+            if (not m2_spans):
+                # the historical rule: a same-net dual merges at the
+                # boundary (both bars forced to reach T3)
+                model.Add(reachT3_n[c] >= dual[(n, c)])
+                model.Add(reachT3_p[c] >= dual[(n, c)])
+    # (the m2_spans relaxation -- "rt3-merge OR M2-span crossover" -- is
+    # added after the span vocabulary is built below)
     for c in range(width_cols):
         for n1 in nets:
             for n2 in nets:
@@ -555,6 +591,150 @@ def build_routing_model(netlist, placement, width_cols=None,
         h_active[(t, c)] = b
     m1_memo = {}
     gm_memo = {}
+
+    # --- metal2 vertical spans + node vias (the dual-crossover lever;
+    # additive under ``m2_spans`` -- routes built without it skip every
+    # line of this section and stay byte-identical) ---
+    # span_on[(n, c)]: net n's metal2 occupies ONE column c across the
+    # half-open track range [start, end), start < end when present --
+    # the via-up -> M2 hop -> via-down track change the heuristic side
+    # emits as RouteResult.m2v (one span per (net, column): two disjoint
+    # ranges of one net at a column could only join back through M1, so
+    # the single-range form loses nothing the connectivity below uses).
+    # nv[(n, t, c)]: a node via joining the net's M1 point (bar coverage
+    # or M1 segment endpoint) at (t, c) to its metal2 there --
+    # RouteResult.m2via.  The M1 point is exclusively the net's: a
+    # foreign segment cannot end at a foreign-covered point (crossing
+    # safety) and two segments cannot touch in one layer (the E5 rules).
+    span_on = {}
+    span_start = {}
+    span_end = {}
+    span_cmp = {}
+    nv = {}
+    xover = {}
+    merged = {}
+    _and_memo = {}
+
+    def _and_lit(lits, tag):
+        """Bool: AND of 2-3 literals (memoized on the literal tuple)."""
+        key = (tag,) + tuple(lit.Index() if hasattr(lit, "Index")
+                             else lit for lit in lits)
+        if (key in _and_memo):
+            return _and_memo[key]
+        v = model.NewBoolVar("and_%d" % len(_and_memo))
+        for lit in lits:
+            model.Add(v <= lit)
+        model.Add(v >= sum(lits) - (len(lits) - 1))
+        _and_memo[key] = v
+        return v
+
+    if m2_spans:
+        for n in nets:
+            for c in range(width_cols):
+                p = model.NewBoolVar("spn_%s_%d" % (n, c))
+                s = model.NewIntVar(0, N_TRACKS - 1, "sps_%s_%d" % (n, c))
+                e = model.NewIntVar(1, N_TRACKS, "spe_%s_%d" % (n, c))
+                model.Add(s < e).OnlyEnforceIf(p)
+                span_on[(n, c)] = p
+                span_start[(n, c)] = s
+                span_end[(n, c)] = e
+        for c in range(width_cols):
+            intervals = []
+            for n in nets:
+                size = model.NewIntVar(1, N_TRACKS - 1,
+                                       "spz_%s_%d" % (n, c))
+                model.Add(size == span_end[(n, c)] - span_start[(n, c)])
+                intervals.append(model.NewOptionalIntervalVar(
+                    span_start[(n, c)], size, span_end[(n, c)],
+                    span_on[(n, c)], "spiv_%s_%d" % (n, c)))
+            if (len(intervals) > 1):
+                model.AddNoOverlap(intervals)
+        # reified coverage comparisons (start <= t, t < end) for every
+        # candidate member track: the blockage layer and the foreign-M2
+        # exclusion reason over "the span covers this track"
+        for (n, c) in sorted(span_on):
+            for t in range(N_TRACKS):
+                st = model.NewBoolVar("spst_%s_%d_%d" % (n, c, t))
+                model.Add(span_start[(n, c)] <= t).OnlyEnforceIf(st)
+                model.Add(span_start[(n, c)] > t).OnlyEnforceIf(st.Not())
+                te = model.NewBoolVar("spte_%s_%d_%d" % (n, c, t))
+                model.Add(span_end[(n, c)] > t).OnlyEnforceIf(te)
+                model.Add(span_end[(n, c)] <= t).OnlyEnforceIf(te.Not())
+                span_cmp[(n, c, t)] = (st, te)
+        # node vias: M2 side = the net's span covers the point; M1 side =
+        # bar coverage (either slot; only T3 can be both, and only one
+        # net's bar covers it there) or an M1 segment endpoint
+        for n in nets:
+            for c in range(width_cols):
+                for t in range(N_TRACKS):
+                    v = model.NewBoolVar("nv_%s_%d_%d" % (n, t, c))
+                    nv[(n, t, c)] = v
+                    model.AddImplication(v, span_on[(n, c)])
+                    model.Add(span_start[(n, c)] <= t).OnlyEnforceIf(v)
+                    model.Add(t < span_end[(n, c)]).OnlyEnforceIf(v)
+                    m1side = []
+                    if (t <= BOUNDARY_T):
+                        m1side.append(_and_lit(
+                            [is_owner_n[(n, c)], cov_n[(c, t)]],
+                            ("bcN", n, c, t)))
+                    if (t >= BOUNDARY_T):
+                        m1side.append(_and_lit(
+                            [is_owner_p[(n, c)], cov_p[(c, t)]],
+                            ("bcP", n, c, t)))
+                    for cseg in (c - 1, c):
+                        if (0 <= cseg <= width_cols - 2):
+                            m1side.append(_m1_lit(
+                                model, h_lit, pj, m2, n, t, cseg, m1_memo))
+                    model.Add(sum(m1side) >= v)
+        # the M2 crossover: BOTH halves' bars anchor the same span
+        # through node vias -- the BFS joins NB(c) - node(tN, c) - span -
+        # node(tP, c) - PB(c), which is exactly the connection the old
+        # forced T3 merge provided
+        for n in nets:
+            for c in range(width_cols):
+                x = model.NewBoolVar("xov_%s_%d" % (n, c))
+                xover[(n, c)] = x
+                anchors_n = []
+                anchors_p = []
+                for t in range(BOUNDARY_T + 1):
+                    anchors_n.append(_and_lit(
+                        [nv[(n, t, c)], is_owner_n[(n, c)], cov_n[(c, t)]],
+                        ("an", n, c, t)))
+                for t in range(BOUNDARY_T, N_TRACKS):
+                    anchors_p.append(_and_lit(
+                        [nv[(n, t, c)], is_owner_p[(n, c)], cov_p[(c, t)]],
+                        ("ap", n, c, t)))
+                model.Add(sum(anchors_n) >= x)
+                model.Add(sum(anchors_p) >= x)
+        # the honest M1 merge (both bars reach T3) as a per-net literal
+        for n in nets:
+            for c in range(width_cols):
+                m = model.NewBoolVar("mrg_%s_%d" % (n, c))
+                model.Add(m >= is_owner_n[(n, c)] + reachT3_n[c]
+                          + reachT3_p[c] - 2)
+                model.Add(m <= is_owner_n[(n, c)])
+                model.Add(m <= reachT3_n[c])
+                model.Add(m <= reachT3_p[c])
+                merged[(n, c)] = m
+        # the relaxed same-net dual rule: the halves merge through the
+        # T3 pair OR an M2 span crossover (verify's BFS verdict is the
+        # ground truth; every form below is BFS-sound)
+        for n in nets:
+            for c in range(width_cols):
+                model.Add(reachT3_n[c] + xover[(n, c)] >= dual[(n, c)])
+                model.Add(reachT3_p[c] + xover[(n, c)] >= dual[(n, c)])
+        # a span may not touch a FOREIGN M2 segment endpoint inside its
+        # range (M2-M2 short; same-net segments merge -- verify's BFS
+        # joins them, so allowing them is the freedom, not a hole)
+        for (n, c) in sorted(span_on):
+            for t in range(N_TRACKS):
+                st, te = span_cmp[(n, c, t)]
+                for cseg in (c - 1, c):
+                    if (0 <= cseg <= width_cols - 2):
+                        model.Add(span_on[(n, c)] + st + te
+                                  + m2[(t, cseg)] - h_lit[(n, t, cseg)]
+                                  <= 3)
+
     for n in nets:
         for t in range(N_TRACKS):
             for c in range(width_cols - 1):
@@ -832,6 +1012,22 @@ def build_routing_model(netlist, placement, width_cols=None,
                     model.Add(both >= m1a + m1x + gmb - 2)
                     model.Add(h_lit[(n, t1, c - 1)] + h_lit[(n, t2, c)]
                               <= 1 + both)
+                    if (m2_spans):
+                        # the same track change through the metal2 span:
+                        # left M1 end - via - span - via - right M1
+                        # crossing (the crossing must be M1 to touch the
+                        # gate; M2 floats above it)
+                        j2 = model.NewBoolVar(
+                            "j2g_%s_%d_%d_%d" % (n, c, t1, t2))
+                        lits2 = [m1a,
+                                 _m1_lit(model, h_lit, pj, m2, n, t2, c,
+                                         m1_memo),
+                                 nv[(n, t1, c)], nv[(n, t2, c)]]
+                        model.Add(j2 >= sum(lits2) - 3)
+                        for lit2 in lits2:
+                            model.Add(j2 <= lit2)
+                        model.Add(h_lit[(n, t1, c - 1)] + h_lit[(n, t2, c)]
+                                  <= 1 + both + j2)
                     continue
                 # NOT a (fully gate-spanned) gate join: the change must
                 # happen through a same-net BAR at c -- which the exact
@@ -865,6 +1061,18 @@ def build_routing_model(netlist, placement, width_cols=None,
                     model.Add(join <= lit)
                 model.Add(h_lit[(n, t1, c - 1)] + h_lit[(n, t2, c)]
                           <= 1 + join)
+                if (m2_spans):
+                    # the same track change through the metal2 span:
+                    # left M1 end - node via - span - node via - right
+                    # M1 start (both vias land on the SAME span: one
+                    # range per (net, column))
+                    j2 = model.NewBoolVar("j2_%s_%d_%d_%d" % (n, c, t1, t2))
+                    lits2 = [m1a, m1b, nv[(n, t1, c)], nv[(n, t2, c)]]
+                    model.Add(j2 >= sum(lits2) - 3)
+                    for lit2 in lits2:
+                        model.Add(j2 <= lit2)
+                    model.Add(h_lit[(n, t1, c - 1)] + h_lit[(n, t2, c)]
+                              <= 1 + join + j2)
         # every diffusion access bar must connect: a same-track M1
         # segment touching it, a T3 segment touching a bar that reaches
         # the boundary, or a merged T3 pair
@@ -889,7 +1097,13 @@ def build_routing_model(netlist, placement, width_cols=None,
                               + _m1_lit(model, h_lit, pj, m2, n,
                                         BOUNDARY_T, t3c, m1_memo) - 1)
                     lits.append(both)
-            model.Add(dual[(n, c)] + sum(lits) >= 1)
+            if (not m2_spans):
+                model.Add(dual[(n, c)] + sum(lits) >= 1)
+            else:
+                # the honest forms of the old dual disjunct: the merged
+                # T3 pair, or the M2 span crossover (both bars anchor
+                # the same span through node vias)
+                model.Add(merged[(n, c)] + xover[(n, c)] + sum(lits) >= 1)
 
     # --- objective: active horizontal segments / vertical stripes ---
     h_count = model.NewIntVar(
@@ -906,21 +1120,66 @@ def build_routing_model(netlist, placement, width_cols=None,
     via_count = model.NewIntVar(0, N_TRACKS * (width_cols - 1),
                                 "via_count")
     model.Add(via_count == sum(via_l.values()))
-    model.Minimize(h_count * HSEG_WEIGHT + v_count * VSEG_WEIGHT
-                   + pj_count * PJUMP_WEIGHT + m2_count * M2_WEIGHT
-                   + via_count * VIA_WEIGHT)
+    obj = (h_count * HSEG_WEIGHT + v_count * VSEG_WEIGHT
+           + pj_count * PJUMP_WEIGHT + m2_count * M2_WEIGHT
+           + via_count * VIA_WEIGHT)
+    if (m2_spans):
+        # the span vocabulary's own costs, on the heuristic side's
+        # provenance (router.cpp:53-55): 11 per span track step, 4 per
+        # node via
+        m2v_len = model.NewIntVar(
+            0, len(nets) * width_cols * (N_TRACKS - 1), "m2v_len")
+        m2via_count = model.NewIntVar(
+            0, len(nets) * N_TRACKS * width_cols, "m2via_count")
+        len_terms = []
+        for (n, c) in sorted(span_on):
+            lv = model.NewIntVar(0, N_TRACKS - 1, "splen_%s_%d" % (n, c))
+            model.Add(lv <= span_end[(n, c)] - span_start[(n, c)]
+                      + N_TRACKS * (1 - span_on[(n, c)]))
+            model.Add(lv >= span_end[(n, c)] - span_start[(n, c)]
+                      - N_TRACKS * (1 - span_on[(n, c)]))
+            model.Add(lv <= (N_TRACKS - 1) * span_on[(n, c)])
+            len_terms.append(lv)
+        model.Add(m2v_len == sum(len_terms))
+        model.Add(m2via_count == sum(nv.values()))
+        obj = obj + m2v_len * M2_SPAN_V_WEIGHT \
+            + m2via_count * M2_SPAN_VIA_WEIGHT
+    model.Minimize(obj)
 
     return RoutingModel(model, owner_n, owner_p, lo_n, hi_n, lo_p, hi_p,
                         hseg, pj, m2, via_l, reachT3_n, reachT3_p,
                         (diffusion, gate, power), width_cols, nets,
-                        gate_tracks)
+                        gate_tracks,
+                        span_on=span_on or None,
+                        span_start=span_start or None,
+                        span_end=span_end or None,
+                        span_cmp=span_cmp or None, nv=nv or None)
+
+
+def _decode_spans(rm, solver):
+    """(m2v, m2via) from the model's span structures (empty when the
+    vocabulary is absent)."""
+    m2v = {}
+    m2via = {}
+    if (rm.span_on is None):
+        return m2v, m2via
+    for (n, c), p in sorted(rm.span_on.items()):
+        if (solver.Value(p)):
+            m2v[(c, solver.Value(rm.span_start[(n, c)]),
+                 solver.Value(rm.span_end[(n, c)]) - 1)] = n
+    for (n, t, c), v in sorted(rm.nv.items()):
+        if (solver.Value(v)):
+            m2via[(t, c)] = True
+    return m2v, m2via
 
 
 def solve_routing(netlist, placement, width_cols=None, poly_jumps=True,
-                  metal2=True, time_limit_s=SOLVE_TIME_LIMIT_S):
+                  metal2=True, time_limit_s=SOLVE_TIME_LIMIT_S,
+                  m2_spans=False):
     """Stage-2 solve; returns RouteResult (UNKNOWN on failure)."""
     rm = build_routing_model(netlist, placement, width_cols=width_cols,
-                             poly_jumps=poly_jumps, metal2=metal2)
+                             poly_jumps=poly_jumps, metal2=metal2,
+                             m2_spans=m2_spans)
     solver = cp_model.CpSolver()
     # single worker: parallel search picks different equal-cost optima
     # across runs (AGENTS.md invariant 9 -- the engine must be
@@ -962,10 +1221,12 @@ def solve_routing(netlist, placement, width_cols=None, poly_jumps=True,
                 for c in range(rm.width_cols)]
     vseg = sum(1 for o in owner_n if o is not None) \
         + sum(1 for o in owner_p if o is not None)
+    m2v, m2via = _decode_spans(rm, solver)
     return RouteResult(
         _status_name(status), owner_n, owner_p, lo_n, hi_n, lo_p, hi_p,
         hseg, pj, m2, via, reachB_n, reachB_p, rm.width_cols, len(hseg),
-        vseg, sum(pj.values()), sum(m2.values()), sum(via.values()))
+        vseg, sum(pj.values()), sum(m2.values()), sum(via.values()),
+        m2v=m2v, m2via=m2via)
 
 
 # ---------------------------------------------------------------------------
@@ -1264,6 +1525,18 @@ def _win_forbid_segment_layer(ch, name, t, c, layer):
         model.Add(lit + m2 <= 1)
 
 
+def _win_forbid_span_point(model, rm, cw, t):
+    """No window net's metal2 span may cover (cw, t) (the point's metal2
+    belongs to kept geometry -- a window span there would overlap it, and
+    a window node via is implied by its span, so both die together)."""
+    if (rm.span_on is None):
+        return
+    for name in rm.nets:
+        on = rm.span_on[(name, cw)]
+        st, te = rm.span_cmp[(name, cw, t)]
+        model.Add(on + st + te <= 2)
+
+
 def _win_boundary_facts(partial, w0, w1, width):
     """[(fact, col, gap)] for the fixed L/R boundary segments, in window
     coordinates: fact = (t, net, layer) of the outside segment whose
@@ -1325,6 +1598,14 @@ def _win_boundary_constraints(ch, fact, col, gap, width):
         if (name == net):
             continue
         _win_forbid_segment_layer(ch, name, t, gap, layer)
+        if (layer == "M2" and rm.span_on is not None):
+            # a foreign window span covering the boundary track at the
+            # edge column would touch the fixed M2 segment's endpoint;
+            # a same-net span joining it is the legal tie form (the BFS
+            # merges same-net M2 at a shared point)
+            on = rm.span_on[(name, col)]
+            st, te = rm.span_cmp[(name, col, t)]
+            model.Add(on + st + te <= 2)
 
 
 def _win_blockage_layer(model, rm, ch, partial, w0, w1, kept_stripes,
@@ -1408,6 +1689,8 @@ def _win_blockage_layer(model, rm, ch, partial, w0, w1, kept_stripes,
                     continue
                 for name in rm.nets:
                     _win_forbid_segment_layer(ch, name, t, g, "M2")
+            # a window span overlapping the kept span is an M2-M2 short
+            _win_forbid_span_point(model, rm, cw, t)
     for (t, c), _on in sorted((kept_m2via or {}).items()):
         cw = c - w0
         if (not (0 <= cw < width)):
@@ -1416,6 +1699,9 @@ def _win_blockage_layer(model, rm, ch, partial, w0, w1, kept_stripes,
             if (0 <= g < width - 1):
                 for name in rm.nets:
                     _win_forbid_segment_layer(ch, name, t, g, "M2")
+        # a window span covering the kept via's point would silently
+        # become the node via's metal2 owner
+        _win_forbid_span_point(model, rm, cw, t)
         for slot in ("N", "P"):
             cov = ch.covers_lit(cw, t, slot)
             if (cov is None):
@@ -1681,10 +1967,12 @@ def _win_decode(rm, solver, status_name):
                 for c in range(rm.width_cols)]
     vseg = sum(1 for o in owner_n if o is not None) \
         + sum(1 for o in owner_p if o is not None)
+    m2v, m2via = _decode_spans(rm, solver)
     return RouteResult(
         status_name, owner_n, owner_p, lo_n, hi_n, lo_p, hi_p,
         hseg, pj, m2, via, reachB_n, reachB_p, rm.width_cols, len(hseg),
-        vseg, sum(pj.values()), sum(m2.values()), sum(via.values()))
+        vseg, sum(pj.values()), sum(m2.values()), sum(via.values()),
+        m2v=m2v, m2via=m2via)
 
 
 def _merge_window_route(partial, window, win, kept_stripes, kept_segments,
@@ -1695,10 +1983,11 @@ def _merge_window_route(partial, window, win, kept_stripes, kept_segments,
     window segment slots (hseg/pj/m2/via); kept pre-routed geometry is
     restored; the two boundary vias are re-derived from the merged
     layers (a via joins one net's M1 and M2 segments on both sides).
-    The metal2 vertical freedom's spans + node vias cannot be created
-    by the window model: outside-window columns are copied, window
-    columns are restored from the kept sets (window owners' verticals
-    were dropped at planning time -- the window re-routes those nets).
+    The metal2 vertical freedom's spans + node vias: outside-window
+    columns are copied, window columns come from the window solve (the
+    model creates spans under ``m2_spans``) plus the kept sets (window
+    owners' kept verticals were dropped at planning time -- the window
+    re-routes those nets).
     """
     w0, w1 = window
     W = partial.width_cols
@@ -1750,8 +2039,10 @@ def _merge_window_route(partial, window, win, kept_stripes, kept_segments,
         if (on):
             via[(t, c + w0)] = True
     # metal2 vertical freedom: outside columns are copied wholesale,
-    # window columns come from the kept sets (a kept via key maps to
-    # True only when the partial had it on)
+    # window columns come from the window solve (its own spans/vias,
+    # in window coordinates) plus the kept sets (a kept via key maps to
+    # True only when the partial had it on; kept spans of window owners
+    # were dropped at planning time -- the window re-routes those nets)
     m2v = {}
     for (c, t1, t2), net in sorted(getattr(partial, "m2v", {}).items()):
         if (w0 <= c < w1):
@@ -1759,6 +2050,8 @@ def _merge_window_route(partial, window, win, kept_stripes, kept_segments,
         m2v[(c, t1, t2)] = net
     for (c, t1, t2), net in sorted((kept_m2v or {}).items()):
         m2v[(c, t1, t2)] = net
+    for (c, t1, t2), net in sorted(getattr(win, "m2v", {}) or {}.items()):
+        m2v[(c + w0, t1, t2)] = net
     m2via = {}
     for (t, c), on in sorted(getattr(partial, "m2via", {}).items()):
         if (not on or (w0 <= c < w1)):
@@ -1767,6 +2060,9 @@ def _merge_window_route(partial, window, win, kept_stripes, kept_segments,
     for (t, c), on in sorted((kept_m2via or {}).items()):
         if (on):
             m2via[(t, c)] = True
+    for (t, c), on in sorted(getattr(win, "m2via", {}) or {}.items()):
+        if (on):
+            m2via[(t, c + w0)] = True
     for cB in (w0, w1 - 1):
         if (not (1 <= cB <= W - 2)):
             continue
@@ -1793,7 +2089,8 @@ def _merge_window_route(partial, window, win, kept_stripes, kept_segments,
 def solve_window_routing(netlist, placement, width_cols, window,
                          partial=None, blocks=None, poly_jumps=True,
                          metal2=True,
-                         time_limit_s=WINDOW_SOLVE_TIME_LIMIT_S):
+                         time_limit_s=WINDOW_SOLVE_TIME_LIMIT_S,
+                         m2_spans=False):
     """The exact engine as a window fixer (doc section 2.4, rung 1's
     narrowed role).
 
@@ -1812,6 +2109,12 @@ def solve_window_routing(netlist, placement, width_cols, window,
     Access requirements are derived the way smt_engine.verify derives
     them (``blocks`` is the orientation-aware block view for non-slot
     placements), so what the model satisfies is what verify_cell checks.
+
+    With ``m2_spans`` the window model gains the metal2 vertical-span
+    vocabulary (spans + node vias for the window nets), so a window
+    fix can lift a dual-column blanket onto metal2 exactly like the
+    full solve; the merged route then carries the window's spans/vias
+    and the kept outside verticals are banned from the window spans.
 
     Returns a WindowFixResult: ``route`` is the merged RouteResult (the
     same class solve_routing returns, so verify.py and the GDS emitters
@@ -1880,7 +2183,8 @@ def solve_window_routing(netlist, placement, width_cols, window,
                for dev, p in placement.items()}
     rm = build_routing_model(netlist, shifted, width_cols=width,
                              accesses=(diffusion, gate, power),
-                             poly_jumps=poly_jumps, metal2=metal2)
+                             poly_jumps=poly_jumps, metal2=metal2,
+                             m2_spans=m2_spans)
     if (partial is not None):
         model = rm.model
         ch = _WindowChanneling(model, rm)

@@ -1503,3 +1503,70 @@ FEASIBLE、verify 清、10 列 = 1.90µm（预测的 round-5 宽度；flip-both
 （COMPLEX10 的网络连通性笼蔽 / 时序类双访问列 / XOR 类）；
 verify 转发已就位后 COMPLEX10 可重试窗口修复；provenance 秒数清理；
 rung-2 旧 IR 的 "switches layer" 契约缺口。
+
+## §5.49 精确模型 M2 双柱交叉：词汇落地与判决（2026-10-20）
+
+**(1) 词汇落地（additive，默认字节等同）**：`build_routing_model`/
+`solve_routing`/`solve_window_routing` 新增 `m2_spans=False` 形参。开启时
+模型获得：每 (net, column) 一条可选 metal2 区间（半开轨域
+[start, end)，NoOverlap per column——`RouteResult.m2v` 的精确模型形态）、
+节点过孔 `nv`（M1 点 = 条带覆盖或 M1 段端点；`RouteResult.m2via`）、双柱
+规则松弛（"两 bar 都到 T3" → "T3 合并 OR M2 span 交叉连接两半"——xover
+要求同一 span 上两半各有一个 bar 锚点过孔，BFS 可证连通）、跨半/门列
+track 变换的 M2 join 形式、以及访问连接的诚实化（`dual` 位让位于
+`merged = dual∧rt3n∧rt3p` 与 `xover`）。代价取启发侧 provenance
+（router.cpp:53-55：span 11/轨步、节点过孔 4）。**默认路径字节等同**：
+COMPLEX0 槽位全模型 proto 文本哈希 HEAD 前后同为
+`201ea3e1…`（716 套件全绿佐证）。verify.py/gds.py **零改动**——c4b3e9c
+的 BFS 遍历与渲染约定恰好覆盖精确模型可发出的全部几何（新测试钉住）。
+
+**(2) 判决表（本轮决定性证据；槽位全模型，60s 单 worker，verify 门）**：
+
+| cell | placement→route W | baseline | +M2-dual |
+|---|---|---|---|
+| adder/COMPLEX10 (36T) | 27→28 | INFEASIBLE 7.1s | INFEASIBLE 9.3s |
+| max/COMPLEX20 (18T) | 13→14 | INFEASIBLE 1.6s | INFEASIBLE 2.1s |
+| XOR2X1 (12T) | 8→9 | INFEASIBLE 0.3s | INFEASIBLE 0.5s |
+| XNOR2X1 (12T) | 8→9 | INFEASIBLE 0.3s | INFEASIBLE 0.5s |
+| MUX2X1 (10T) | 6→7 | INFEASIBLE 0.2s | INFEASIBLE 0.4s |
+| TBUFX2 (10T) | 7→8 | INFEASIBLE 0.3s | INFEASIBLE 0.5s |
+| LATCH (12T) | 8→9 | INFEASIBLE 0.3s | INFEASIBLE 0.5s |
+| DFFNEGX1 (22T) | 17→18 | INFEASIBLE 1.0s | INFEASIBLE 1.6s |
+| DFFPOSX1 (22T) | 16→17 | INFEASIBLE 1.0s | INFEASIBLE 1.5s |
+
+**M2 双柱交叉一个杠杆不闭合九个诊断格中的任何一个**（全部秒级证明，
+非超时）。正向对照证明词汇真实可用：INVX1 槽位链 col-1 双柱**禁止 T3
+合并**时，baseline INFEASIBLE → m2_spans OPTIMAL，解码恰为手工钉住的
+span (1,2,4)+节点过孔 (2,1)/(4,1)，verify 清、GDS/layout_sanity 清。
+
+**(3) 唯一新闭合（数据，非行为变更）**：TBUFX2 在**精确引擎自身布局**
+（W=18, 6 网）上 `m2_spans=True` 由 INFEASIBLE（0.9s）转 **OPTIMAL**
+（16-20s，2 span + 4 节点过孔，verify 清，×2 确定，layout_sanity 清）——
+但 W=18 越过 rung-1 边界（14），且 3.42µm vs ASTRAN 1.33µm（2.6×，带宽
+外，精确 IR 把 W 画在横向）。故**不抬 EXACT_MAX_WIDTH_COLS**（LATCH
+W=17、XOR/XNOR W=21、MUX W=17、DFF W=31/32、COMPLEX20 W=30 在其精确
+布局上 m2_spans 仍全 INFEASIBLE——抬了也一无所获）。
+
+**(4) 残余诊断图（族消减，全部 CP-SAT 证明）**：7 轨域上族消减——
+(a) XNOR2X1/MUX2X1/XOR2X1/TBUFX2/LATCH 的**绑定族是 crossing-safety**
+（M1 落点供给）：单独去族即 OPTIMAL（verify 恰好只报穿越违例）；其中
+MUX/XNOR 的门接触规则单独去族也 OPTIMAL。违例穿越落在 power bar 的
+**强制覆盖带内**（GND 条带必盖 T0-T2、VCC 必盖 T4-T6），且**加轨无效**：
+把空闲轨插入 T2-T3 / T3-T4 强制带以外、加到 k=12（每侧多条）仍全
+INFEASIBLE——下一步杠杆**不是轨数，而是布局轴**（把有争议的线的穿越
+点移出条带柱；与启发侧 structural note 的"剩余自由度是布局本身"一致，
+place_sa true-view/variant 轴）。(b) DFF×2、adder/COMPLEX10、
+max/COMPLEX20 比 crossing-safety 还深一层（去 CS、去 presence 各自及
+组合仍 INFEASIBLE；无空门轨、无越界访问等平凡伪影已排除）——下一层
+消减对象是 gap-bridge/transition/join 形式、E5 层规则与 via/M2-run 规则，
+命名工具：CP-SAT `sufficient_assumptions_for_infeasibility` 核心提取。
+
+**(5) 生产化清单**：窗口修复器（rung 2.5/3.5）接 `m2_spans=True` 是纯
+增益（现有窗口的闭合解不携带死 span、INFEASIBLE 判决不变、未来双柱
+笼蔽窗口可解）；WINDOW_MAX_COLS=12 **不抬**（双柱重区在全宽下都不
+闭合，加宽窗口不可能翻格）。engine.py 只读——diff 交付于
+`flow/_stage3_check/_m2_engine_diff.patch`。测试：tests/unit/
+test_exact_m2_dual.py（8 项：默认无 span、双柱 M2 闭合/无则失败、
+渲染+sanity 端到端、窗口 span 创建/保留 span 合并+禁入、LATCH 判决钉、
+进程内×2 + 跨进程 PYTHONHASHSEED 0/1）+ test_smt_engine.py 1 项
+（solve_routing 公共 API 形态）。725 绿（716+9，零钉翻转）。

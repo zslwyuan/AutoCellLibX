@@ -465,3 +465,24 @@ def test_route_result_m2_fields_default_absent():
                      [], [], 0, 0, 0, 0, 0, 0,
                      m2v={(1, 2, 4): "Y"}, m2via={(2, 1): True})
     assert r2.m2v == {(1, 2, 4): "Y"} and r2.m2via == {(2, 1): True}
+
+
+def test_solve_routing_m2_spans_additive_and_verify_clean():
+    """solve_routing's m2_spans flag (the exact model's metal2
+    dual-crossover vocabulary): the default stays span-free, the flagged
+    solve decodes spans/vias in the heuristic side's RouteResult shape
+    (m2v keys (col, t_lo, t_hi) with t_lo < t_hi), and any span-carrying
+    route verifies clean through the unchanged BFS (test_exact_m2_dual
+    pins the dual-closure case where the vocabulary is load-bearing)."""
+    from smt_engine.verify import verify_cell
+    nl = CellNetlist(parse_spice_subckt(NAND2))
+    sol = solve_layout(nl, time_limit_s=15)
+    base = solve_routing(nl, sol.devices, time_limit_s=25)
+    assert base.ok
+    assert base.m2v == {} and base.m2via == {}
+    spans = solve_routing(nl, sol.devices, time_limit_s=25, m2_spans=True)
+    assert spans.ok
+    for (_c, t1, t2), _net in spans.m2v.items():
+        assert t1 < t2
+    report = verify_cell(nl, sol.devices, spans)
+    assert report.ok(), report.violations
