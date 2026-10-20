@@ -1570,3 +1570,31 @@ test_exact_m2_dual.py（8 项：默认无 span、双柱 M2 闭合/无则失败�
 渲染+sanity 端到端、窗口 span 创建/保留 span 合并+禁入、LATCH 判决钉、
 进程内×2 + 跨进程 PYTHONHASHSEED 0/1）+ test_smt_engine.py 1 项
 （solve_routing 公共 API 形态）。725 绿（716+9，零钉翻转）。
+
+## §5.50 交叉级普查：XOR/MUX/LATCH 类的墙在分解空间中纠缠（2026-10-20）
+
+**(1) 词汇与谓词齐备（fd4fee3 + 645d952）**：精确模型 M2 双柱交叉词汇
+落地（九 cell 探针全 INFEASIBLE，阳性对照 INVX1 逐点吻合）；census
+从"接触可逃逸"扩展到"交叉可逃逸"（锚定多晶硅逃逸是承重修正——未锚
+定形式在已证不可布布局上返回 0），与 drop-CS 真值 5/5 吻合。
+
+**(2) 判决：穷举级否定**——XOR2X1 的 589,824 个排布（4 变体全排列×
+翻转）普查：交叉干净的存在 5,672 个但全部带笼蔽 ≥2，**(crossing=0,
+cage=0) 排布不存在**；MUX/TBUF 同构；LATCH 需两 census 同时归零——
+不可达。该类在当前分解空间中两堵墙纠缠：避交叉必笼蔽，避笼蔽必竞争
+交叉。所有 floor 桶胜者 ≤0.7s 证明 INFEASIBLE。
+
+**(3) 选择政策**：census 作为证据 + 平局裁决（FEASIBLE-caged 档
+(cage, crossing, index)、对齐决赛者同名次位）；回退排名与 SA 代价
+字节冻结（尝试把 crossing 放进回退排名打破三个 (floor,cost,index)
+钉——回退）。全部既有闭合与五个类 cell 的选择字节不变。
+
+**(4) 剩余类的工具已点名**：CP-SAT
+sufficient_assumptions_for_infeasibility 核提取（需在
+build_routing_model 加 assumption 字面量——尚未存在）；第三个墙族
+观察在案：网络连通性笼蔽（census 清、路由器 walled——TBUFX2 (3,0)
+即此类）。
+
+**战略快照**：机械杠杆阶梯（词汇/谓词/试布/变体/对齐）已系统性穷举，
+每轮以 CP-SAT 证明收尾。剩余 ~19 cell 需要：假设核提取定因（新工具）
+→ 针对性词汇/布局改动，或接受其暂驻 ASTRAN 回退档。诚实闭合 ~30/49。
