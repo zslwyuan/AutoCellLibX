@@ -1475,3 +1475,31 @@ true-view 路由通过但 verify 失败（"diffusion access cl2#Y@1: no
 stripe"）——verify 需把 block_objs 转发进 die_view（G2 交付的引擎
 1 行 diff 随后解锁）。精确模型 M2 双柱交叉仍是 COMPLEX10/时序/XOR
 类的杠杆。
+
+## §5.48 真视图试布：COMPLEX4 闭合（2026-10-20）
+
+**(1) 契约缺陷**：select_orderings 的试布路由是 blocks-less 的——树
+块排布按 pristine 重建的虚构 die 打分，而真实路由看的是朝向感知视
+图。multiplier/COMPLEX4 的候选池里有**两个真视图闭合者**
+（parallel_phase-flip-both 0.7s / -align3 20.6s，均 verify 清），但其
+blocks-less 试布 floor（3/6）排在 die-both（虚构 floor 2）之下，永远
+选不中。
+
+**(2) 修复**：试布契约尾随 blocks 关键字携带**候选自己的视图**
+（_router_accepts_blocks 逐选择探测一次，注入式假路由器自动回退
+blocks-less——测试契约保持）；选择报告携带真视图的 cage/conflict。
+
+**(3) 验收**：COMPLEX4（14T）经全生产链闭合——布局 16s、路由 0.7s
+FEASIBLE、verify 清、10 列 = 1.90µm（预测的 round-5 宽度；flip-both
+胜出）。抽检 NAND2X1 w=2 / max/COMPLEX1 w=9 / ctrl-COMPLEX0 w=6 全
+闭合+确定。
+
+**(4) 过程记录**：agent K 实现后死于 API 静默失败（本会话第三次），
+协调者验收其遗产并补完——其跨进程测试的辅助脚本把 CLKBUF1（库内虚
+拟源，无独立 deck 文件）的子ckt**文本**传进了 path 槽
+（FileNotFoundError）；修复为物化成真实临时文件。716 绿。
+
+**(5) 剩余（按诊断证据排期）**：精确模型 M2 双柱交叉
+（COMPLEX10 的网络连通性笼蔽 / 时序类双访问列 / XOR 类）；
+verify 转发已就位后 COMPLEX10 可重试窗口修复；provenance 秒数清理；
+rung-2 旧 IR 的 "switches layer" 契约缺口。
