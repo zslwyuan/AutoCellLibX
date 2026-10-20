@@ -61,6 +61,20 @@ build_diffusion_blocks) -- this module only adds what big cells need:
      maximal-split extreme (maximum diffusion breaks / corridors);
    - ``"max_merge"``: "default" with ``max_coupler_degree=None``.
 
+5. ``chain_split_decompositions(...)``: the chain-SPLIT candidate
+   decompositions -- the arrangement-space extension for the
+   entangled-wall class (AUDIT 5.50/5.52).  A series chain may legally
+   place as two sub-chains with its internal node wired by metal instead
+   of shared diffusion; each decomposition splits ONE series chain of
+   the default decomposition at ONE internal point into two sub-chain
+   blocks (facing ends carry the same internal net, so every consumer's
+   break rule inserts the gap exactly when the sub-chains sit
+   non-adjacent, and the net becomes multi-region/contactable like a
+   tree block's re-exposed branch net).  Placed adjacent the pair IS the
+   original block, so splits only ADD arrangements.  Bounded
+   (``CHAIN_SPLIT_MAX_DECOMPOSITIONS``, :func:`split_points_for_chain`)
+   and deterministic; consumed by place_sa.chain_split_classes.
+
 All iterations are over sorted structures (AGENTS.md invariant 9).
 """
 
@@ -585,6 +599,128 @@ def _grow_run(units, avail, idx0, flip0):
         run.append((i, flip))
         used.add(i)
         _l, right = _unit_ends(units, i, flip)
+
+
+# --------------------------------------------------------------------------
+# chain-split decompositions: the arrangement-space extension (the
+# entangled-wall class's split lever, AUDIT 5.50/5.52)
+# --------------------------------------------------------------------------
+# The censused arrangement space (decomposition variant x block ordering x
+# block flips) keeps every diffusion block CONTIGUOUS: a series chain's
+# members always share every internal diffusion edge.  But a series chain
+# can legally SPLIT: [M1,M2,M3] placed as [M1,M2] + gap + [M3] with the
+# internal node (M2.right == M3.left) wired by metal instead of shared
+# diffusion -- electrically identical (MOS S/D are symmetric, the internal
+# net keeps its identity), and exactly the freedom that moves gate columns
+# across the power-coverage bands the censused walls live in.  The split is
+# expressed WITHOUT any geometry/netlist change: the chain becomes two
+# sub-chain blocks whose facing ends carry the same internal net, so
+# place_row's break rule -- and every consumer's (row_edges, die_view,
+# verify, the router) -- inserts the gap exactly when the sub-chains are
+# placed non-adjacent, and the internal net becomes multi-region
+# (contactable, regions tied by metal) like every tree block's re-exposed
+# branch net.  Placed ADJACENT the pair IS the original block (facing nets
+# equal -> no break -> shared diffusion, one slot): the split only ever
+# ADDS arrangements, never rewrites one.
+
+#: series chains with at most this many members split at EVERY internal
+#: point; longer chains split at the capped deterministic set of
+#: :func:`split_points_for_chain`.
+CHAIN_SPLIT_ALL_POINTS_MAX_MEMBERS = 6
+
+#: split points nominated for a chain longer than the all-points bound
+CHAIN_SPLIT_LONG_CHAIN_POINTS = 4
+
+#: (chain, point) split decompositions generated at most, in sorted
+#: (chain first-device name, point) order -- the pool-cost cap
+CHAIN_SPLIT_MAX_DECOMPOSITIONS = 8
+
+
+def split_points_for_chain(member_count):
+    """The deterministic split-point set for a k-member series chain.
+
+    ``k <= CHAIN_SPLIT_ALL_POINTS_MAX_MEMBERS``: every internal point
+    (1..k-1) -- each cut is its own candidate decomposition.  Longer
+    chains: ``CHAIN_SPLIT_LONG_CHAIN_POINTS`` evenly spaced interior
+    points (rounded, deduped, clamped to 1..k-1) -- a long chain's
+    well-separated cuts bracket its distinct structural regions, and the
+    all-points enumeration would multiply the pool by k-1.  Pure function
+    (invariant 9).
+    """
+    if member_count <= CHAIN_SPLIT_ALL_POINTS_MAX_MEMBERS:
+        return tuple(range(1, member_count))
+    k = member_count
+    points = set()
+    for j in range(1, CHAIN_SPLIT_LONG_CHAIN_POINTS + 1):
+        p = int(round(j * k / float(CHAIN_SPLIT_LONG_CHAIN_POINTS + 1)))
+        points.add(min(max(p, 1), k - 1))
+    return tuple(sorted(points))
+
+
+def _subchain_block(members):
+    """One sub-chain DiffusionBlock: members keep their orientation."""
+    kind = "series" if len(members) > 1 else "single"
+    return DiffusionBlock(kind, [BlockMember(m.device, m.left_net,
+                                             m.right_net)
+                                 for m in members])
+
+
+def split_chain_in_blocks(blocks, chain_first_name, point):
+    """``blocks`` with ONE series chain split at ``point``.
+
+    The chain is the ``kind == "series"`` block whose first member's
+    device is named ``chain_first_name``; ``point`` cuts between members
+    ``point-1`` and ``point``.  Returns the new deterministic block list
+    (build_bigcell_blocks' own sort discipline) or None when the name is
+    not a series chain or the point is not internal.  Pure (invariant 9).
+    """
+    idx = None
+    for i, block in enumerate(blocks):
+        if (block.kind == "series" and block.first.name == chain_first_name
+                and len(block.members) > 1):
+            idx = i
+            break
+    if idx is None or not 1 <= point <= len(blocks[idx].members) - 1:
+        return None
+    left, right = (_subchain_block(blocks[idx].members[:point]),
+                   _subchain_block(blocks[idx].members[point:]))
+    out = list(blocks)
+    out[idx:idx + 1] = [left, right]
+    out.sort(key=lambda b: (len(b.members) == 1, b.first.name))
+    return out
+
+
+def chain_split_decompositions(
+        netlist, max_decompositions=CHAIN_SPLIT_MAX_DECOMPOSITIONS):
+    """The split-candidate decompositions over the DEFAULT total
+    decomposition: ``[(chain_name, point, blocks)]``.
+
+    For every series chain (kind "series", >= 2 members) of
+    ``build_bigcell_blocks(netlist)`` -- chains sorted by first-device
+    name, points ascending per :func:`split_points_for_chain` -- the
+    decomposition replaces that ONE chain with its two sub-chains and
+    keeps every other block untouched.  Chains are capped by
+    ``max_decompositions`` (the first sorted (chain, point) pairs), so
+    the candidate pool stays bounded on chain-heavy cells.  Tree/parallel
+    blocks are not split (the lever is the SERIES chain's internal edge).
+    Totality: every device ends up in exactly one block, every output
+    covers the netlist exactly once.  Deterministic (invariant 9).
+    """
+    blocks = build_bigcell_blocks(netlist)
+    chains = sorted(
+        (block.first.name for block in blocks
+         if block.kind == "series" and len(block.members) > 1))
+    out = []
+    for name in chains:
+        chain = next(b for b in blocks
+                     if b.kind == "series" and b.first.name == name)
+        for point in split_points_for_chain(len(chain.members)):
+            if len(out) >= max_decompositions:
+                return out
+            split = split_chain_in_blocks(blocks, name, point)
+            if split is not None:
+                out.append((name, point, split))
+    return out
 
 
 # --------------------------------------------------------------------------

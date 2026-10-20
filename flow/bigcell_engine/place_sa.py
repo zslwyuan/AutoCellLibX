@@ -204,6 +204,27 @@ nothing (die_view returns the reconstruction either way), so cells
 closing on non-tree candidates keep byte-identical trials; deriving
 the view is O(#blocks) per candidate (the orderings exist), bounded
 static work, no wall-clock (invariant 9).
+
+Chain-split classes (the arrangement-space extension, AUDIT 5.50/5.52):
+the entangled-wall class is proven (crossing=0, cage=0)-unreachable in
+the contiguous space -- every censused arrangement keeps each series
+chain's diffusion whole.  The extension adds the one freedom the space
+lacks: a series chain placed as TWO sub-chains with its internal node
+wired by metal (electrically identical; the sub-chains' facing ends
+carry the same net, so the existing break rule inserts the gap exactly
+when they sit non-adjacent, and the net becomes multi-region like a
+tree block's re-exposed branch net -- adjacent they ARE the original
+block).  ``netlist_ext.chain_split_decompositions`` enumerates the
+bounded split decompositions (ONE chain of the default decomposition at
+ONE internal point per candidate; chains <= 6 members at every point,
+longer chains at a capped spaced set, at most
+CHAIN_SPLIT_MAX_DECOMPOSITIONS candidates) and
+:func:`chain_split_classes` turns each into pool classes exactly like
+the variant classes (euler + budget-bounded SA refine + proven mirrors
++ capped alignment nominees; the same size-aware budgets).  They join
+:func:`select_orderings` as a lazy LAST phase under the same
+no-cage-free-FEASIBLE gate as the legacy twins, so all earlier
+closures keep their exact pools and selections byte-for-byte.
 """
 
 import hashlib
@@ -1716,6 +1737,93 @@ def decomposition_variant_classes(netlist, leg_widths,
 LEGACY_BASIN_CLASSES = 3
 
 
+# --------------------------------------------------------------------------
+# chain-split candidate classes (the arrangement-space extension)
+# --------------------------------------------------------------------------
+# The entangled-wall class (AUDIT 5.50/5.51: XOR/XNOR/MUX/TBUF/LATCH) is
+# proven (crossing=0, cage=0)-unreachable in the CONTIGUOUS space
+# (decomposition variant x block ordering x block flips; XOR2X1's 589,824
+# arrangements exhaustively censused): every arrangement keeps each series
+# chain's diffusion CONTIGUOUS, so the gates of a chain cannot straddle a
+# power column.  A series chain can legally SPLIT -- two sub-chains with
+# the internal node wired by metal (electrically identical; the gap is
+# place_row's own break rule once the sub-chains sit non-adjacent) -- and
+# the split MOVES GATE COLUMNS, exactly the freedom the wall names.  The
+# split decompositions (netlist_ext.chain_split_decompositions: ONE chain
+# of the default decomposition split at ONE point per candidate, bounded)
+# join the speculate pool as a lazy LAST phase, built like the variant
+# classes: per split decomposition the euler seed, a budget-bounded SA
+# refine (the same size-aware budgets), the proven mirror classes and the
+# alignment nominees -- census/trial evaluation through the EXISTING
+# machinery, no new selection logic.  Additive by construction: fired only
+# when the fixed + variant + legacy-twin phases left no cage-free FEASIBLE
+# winner, so every cell closing earlier keeps its exact pool, trials and
+# selection byte-for-byte.
+
+#: alignment nominees per split decomposition (the variant classes' own
+#: cap discipline applies)
+CHAIN_SPLIT_ALIGN_LIMIT = ALIGN_CANDIDATES
+
+
+def chain_split_classes(netlist, leg_widths,
+                        align_limit=CHAIN_SPLIT_ALIGN_LIMIT, cage=True):
+    """The chain-split candidate classes for the speculate pool.
+
+    For every split decomposition (:func:`netlist_ext.chain_split_decompositions`,
+    the default decomposition with ONE series chain split at ONE point):
+    build blocks -> row seeds -> euler -> a budget-bounded Threshold-Accept
+    refine (the same content-hash seed discipline and the same size-aware
+    budgets as :func:`decomposition_variant_classes`; above
+    _VARIANT_SA_PROBLEM_CAP the euler seed stands in) and nominate
+
+        1. the split's SA best ("split:<chain>@<point>"),
+        2. its both-rows flip / die-mirror (the proven closure classes),
+        3. up to ``align_limit`` alignment nominees
+           ("split:<chain>@<point>-align<j>", the same
+           :func:`alignment_candidates` caps).
+
+    Deduped internally by :func:`ordering_signature`; the caller dedupes
+    against the pool.  Pure and deterministic (invariant 9).
+    """
+    from bigcell_engine.netlist_ext import (chain_split_decompositions,
+                                            row_seeds)
+    from bigcell_engine.place_euler import euler_orderings
+    out = []
+    seen = set()
+    for name, point, blocks in chain_split_decompositions(netlist):
+        p_blocks = [b for b in blocks if b.first.is_p]
+        n_blocks = [b for b in blocks if not b.first.is_p]
+        seeds = row_seeds(blocks, leg_widths)
+        eop, eon = euler_orderings(seeds, leg_widths)
+        problem_size = len(seeds[P_ROW]) * len(seeds[N_ROW])
+        if problem_size <= _VARIANT_SA_PROBLEM_CAP:
+            bp, bn, _bd = sa_refine(eop, eon, netlist, leg_widths,
+                                    iterations=_variant_sa_iterations(
+                                        problem_size),
+                                    cage=cage)
+        else:
+            bp, bn = eop, eon
+        base = "split:%s@%d" % (name, point)
+        classes = [(base, bp, bn),
+                   (base + "-flip-both", _row_flipped(bp), _row_flipped(bn)),
+                   (base + "-die-both", _row_die_mirror(bp),
+                    _row_die_mirror(bn))]
+        for j, (op, on) in enumerate(
+                alignment_candidates(p_blocks, n_blocks, leg_widths,
+                                     limit=align_limit,
+                                     pair_cap=_alignment_pair_cap(
+                                         problem_size),
+                                     netlist=netlist), start=1):
+            classes.append((base + "-align%d" % j, op, on))
+        for kind, op, on in classes:
+            sig = ordering_signature(op, on)
+            if sig in seen:
+                continue
+            seen.add(sig)
+            out.append((kind, op, on))
+    return out
+
+
 def generate_candidates(best_p, best_n, seed_p, seed_n, leg_widths,
                         candidate_count=DEFAULT_CANDIDATES,
                         extra_classes=None, netlist=None,
@@ -1925,7 +2033,11 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
     by :func:`ordering_signature` (content-only: two decompositions
     producing the same ordering route identically, so one trial
     covers both; the report's ``kind`` carries the first occurrence's
-    provenance).
+    provenance).  When even the third phase left no cage-free FEASIBLE
+    winner, the chain-SPLIT classes (:func:`chain_split_classes`) join
+    as a lazy fourth phase under the same gate -- the
+    arrangement-space extension for the entangled-wall class; every
+    cell closing earlier keeps its exact pool, trials and selection.
 
     ``trial_router`` defaults to ``route_grid.route_cell`` and is
     called as ``router(netlist, placements, width_cols, leg_widths,
@@ -2094,6 +2206,29 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
             extra = decomposition_variant_classes(netlist, leg_widths,
                                                   cage=cage,
                                                   basin="legacy")
+            for kind, op, on in extra:
+                if ordering_signature(op, on) in known:
+                    continue
+                known.add(ordering_signature(op, on))
+                pool.append((kind, op, on))
+            for idx in range(len(entries), len(pool)):
+                entry = _trial(idx)
+                won = _keep(entry, pool[idx][1], pool[idx][2])
+                if won is not None:
+                    return won
+        # phase 4: the chain-SPLIT classes (the arrangement-space
+        # extension, see :func:`chain_split_classes`).  Fired under the
+        # same no-cage-free-FEASIBLE gate as phase 3 -- structurally,
+        # reaching this point means no cage-free FEASIBLE candidate
+        # exists in the fixed/variant/legacy phases (a cage-free FEASIBLE
+        # short-circuits in _keep), so every cell closing earlier keeps
+        # its exact pool, trials and selection byte-for-byte; a plateau
+        # cell gets the split arrangements (one series chain per
+        # candidate decomposition placed as two metal-tied sub-chains) as
+        # additional candidates.
+        if variant_classes and cage and \
+                (feasible is None or feasible["cage"] > 0):
+            extra = chain_split_classes(netlist, leg_widths, cage=cage)
             for kind, op, on in extra:
                 if ordering_signature(op, on) in known:
                     continue
