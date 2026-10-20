@@ -152,9 +152,29 @@ plateau.  The added refines reuse agent E's size-aware budgets
 verbatim; on cells above _VARIANT_SA_PROBLEM_CAP the variant twins
 degenerate to the euler seed and dedupe away, so the doubling cost is
 the MAIN refine (measured in the bench reports).
+
+TRUE-VIEW trials (the multiplier/COMPLEX4 14T closure, the last piece
+of a7b23cc's chain): the trial-router contract gains an optional
+trailing ``blocks`` keyword carrying the CANDIDATE'S OWN
+orientation-aware block view (``list(ordering_p) + list(ordering_n)`` --
+the very ``blocks`` engine meta carries for the winner), probed once
+per selection (:func:`_router_accepts_blocks`) so routers without the
+parameter -- every injected fake that predates it -- keep their exact
+blocks-less call.  The blocks-less trial ranked a tree-arrangement
+candidate by a die view the real route never recreates: on
+multiplier/COMPLEX4 the closers ``var:parallel_phase-flip-both`` /
+``-align3`` trialed BELOW ``var:parallel_phase-die-both`` (floors 3/6
+vs 2) while their own views route clean and die-both's own view has
+full-budget floor 4 with a CP-SAT-proven unwirable window.  On every
+placement the pristine reconstruction explains, ``blocks`` changes
+nothing (die_view returns the reconstruction either way), so cells
+closing on non-tree candidates keep byte-identical trials; deriving
+the view is O(#blocks) per candidate (the orderings exist), bounded
+static work, no wall-clock (invariant 9).
 """
 
 import hashlib
+import inspect
 import itertools
 import math
 import random
@@ -1548,6 +1568,32 @@ def _default_trial_router():
     return route_cell
 
 
+def _router_accepts_blocks(router):
+    """Whether ``router`` accepts the trial contract's optional
+    ``blocks`` keyword (the TRUE-VIEW trial, see :func:`select_orderings`).
+
+    True when the callable declares a ``blocks`` parameter (the real
+    ``route_grid.route_cell`` since a7b23cc) or a ``**kwargs`` catch-all
+    (a permissive stub); False otherwise -- today's injected fakes
+    (``router(netlist, placements, width, leg_widths, max_attempts)``)
+    keep their exact blocks-less call, so every existing fake-router
+    test contract survives unchanged.  Pure function of the router
+    object (invariant 9): the probe is ``inspect.signature``, probed
+    once per selection and reused for every candidate."""
+    try:
+        params = inspect.signature(router).parameters.values()
+    except (TypeError, ValueError):    # no introspectable signature
+        return False
+    for p in params:
+        if p.kind == inspect.Parameter.VAR_KEYWORD:
+            return True
+        if p.name == "blocks" and p.kind in (
+                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                inspect.Parameter.KEYWORD_ONLY):
+            return True
+    return False
+
+
 def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
                      candidate_count=DEFAULT_CANDIDATES,
                      trial_attempts=DEFAULT_TRIAL_ATTEMPTS,
@@ -1610,17 +1656,38 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
 
     ``trial_router`` defaults to ``route_grid.route_cell`` and is
     called as ``router(netlist, placements, width_cols, leg_widths,
-    max_attempts=trial_attempts)``; an injected stub must keep that
-    contract.  A router exception is caught and scored _UNROUTABLE
-    (recorded in the report) so one bad candidate cannot kill the
-    placement.
+    max_attempts=trial_attempts, blocks=<candidate's block view>)`` --
+    the TRUE-VIEW trial: each candidate is measured against its OWN
+    orientation-aware die view (``list(ordering_p) + list(ordering_n)``,
+    exactly the ``blocks`` the production route and verify consume for
+    the winner), so the trial's verdict is the same view the
+    full-budget route sees.  The blocks-less legacy trial ranked a
+    tree-arrangement candidate by a die view the real route never
+    recreates (the multiplier/COMPLEX4 evidence: the closers
+    ``var:parallel_phase-flip-both``/``-align3`` trial below
+    ``var:parallel_phase-die-both`` blocks-less yet route CLEAN on
+    their own view, while die-both's own view is full-budget-floor-4
+    with a CP-SAT-proven unwirable window).  On every placement the
+    pristine reconstruction explains, ``blocks`` changes nothing (the
+    router's die view is identical either way), so non-tree candidates
+    keep their byte-identical trial.  A router that does not accept the
+    keyword (today's injected fakes, probed once via
+    :func:`_router_accepts_blocks`) keeps the exact blocks-less legacy
+    call ``router(netlist, placements, width_cols, leg_widths,
+    max_attempts=trial_attempts)``.  A router exception is caught and
+    scored _UNROUTABLE (recorded in the report) so one bad candidate
+    cannot kill the placement.
 
     ``report`` (plain data, no wall-clock -- invariant 9):
     ``selected``/``kind``/``feasible``/``conflicts``/``cage`` of the
-    winner plus per-trialed-candidate entries.  Pure and deterministic.
+    winner plus per-trialed-candidate entries; ``trial_view`` records
+    which trial contract measured the pool ("blocks" = the true view,
+    "blocks-less" = a router without the parameter).  Pure and
+    deterministic.
     """
     router = trial_router if trial_router is not None \
         else _default_trial_router()
+    blocks_aware = _router_accepts_blocks(router)
     if leg_widths is None:
         from bigcell_engine.geometry import default_leg_widths
         leg_widths = default_leg_widths(
@@ -1638,9 +1705,24 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
         """Trial-route pool[idx]; append the report entry; return it."""
         kind, op, on = pool[idx]
         placements, width = layout_cell(op, on, leg_widths)
+        # the candidate's OWN die view: the orientation-aware block view
+        # the production route would consume for exactly this placement
+        # (engine meta["blocks"] is list(ordering_p) + list(ordering_n)
+        # of the winner -- here every candidate gets the same courtesy).
+        # Deriving it is O(#blocks) (the blocks exist; nothing is
+        # rebuilt), and the router consumes it only where the pristine
+        # reconstruction fails (the tree-arrangement fallback), so
+        # non-tree candidates keep their byte-identical blocks-less
+        # trial.  No wall-clock, no hash() (invariant 9).
+        blocks_view = list(op) + list(on)
         try:
-            result = router(netlist, placements, width, leg_widths,
-                            max_attempts=trial_attempts)
+            if blocks_aware:
+                result = router(netlist, placements, width, leg_widths,
+                                max_attempts=trial_attempts,
+                                blocks=blocks_view)
+            else:
+                result = router(netlist, placements, width, leg_widths,
+                                max_attempts=trial_attempts)
         except Exception as exc:                   # noqa: BLE001
             result = None
             note = "trial router raised %s: %s" % (
@@ -1669,6 +1751,8 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
                     "selected": entry["index"], "kind": entry["kind"],
                     "feasible": True, "conflicts": 0, "cage": 0,
                     "trial_attempts": trial_attempts,
+                    "trial_view": "blocks" if blocks_aware
+                    else "blocks-less",
                     "candidate_count": len(pool), "candidates": entries,
                 }
             if feasible is None or key < (feasible["cage"],
@@ -1692,6 +1776,7 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
             "feasible": entry["conflicts"] == 0,
             "conflicts": entry["conflicts"], "cage": entry["cage"],
             "trial_attempts": trial_attempts,
+            "trial_view": "blocks" if blocks_aware else "blocks-less",
             "candidate_count": len(pool), "candidates": entries,
         }
 
@@ -1772,7 +1857,10 @@ def sa_refine_routable(ordering_p, ordering_n, netlist, leg_widths,
     All randomness stays inside sa_refine's content-hash discipline;
     the selection itself uses none (invariant 9).  ``trial_router`` is
     injectable for tests; the default runs the real
-    ``route_grid.route_cell`` at ``trial_attempts``.
+    ``route_grid.route_cell`` at ``trial_attempts``, TRUE-VIEW: every
+    candidate is trialed against its own block view (see
+    :func:`select_orderings`; injected fakes without the ``blocks``
+    parameter keep the blocks-less legacy call).
     ``variant_classes=True`` additionally joins the decomposition-
     variant classes (see :func:`select_orderings`) when the fixed
     classes all fail -- the upstream lever for the one-decomposition

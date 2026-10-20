@@ -33,8 +33,12 @@ pristinely to a MIRRORED die (the device-adjacency check fails), and
 the honest HEAD router/verifier pair rejects every arrangement this
 module's pools can offer; the honest residuals are pinned in
 :func:`test_clkbuf1_chain_residual_is_corridor_only` /
-:func:`test_complex4_chain_residual_is_corridor_only` so any future
-policy change that worsens them is caught.
+:func:`test_complex4_chain_closes_after_the_true_view_trials` so any
+future policy change that worsens them is caught.  (2026-10 update:
+the TRUE-VIEW trials lift multiplier/COMPLEX4 out of the residual
+class entirely -- the production chain selects the closer
+var:parallel_phase-flip-both and the cell closes; see
+tests/unit/test_bigcell_trueview.py.)
 
 Fast tests use ctrl/COMPLEX0 (8T) and injected trial routers; the two
 chain pins and the cross-process determinism pins run the real router.
@@ -463,17 +467,24 @@ def test_clkbuf1_chain_residual_is_corridor_only(clkbuf1_chain):
     assert r.width_cols >= max(p.end_col for p in pl.values())
 
 
-def test_complex4_chain_residual_is_corridor_only(complex4_chain):
-    """multiplier/COMPLEX4 (14T): same honest-residual contract as
-    CLKBUF1 (its round-5 winner was a census-mirrored parallel_phase
-    alignment nominee; the honest die view walls the placement)."""
+def test_complex4_chain_closes_after_the_true_view_trials(complex4_chain):
+    """multiplier/COMPLEX4 (14T): UPDATED by the true-view trials
+    (2026-10).  This pin used to hold the cell's honest residual (its
+    round-5 winner was a census-mirrored parallel_phase alignment
+    nominee; the honest die view walls the placement): the blocks-less
+    trials ranked ``var:parallel_phase-die-both`` first (floor 2) while
+    the closers ``var:parallel_phase-flip-both``/``-align3`` trial below
+    it -- yet their OWN views route clean and die-both's own view is
+    full-budget floor 4 with a CP-SAT-proven unwirable window.  With
+    ``select_orderings`` trialing every candidate against its OWN block
+    view, the production chain selects ``var:parallel_phase-flip-both``
+    and the cell CLOSES (full place -> route -> verify -> gds evidence:
+    tests/unit/test_bigcell_trueview.py)."""
     nl3, pl, w, lws, blocks, r = complex4_chain
-    assert not r.ok
+    assert r.ok, getattr(r, "fail_note", None)
+    assert w == 10
     note = getattr(r, "fail_note", None) or ""
     assert "statically caged" not in note
-    from bigcell_engine.route_grid import _RouteGrid
-    _contests, walled = _RouteGrid(nl3, pl, w).structural_diagnosis()
-    assert walled == []
 
 
 # --------------------------------------------------------------------------
