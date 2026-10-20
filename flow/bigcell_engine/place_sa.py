@@ -153,6 +153,39 @@ verbatim; on cells above _VARIANT_SA_PROBLEM_CAP the variant twins
 degenerate to the euler seed and dedupe away, so the doubling cost is
 the MAIN refine (measured in the bench reports).
 
+The crossing-level lever (AUDIT 5.49 -- the XOR/MUX/TBUF/LATCH 12T
+class): M2B's CP-SAT dissection proved that class binds on
+CROSSING-SAFETY (M1 landing-point supply) -- the demanded wire
+crossings sit inside the power bars' mandatory coverage bands and no
+track count lifts it; the freedom is the PLACEMENT.  The census
+extends one level deeper than the gate-contact lever,
+:func:`crossing_cage_penalty` (contact escapable -> crossing
+escapable): per net the boundaries its wire MUST span (presence on
+both sides) are checked for a fully-walled escape (no M1 track free of
+foreign forced coverage at either endpoint, no poly escape).  It joins
+the speculate selection as a rank BELOW the measured evidence (a
+FEASIBLE route outranks any static census, so an M2-dissolvable M1
+contest -- NAND2X1's Y -- never demotes a closing candidate):
+
+- the speculate selection: every candidate report carries ``crossing``
+  (evidence next to the router's measured floor); the FEASIBLE-but-
+  caged tier key gains the crossing tie-break (a caged-FEASIBLE
+  candidate whose crossings dodge the striped columns outranks an
+  equal-cage contested one); the fallback ranks stay byte-compatible
+  with the pinned (floor, cost, index) contracts;
+- the alignment nominees break (cost, cage) ties crossing-free-first
+  (:func:`alignment_candidates`);
+- the SA cost and the two no-route fallback ranks are deliberately NOT
+  touched: the steered basins' pinned specimens (INVX1/NAND2/NAND2X1
+  ``best``, the ctrl M2-fingerprint nominee, COMPLEX4's variant
+  closure) must keep their exact arrangements, the fallback ranks are
+  pinned (floor, cost, index)-verbatim, and the exhaustive census
+  sweeps (AUDIT 5.49 evidence) showed the 12T class's selections are
+  floor-driven with NO (crossing=0, cage=0) arrangement in the
+  enumerable spaces -- the census's selection role is evidence and
+  tie-breaks, and the class's next lever is the CP-SAT
+  sufficient-assumptions dissection, not a rank change.
+
 TRUE-VIEW trials (the multiplier/COMPLEX4 14T closure, the last piece
 of a7b23cc's chain): the trial-router contract gains an optional
 trailing ``blocks`` keyword carrying the CANDIDATE'S OWN
@@ -517,6 +550,224 @@ def gate_cage_penalty(ordering_p, ordering_n, netlist, leg_widths=None):
     vn = _cage_row_view([_entry(b, False, leg_widths)
                          for b in ordering_n], False, exposed)
     return _cage_from_views(vp, vn, exposed)
+
+
+# --------------------------------------------------------------------------
+# the crossing-level predicate (AUDIT 5.49: the XOR/MUX/TBUF/LATCH class)
+# --------------------------------------------------------------------------
+# M2B's CP-SAT dissection proved the 12T class binds on CROSSING-SAFETY
+# (M1 landing-point supply): dropping that one constraint family alone
+# flips each exact model to OPTIMAL and verify then fails exactly at
+# crossings INSIDE the power bars' mandatory coverage bands (a GND
+# access column's stripe covers T0-T2, a VCC access column's T4-T6 --
+# the coverage is forced by the "reach the power end" rule, not the
+# router's freedom), and adding tracks does not lift it (k=12 still
+# INFEASIBLE).  The lever is the PLACEMENT axis: the demanded crossings
+# must move off the striped columns, one level deeper than agent H's
+# gate-contact census -- a gate column whose CONTACT has a poly escape
+# can still wall the net's OTHER crossings (a plain M1 span has no
+# contact to hide behind).
+
+def _crossing_from_views(vp, vn, exposed):
+    """The crossing-contest census over two row views (see
+    :func:`crossing_cage_penalty` for the model).  Split from it so the
+    alignment nomination can score pairs from per-row precomputed views
+    without re-walking.  Same slot conventions as :func:`_cage_from_views`
+    (N slot for t < BOUNDARY_T, P slot above; same-net dual blankets
+    rail-to-rail through the corridor; the poly escape on row tracks)."""
+    B = CAGE_BOUNDARY_T
+    ep, counts_p, gates_p, forced_p, active_p, wp = vp
+    en, counts_n, gates_n, forced_n, active_n, wn = vn
+    rw = (wp if wp >= wn else wn) + 1  # slot model: the edge axis
+    # same-net dual access columns (the census's spelling: a net
+    # contactable on BOTH rows at one column merges its bars
+    # rail-to-rail through the corridor -- its blanket spans from the
+    # N rail track up to the P rail track)
+    duals = {}
+    for c, net_n in en.items():
+        if net_n in POWER_NETS or ep.get(c) != net_n:
+            continue
+        if not (counts_n[net_n] > 1 or net_n in exposed):
+            continue
+        if not (counts_p[net_n] > 1 or net_n in exposed):
+            continue
+        duals[c] = (net_n, CAGE_RAIL_TRACK[P_ROW + 2])
+    # per-net M1 presence columns: a contactable diffusion access pins
+    # its rail (the row views' own forced map), a gate contact's
+    # crossing spans [c, c+1] (verify's rule (c): every gate column
+    # carries a crossing, so both endpoint columns hold the net's M1)
+    presence = {}
+    for forced in (forced_n, forced_p):
+        for c, slots in forced.items():
+            for nets in slots.values():
+                for net in nets:
+                    if net not in POWER_NETS:
+                        presence.setdefault(net, set()).add(c)
+    for gates_map in (gates_p, gates_n):
+        for (net, c) in gates_map:
+            got = presence.setdefault(net, set())
+            got.add(c)
+            got.add(c + 1)
+    # the raw poly spans of every gate stripe per column (the foreign
+    # side of the poly-jump legality, as in the census)
+    span_n, span_p, span_np, _corridor = _track_model()
+    span_of = {False: span_p, True: span_np}
+    gspans = {}
+    for (net, c) in gates_p:                 # P row
+        gspans.setdefault(c, {})[net] = span_of[True]
+    for (net, c) in gates_n:                 # N row
+        gspans.setdefault(c, {}).setdefault(net, span_of[False])
+
+    def _escape_tracks(net, c):
+        """The tracks net ``net`` can cross boundary (c, c+1) on:
+        M1 where both endpoint columns are free of foreign forced
+        coverage in the track's slot (the net's own pins never block
+        it), plus the ANCHORED poly escape (route_model's E4 rule:
+        every maximal poly run must cross a same-net gate, and the
+        gate merge is the only M1<->poly junction -- so unlike the
+        gate-contact census, whose contact at c is its own anchor, a
+        plain boundary's poly jump needs the net's OWN gate stripe
+        spanning t at the crossed column c; T3 has no poly escape)."""
+        out = []
+        for t in range(CAGE_N_TRACKS):
+            blocked = False
+            for cc in (c, c + 1):
+                slots = (forced_n if t < B else forced_p).get(cc)
+                if slots:
+                    others = slots.get(t)
+                    if others and (len(others) > 1 or net not in others):
+                        blocked = True
+                        break
+                dual = duals.get(cc)
+                if (dual is not None and dual[0] != net
+                        and CAGE_RAIL_TRACK[N_ROW] <= t <= dual[1]):
+                    blocked = True
+                    break
+            if not blocked:
+                out.append(t)
+                continue
+            # the anchored poly escape: a row-track jump over field
+            # oxide whose column c hosts no foreign gate stripe on t
+            # and hosts the net's own (the run anchor)
+            if t in CAGE_ROW_TRACKS:
+                row_active = (active_n if t == 2
+                              else active_p if t == 4 else ())
+                spans = gspans.get(c, {})
+                if ((c + 1) not in row_active
+                        and all(n == net
+                                for n, sp in spans.items() if t in sp)
+                        and any(n == net and t in sp
+                                for n, sp in spans.items())):
+                    out.append(t)
+        return out
+
+    contested = 0
+    columns = set()
+    claims = {}                              # (track, col) -> {nets}
+    for net in sorted(presence):
+        cols = presence[net]
+        lo, hi = min(cols), max(cols)
+        if lo == hi:
+            continue
+        for c in range(lo, hi):
+            # boundary (c, c+1) is DEMANDED: the net's wire must span
+            # it (presence on both sides -- the exact model's sweep
+            # forces presence in every column between the leftmost and
+            # rightmost access and bridges every gap)
+            if c + 1 >= rw:
+                continue
+            escapes = _escape_tracks(net, c)
+            if not escapes:
+                # level 1: every lane is walled (power band / dual
+                # blanket / foreign rail pin, no anchored poly escape)
+                contested += 1
+                columns.add(c)
+            elif len(escapes) == 1:
+                # level 2: the sole surviving lane FORCES the
+                # crossing onto it (route_grid._gate_forced's rule:
+                # the crossing segment claims both endpoint nodes,
+                # and M2 cannot lift a forced M1 crossing) -- two
+                # nets forced onto the same node contest it
+                t = escapes[0]
+                for cc in (c, c + 1):
+                    claims.setdefault((t, cc), set()).add(net)
+    for (t, cc), nets in sorted(claims.items()):
+        if len(nets) > 1:
+            contested += 1
+            columns.add(cc)
+    return contested, tuple(sorted(columns))
+
+
+def crossing_cage_penalty(ordering_p, ordering_n, netlist, leg_widths=None):
+    """Static crossing-contest census over one ordering pair (AUDIT
+    5.49's placement-axis lever).
+
+    Returns ``(contested_crossings, blocked_boundaries)``: how many
+    boundaries a signal net MUST span (M1 landing supply) have no
+    escapable track at all, and the sorted left columns of those
+    boundaries -- 0/() when every demanded crossing has a lane.
+    O(width x tracks x nets) per call, no router involved.
+
+    The model (the gate-contact census of :func:`gate_cage_penalty`
+    extended one level deeper, contact escapable -> crossing escapable):
+
+    - per-net M1 PRESENCE columns: contactable diffusion accesses pin
+      their rail (the row views' forced map), a gate contact's crossing
+      spans [c, c+1] (verify's rule (c) demands a crossing for every
+      gate column, so both endpoint columns hold the net's M1);
+    - a boundary (c, c+1) is DEMANDED for a net when the net's presence
+      has a column at or left of c AND at or right of c+1 -- the exact
+      model's connectivity sweep forces presence in every column
+      between the leftmost and rightmost access and bridges every gap,
+      so the wire cannot dodge the boundary;
+    - the boundary is CONTESTED at two levels:
+      level 1 -- no track escapes it: M1 needs both endpoint columns
+      free of foreign forced coverage in the track's slot (N slot for
+      t < 3, P slot for t >= 3; power bands T0-T2 / T4-T6, contactable
+      signal rail pins, same-net dual blankets rail-to-rail -- the
+      net's own pins never block it), and the ANCHORED poly escape
+      (row track over field oxide at c+1, the net's OWN gate stripe
+      spanning t at c and no foreign stripe there -- route_model's E4
+      run-anchoring: unlike a gate contact, which is its own anchor, a
+      plain boundary's poly jump needs a same-net gate merge inside
+      the run; T3 has no poly escape);
+      level 2 -- a boundary whose SOLE surviving lane forces the
+      crossing onto it (route_grid._gate_forced's rule: the crossing
+      segment claims both endpoint nodes and M2 cannot lift a forced
+      M1 crossing); two nets forced onto the same node contest it --
+      the downstream mechanism that makes the class INFEASIBLE (the
+      forced lane is usually the T3 corridor);
+
+    Known blind spots, by design (documented honesty): only FORCED
+    node claims are counted (a net that merely CHOOSES the contested
+    lane is not -- the under-approximation never invents a contest,
+    matching :meth:`route_grid._RouteGrid.structural_diagnosis`'s
+    discipline), multi-boundary poly runs anchoring left of c are not
+    modelled (the anchored escape is local, so the census may
+    over-count), and the metal2 span vocabulary is not modelled (an
+    M1-contested boundary the M2 freedom could dissolve is
+    over-counted -- the term therefore only ever ranks candidates that
+    failed their trials, never demotes a FEASIBLE winner whose route
+    already proves the arrangement).
+
+    ``ordering_p``/``ordering_n`` are the oriented block sequences
+    (mirror_block state included -- the edge nets are read as they sit);
+    ``netlist`` is the (folded) CellNetlist the orderings decompose (it
+    supplies the exposed-net set); ``leg_widths`` the fold map
+    (device name -> (legs, leg_width_cols)), defaulting to the slot
+    model's (1, 1).  Pure and deterministic (invariant 9)."""
+    if leg_widths is None:
+        devices = [m.device for row in (ordering_p, ordering_n)
+                   for b in row for m in b.members]
+        leg_widths = {dev.name: (1, 1) for dev in devices}
+    exposed = exposed_net_set(netlist) if netlist is not None else None
+    if exposed is None:
+        return 0, ()
+    vp = _cage_row_view([_entry(b, False, leg_widths)
+                         for b in ordering_p], True, exposed)
+    vn = _cage_row_view([_entry(b, False, leg_widths)
+                         for b in ordering_n], False, exposed)
+    return _crossing_from_views(vp, vn, exposed)
 
 
 def cell_seed(netlist):
@@ -1238,7 +1489,16 @@ def alignment_candidates(p_blocks, n_blocks, leg_widths,
                                    one; pinned to the TAIL of the rank
                                    because the ctrl/COMPLEX0 M2-fingerprint
                                    closure rides a census-caged nominee),
-        6. lexicographic ordering signature (deterministic tie-break).
+        6. crossing-contest ASC   (with ``netlist``: the static
+                                   :func:`crossing_cage_penalty` census --
+                                   the placement-axis lever of AUDIT 5.49:
+                                   a finalist whose demanded wire
+                                   crossings dodge the striped columns
+                                   beats an equal finalist whose
+                                   crossings land inside the power
+                                   bands; ranked after the cage for the
+                                   same tail-pin reason),
+        7. lexicographic ordering signature (deterministic tie-break).
 
     Returns up to ``limit`` distinct (ordering_p, ordering_n) pairs.
     Pure and deterministic (invariant 9); no router is invoked.
@@ -1298,11 +1558,16 @@ def alignment_candidates(p_blocks, n_blocks, leg_widths,
         cage = _cage_from_views(p_view_by_sig[sp], n_view_by_sig[sn],
                                 exposed)[0] \
             if p_view_by_sig is not None else 0
-        ranked.append(((ga, da, br, cost, cage, sp, sn), op, on))
-    # stable two-stage final rank: (cost, cage, signature) ascending,
-    # then the alignment/corridor key descending -- ties keep the
-    # cheaper, cage-free, lexicographically smaller ordering
-    ranked.sort(key=lambda t: (t[0][3], t[0][4], t[0][5], t[0][6]))
+        crossing = _crossing_from_views(p_view_by_sig[sp],
+                                        n_view_by_sig[sn],
+                                        exposed)[0] \
+            if p_view_by_sig is not None else 0
+        ranked.append(((ga, da, br, cost, cage, crossing, sp, sn), op, on))
+    # stable two-stage final rank: (cost, cage, crossing, signature)
+    # ascending, then the alignment/corridor key descending -- ties keep
+    # the cheaper, cage-free, crossing-free, lexicographically smaller
+    # ordering
+    ranked.sort(key=lambda t: (t[0][3], t[0][4], t[0][5], t[0][6], t[0][7]))
     ranked.sort(key=lambda t: (t[0][0], t[0][1], t[0][2]), reverse=True)
     out = []
     seen = set()
@@ -1603,11 +1868,16 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
     candidate pool by a fast trial route and pick the winner.
 
     Returns ``(ordering_p, ordering_n, report)``.  Ranking policy (the
-    gate-cage lever, AUDIT 5.46):
+    gate-cage lever, AUDIT 5.46, extended by the crossing lever, AUDIT
+    5.49):
 
     - every candidate carries its :func:`gate_cage_penalty` count in the
       report entry (``cage``) -- the static census of the placement-side
-      wall (gate contacts hard-blocked under power metal);
+      wall (gate contacts hard-blocked under power metal) -- and its
+      :func:`crossing_cage_penalty` count (``crossing``) -- the
+      demanded wire crossings walled inside the power bands (the
+      XOR/MUX/TBUF/LATCH class's binding family, one level deeper than
+      the contact census);
     - a candidate that routes FEASIBLE **and** cages no gate wins
       immediately, in pool priority order (the SA-best candidate is
       tried first, so a cell whose cost-optimal orientation already
@@ -1622,14 +1892,17 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
     - when nothing routes within the trial budget, the candidate with
       the best floor key is returned.  Candidates with a real conflict
       count (a negotiation plateau -- the router's honest floor) keep
-      today's (conflicts, SA cost, pool index) rank.  Candidates with
-      NO floor (_UNROUTABLE: the router could not even negotiate --
-      the build-time structural-failure class the census diagnoses)
-      rank by (cage, SA cost, pool index): with no measured floor the
-      static census is the best signal, and a candidate that cages a
-      gate where another doesn't loses even with better legacy cost.
-      A real floor always beats _UNROUTABLE.  The caller's full-budget
-      route then starts from the best-known orientation.
+      today's (conflicts, SA cost, pool index) rank verbatim.
+      Candidates with NO floor (_UNROUTABLE: the router could not even
+      negotiate -- the build-time structural-failure class the census
+      diagnoses) keep today's (cage, SA cost, pool index) rank
+      verbatim.  A real floor always beats _UNROUTABLE.  The caller's
+      full-budget route then starts from the best-known orientation.
+      The crossing census therefore acts in the selection as EVIDENCE
+      (the report field) and through the FEASIBLE-but-caged tier key
+      and the alignment finalists -- the fallback ranks stay
+      byte-compatible with the pinned contracts (equal-(floor, cost)
+      ties resolve by pool index exactly as before).
 
     ``variant_classes`` extends the pool with the decomposition-variant
     classes (:func:`decomposition_variant_classes`) when the fixed
@@ -1735,6 +2008,8 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
         entry = {"index": idx, "kind": kind, "cost": cost,
                  "width_cols": width, "conflicts": conflicts,
                  "cage": gate_cage_penalty(op, on, netlist, leg_widths)[0],
+                 "crossing": crossing_cage_penalty(
+                     op, on, netlist, leg_widths)[0],
                  "feasible": conflicts == 0,
                  "attempts": getattr(result, "attempts_used", None),
                  "note": note}
@@ -1745,25 +2020,29 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
         """Short-circuit on FEASIBLE cage-free; track the tier winners."""
         nonlocal fallback, feasible
         if entry["conflicts"] == 0:
-            key = (entry["cage"], entry["index"])
+            key = (entry["cage"], entry["crossing"], entry["index"])
             if entry["cage"] == 0:
                 return op, on, {
                     "selected": entry["index"], "kind": entry["kind"],
                     "feasible": True, "conflicts": 0, "cage": 0,
+                    "crossing": entry["crossing"],
                     "trial_attempts": trial_attempts,
                     "trial_view": "blocks" if blocks_aware
                     else "blocks-less",
                     "candidate_count": len(pool), "candidates": entries,
                 }
             if feasible is None or key < (feasible["cage"],
+                                          feasible["crossing"],
                                           feasible["index"]):
                 feasible = entry
             return None
         if entry["conflicts"] == _UNROUTABLE:
-            # no measured floor: the census leads, then cost, then order
+            # no measured floor: today's (cage, cost, index) rank
+            # verbatim
             key = (1, entry["cage"], entry["cost"], entry["index"])
         else:
-            # a real negotiation plateau: today's floor rank verbatim
+            # a real negotiation plateau: today's (conflicts, cost,
+            # index) rank verbatim -- the router's honest floor leads
             key = (0, entry["conflicts"], entry["cost"], entry["index"])
         if fallback is None or key < fallback[0]:
             fallback = (key, entry)
@@ -1775,6 +2054,7 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
             "selected": entry["index"], "kind": entry["kind"],
             "feasible": entry["conflicts"] == 0,
             "conflicts": entry["conflicts"], "cage": entry["cage"],
+            "crossing": entry["crossing"],
             "trial_attempts": trial_attempts,
             "trial_view": "blocks" if blocks_aware else "blocks-less",
             "candidate_count": len(pool), "candidates": entries,
