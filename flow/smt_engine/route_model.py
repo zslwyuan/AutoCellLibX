@@ -183,7 +183,7 @@ class RoutingModel(object):
                  hseg, pj, m2, via, reachT3_n, reachT3_p, access,
                  width_cols, nets, gate_tracks,
                  span_on=None, span_start=None, span_end=None,
-                 span_cmp=None, nv=None):
+                 span_cmp=None, nv=None, assumptions=None):
         self.model = model
         self.owner_n = owner_n
         self.owner_p = owner_p
@@ -212,6 +212,9 @@ class RoutingModel(object):
         self.span_end = span_end
         self.span_cmp = span_cmp
         self.nv = nv
+        # the core-extraction probe mode's family-literal registry
+        # (_Assumptions, build_routing_model assumptions=True) or None
+        self.assumptions = assumptions
 
 
 def _access_points(netlist, placement):
@@ -327,9 +330,63 @@ def _gm_lit(model, h_lit, m2, n, t, c, memo):
     return lit
 
 
+class _Assumptions(object):
+    """Assumption-literal registry -- the core-extraction probe mode
+    (``build_routing_model(assumptions=True)``, doc/AUDIT_REPORT.md
+    5.50's named tool: CP-SAT sufficient-assumptions-for-infeasibility).
+
+    Every constraint family of the routing model is wrapped behind one
+    Boolean switch per family instance (a net-keyed rule gets one
+    literal per net, global rules one literal): the family's
+    constraints are enforced IFF the literal holds, and every literal
+    is registered as a CP-SAT assumption -- so the all-assumed model is
+    exactly the default model, and on INFEASIBLE the solver's
+    SufficientAssumptionsForInfeasibility() names a sufficient set of
+    binding families.  Dropping a family from the assumed set is the
+    drop experiment (a family not assumed is simply not enforced).
+
+    Default (``assumptions=False``) no literal exists: no new
+    variables, constraints or assumptions -- byte-identical build.
+    """
+
+    def __init__(self, model):
+        self.model = model
+        self.lits = {}              # family name -> literal
+        self.names = []             # creation order (deterministic)
+
+    def lit(self, name):
+        b = self.lits.get(name)
+        if (b is None):
+            b = self.model.NewBoolVar("asm_" + name.replace(":", "_"))
+            self.lits[name] = b
+            self.names.append(name)
+        return b
+
+    def assume_all(self):
+        for name in self.names:
+            self.model.AddAssumption(self.lits[name])
+
+    def core_names(self, solver):
+        """Family names of the solver's sufficient-infeasibility core
+        (call only after an INFEASIBLE solve with assumptions set)."""
+        by_idx = {self.lits[n].Index(): n for n in self.names}
+        return sorted(by_idx[i] for i in
+                      solver.SufficientAssumptionsForInfeasibility())
+
+
+def _fam_gate(fam, name, cst):
+    """Enforce ``cst`` only when family ``name``'s assumption literal
+    holds (the core-extraction probe mode); ``fam is None`` -- the
+    default -- returns the constraint untouched (byte-identical)."""
+    if (fam is not None):
+        cst.OnlyEnforceIf(fam.lit(name))
+    return cst
+
+
 def build_routing_model(netlist, placement, width_cols=None,
                         grid_um=0.19, height_um=2.47, poly_jumps=True,
-                        metal2=True, accesses=None, m2_spans=False):
+                        metal2=True, accesses=None, m2_spans=False,
+                        assumptions=False):
     """Stage-2 CP-SAT model over the fixed placement.
 
     ``accesses`` optionally supplies the (diffusion, gate, power) access
@@ -350,11 +407,22 @@ def build_routing_model(netlist, placement, width_cols=None,
     sound).  Default False builds a model byte-identical to the
     historical one: no new variables, constraints or objective terms.
 
+    ``assumptions`` enables the core-extraction probe mode
+    (:class:`_Assumptions`): every constraint family is wrapped behind
+    a registered Boolean assumption literal (enforced iff the literal
+    holds; all literals assumed), so the all-assumed model is exactly
+    the default one and on INFEASIBLE the solver's
+    SufficientAssumptionsForInfeasibility names the binding families
+    (orthogonal to ``m2_spans``; the span families gate the same way).
+    Default False builds a model byte-identical to the historical one.
+    The RoutingModel exposes the registry as ``.assumptions``.
+
     Returns RoutingModel; solve_routing wraps it.
     """
     if (width_cols is None):
         width_cols = max(p.end_col for p in placement.values())
     model = cp_model.CpModel()
+    fam = _Assumptions(model) if assumptions else None
 
     if (accesses is None):
         diffusion, gate, power = _access_points(netlist, placement)
@@ -416,8 +484,8 @@ def build_routing_model(netlist, placement, width_cols=None,
     # bar endpoints are y-ordered: lo <= hi (the old rail-index domain
     # allowed inverted (lo, hi) bars spanning half the cell)
     for c in range(width_cols):
-        model.Add(lo_n[c] <= hi_n[c])
-        model.Add(lo_p[c] <= hi_p[c])
+        _fam_gate(fam, "barorder", model.Add(lo_n[c] <= hi_n[c]))
+        _fam_gate(fam, "barorder", model.Add(lo_p[c] <= hi_p[c]))
 
     # coverage booleans: bar (lo, hi) covers track t iff the index
     # interval contains t+1 (barY and trackY share one sorted list).
@@ -487,9 +555,12 @@ def build_routing_model(netlist, placement, width_cols=None,
     # signal bar heights and happily drew Y's bar up into the VCC rail)
     for n in nets:
         for c in range(width_cols):
-            model.Add(lo_n[c] >= 1).OnlyEnforceIf(is_owner_n[(n, c)])
-            model.Add(hi_p[c] <= BAR_LEVELS - 2).OnlyEnforceIf(
-                is_owner_p[(n, c)])
+            cst = model.Add(lo_n[c] >= 1)
+            cst.OnlyEnforceIf(is_owner_n[(n, c)])
+            _fam_gate(fam, "barban:" + n, cst)
+            cst = model.Add(hi_p[c] <= BAR_LEVELS - 2)
+            cst.OnlyEnforceIf(is_owner_p[(n, c)])
+            _fam_gate(fam, "barban:" + n, cst)
 
     # slot active booleans (for reachT3 channeling and the objective)
     v_active_n = {}
@@ -524,24 +595,29 @@ def build_routing_model(netlist, placement, width_cols=None,
         for c, r in sorted(pts):
             t = ROW_TRACK[r]
             if (r <= 1):                     # N half
-                model.Add(owner_n[c] == idx)
-                model.Add(cov_n[(c, t)] == 1)
+                _fam_gate(fam, "acc:" + net, model.Add(owner_n[c] == idx))
+                _fam_gate(fam, "acc:" + net,
+                          model.Add(cov_n[(c, t)] == 1))
             else:                            # P half
-                model.Add(owner_p[c] == idx)
-                model.Add(cov_p[(c, t)] == 1)
+                _fam_gate(fam, "acc:" + net, model.Add(owner_p[c] == idx))
+                _fam_gate(fam, "acc:" + net,
+                          model.Add(cov_p[(c, t)] == 1))
 
     # --- power access points: stripe reaches the power end ---
     for net, pts in power.items():
         idx = power_index[net]
         for c, r, pRail in sorted(pts):
             if (pRail == GND_RAIL):
-                model.Add(owner_n[c] == idx)
-                model.Add(lo_n[c] == 0)
-                model.Add(cov_n[(c, ROW_TRACK[r])] == 1)
+                _fam_gate(fam, "pwr:" + net, model.Add(owner_n[c] == idx))
+                _fam_gate(fam, "pwr:" + net, model.Add(lo_n[c] == 0))
+                _fam_gate(fam, "pwr:" + net,
+                          model.Add(cov_n[(c, ROW_TRACK[r])] == 1))
             else:
-                model.Add(owner_p[c] == idx)
-                model.Add(hi_p[c] == BAR_LEVELS - 1)
-                model.Add(cov_p[(c, ROW_TRACK[r])] == 1)
+                _fam_gate(fam, "pwr:" + net, model.Add(owner_p[c] == idx))
+                _fam_gate(fam, "pwr:" + net,
+                          model.Add(hi_p[c] == BAR_LEVELS - 1))
+                _fam_gate(fam, "pwr:" + net,
+                          model.Add(cov_p[(c, ROW_TRACK[r])] == 1))
 
     # --- dual-column rules: the two bars of one column ---
     # A dual column occupied by the SAME net merges at the boundary (both
@@ -561,8 +637,10 @@ def build_routing_model(netlist, placement, width_cols=None,
             if (not m2_spans):
                 # the historical rule: a same-net dual merges at the
                 # boundary (both bars forced to reach T3)
-                model.Add(reachT3_n[c] >= dual[(n, c)])
-                model.Add(reachT3_p[c] >= dual[(n, c)])
+                _fam_gate(fam, "dual:" + n,
+                          model.Add(reachT3_n[c] >= dual[(n, c)]))
+                _fam_gate(fam, "dual:" + n,
+                          model.Add(reachT3_p[c] >= dual[(n, c)]))
     # (the m2_spans relaxation -- "rt3-merge OR M2-span crossover" -- is
     # added after the span vocabulary is built below)
     for c in range(width_cols):
@@ -570,8 +648,10 @@ def build_routing_model(netlist, placement, width_cols=None,
             for n2 in nets:
                 if (n1 == n2):
                     continue
-                model.Add(reachT3_n[c] + reachT3_p[c]
-                          + is_owner_n[(n1, c)] + is_owner_p[(n2, c)] <= 3)
+                _fam_gate(fam, "t3excl",
+                          model.Add(reachT3_n[c] + reachT3_p[c]
+                                    + is_owner_n[(n1, c)]
+                                    + is_owner_p[(n2, c)] <= 3))
 
     # --- horizontal segments ---
     h_lit = {}
@@ -721,8 +801,12 @@ def build_routing_model(netlist, placement, width_cols=None,
         # ground truth; every form below is BFS-sound)
         for n in nets:
             for c in range(width_cols):
-                model.Add(reachT3_n[c] + xover[(n, c)] >= dual[(n, c)])
-                model.Add(reachT3_p[c] + xover[(n, c)] >= dual[(n, c)])
+                _fam_gate(fam, "dual:" + n,
+                          model.Add(reachT3_n[c] + xover[(n, c)]
+                                    >= dual[(n, c)]))
+                _fam_gate(fam, "dual:" + n,
+                          model.Add(reachT3_p[c] + xover[(n, c)]
+                                    >= dual[(n, c)]))
         # a span may not touch a FOREIGN M2 segment endpoint inside its
         # range (M2-M2 short; same-net segments merge -- verify's BFS
         # joins them, so allowing them is the freedom, not a hole)
@@ -731,9 +815,10 @@ def build_routing_model(netlist, placement, width_cols=None,
                 st, te = span_cmp[(n, c, t)]
                 for cseg in (c - 1, c):
                     if (0 <= cseg <= width_cols - 2):
-                        model.Add(span_on[(n, c)] + st + te
-                                  + m2[(t, cseg)] - h_lit[(n, t, cseg)]
-                                  <= 3)
+                        _fam_gate(fam, "spanx",
+                                  model.Add(span_on[(n, c)] + st + te
+                                            + m2[(t, cseg)]
+                                            - h_lit[(n, t, cseg)] <= 3))
 
     for n in nets:
         for t in range(N_TRACKS):
@@ -745,32 +830,47 @@ def build_routing_model(netlist, placement, width_cols=None,
                 # past it, which is legal), and only for M1/poly ends: an
                 # M2 segment runs above the stripe without touching it
                 if (t in nCover):
-                    model.Add(cov_n[(c, t)] == 1).OnlyEnforceIf(
-                        lit, m2[(t, c)].Not(), is_owner_n[(n, c)])
-                    model.Add(cov_n[(c + 1, t)] == 1).OnlyEnforceIf(
-                        lit, m2[(t, c)].Not(), is_owner_n[(n, c + 1)])
+                    cst = model.Add(cov_n[(c, t)] == 1)
+                    cst.OnlyEnforceIf(lit, m2[(t, c)].Not(),
+                                      is_owner_n[(n, c)])
+                    _fam_gate(fam, "segcov:" + n, cst)
+                    cst = model.Add(cov_n[(c + 1, t)] == 1)
+                    cst.OnlyEnforceIf(lit, m2[(t, c)].Not(),
+                                      is_owner_n[(n, c + 1)])
+                    _fam_gate(fam, "segcov:" + n, cst)
                 if (t in pCover):
-                    model.Add(cov_p[(c, t)] == 1).OnlyEnforceIf(
-                        lit, m2[(t, c)].Not(), is_owner_p[(n, c)])
-                    model.Add(cov_p[(c + 1, t)] == 1).OnlyEnforceIf(
-                        lit, m2[(t, c)].Not(), is_owner_p[(n, c + 1)])
+                    cst = model.Add(cov_p[(c, t)] == 1)
+                    cst.OnlyEnforceIf(lit, m2[(t, c)].Not(),
+                                      is_owner_p[(n, c)])
+                    _fam_gate(fam, "segcov:" + n, cst)
+                    cst = model.Add(cov_p[(c + 1, t)] == 1)
+                    cst.OnlyEnforceIf(lit, m2[(t, c)].Not(),
+                                      is_owner_p[(n, c + 1)])
+                    _fam_gate(fam, "segcov:" + n, cst)
                 # crossing safety: no foreign stripe in either slot of an
                 # end column covers the track -- an M1 segment shorts; a
                 # poly jump or an M2 segment crosses in a different layer
+                # (probe mode: power-striped and signal-striped blockers
+                # are separate families -- the power coverage bands are
+                # the suspected cage, doc/AUDIT_REPORT.md 5.49(4a))
                 for other in nets + sorted(power_index):
                     if (other == n):
                         continue
+                    csname = ("csP:" if (other in power_index)
+                              else "csS:") + n
                     for cSide in (c, c + 1):
                         if (t in nCover):
-                            model.Add(lit + pj[(t, c)].Not()
-                                      + m2[(t, c)].Not()
-                                      + is_owner_n[(other, cSide)]
-                                      + cov_n[(cSide, t)] <= 4)
+                            _fam_gate(fam, csname,
+                                      model.Add(lit + pj[(t, c)].Not()
+                                                + m2[(t, c)].Not()
+                                                + is_owner_n[(other, cSide)]
+                                                + cov_n[(cSide, t)] <= 4))
                         if (t in pCover):
-                            model.Add(lit + pj[(t, c)].Not()
-                                      + m2[(t, c)].Not()
-                                      + is_owner_p[(other, cSide)]
-                                      + cov_p[(cSide, t)] <= 4)
+                            _fam_gate(fam, csname,
+                                      model.Add(lit + pj[(t, c)].Not()
+                                                + m2[(t, c)].Not()
+                                                + is_owner_p[(other, cSide)]
+                                                + cov_p[(cSide, t)] <= 4))
 
     # --- poly jump legality (row tracks only, y-aware gate crossing) ---
     field = _field_map(netlist, placement, width_cols)
@@ -793,15 +893,15 @@ def build_routing_model(netlist, placement, width_cols=None,
         for c in range(width_cols - 1):
             if (t not in ROW_TRACKS):
                 # poly between rows would land on the diffusion edge
-                model.Add(pj[(t, c)] == 0)
+                _fam_gate(fam, "pjleg", model.Add(pj[(t, c)] == 0))
                 continue
             # poly over active at either end column is a transistor; the
             # only exception is the row's own gate at the *crossed* (left)
             # column, handled by the gate-merge rules below
             if (c + 1 not in field[t]):
-                model.Add(pj[(t, c)] == 0)
+                _fam_gate(fam, "pjleg", model.Add(pj[(t, c)] == 0))
             if (c not in field[t] and c not in gateNetsAt):
-                model.Add(pj[(t, c)] == 0)
+                _fam_gate(fam, "pjleg", model.Add(pj[(t, c)] == 0))
             # every gate stripe the jump geometrically crosses (the stripe
             # spans trackY[t]) must belong to the segment's net
             for gn in sorted(gateNetsAt.get(c, ())):
@@ -811,12 +911,14 @@ def build_routing_model(netlist, placement, width_cols=None,
                 if (not (gy0 <= trackY[t] <= gy1)):
                     continue
                 if (gn in net_index):
-                    model.Add(hseg[(t, c)] == net_index[gn]) \
-                        .OnlyEnforceIf(pj[(t, c)])
+                    cst = model.Add(hseg[(t, c)] == net_index[gn])
+                    cst.OnlyEnforceIf(pj[(t, c)])
+                    _fam_gate(fam, "pjleg", cst)
                 else:
-                    model.Add(pj[(t, c)] == 0)
+                    _fam_gate(fam, "pjleg", model.Add(pj[(t, c)] == 0))
             # a poly jump is a segment: it cannot be "on poly" and empty
-            model.Add(h_active[(t, c)] >= pj[(t, c)])
+            _fam_gate(fam, "pjleg",
+                      model.Add(h_active[(t, c)] >= pj[(t, c)]))
 
     # --- layer rules at adjacent segments (E5), three layers ---
     # same net: poly state must match (a poly<->metal switch has no
@@ -826,22 +928,28 @@ def build_routing_model(netlist, placement, width_cols=None,
     for t in range(N_TRACKS):
         for c in range(1, width_cols - 1):
             for n in nets:
-                model.Add(pj[(t, c - 1)] == pj[(t, c)]).OnlyEnforceIf(
-                    h_lit[(n, t, c - 1)], h_lit[(n, t, c)])
+                cst = model.Add(pj[(t, c - 1)] == pj[(t, c)])
+                cst.OnlyEnforceIf(h_lit[(n, t, c - 1)], h_lit[(n, t, c)])
+                _fam_gate(fam, "e5same:" + n, cst)
             for n1 in nets:
                 for n2 in nets:
                     if (n1 == n2):
                         continue
                     a1, a2 = h_lit[(n1, t, c - 1)], h_lit[(n2, t, c)]
                     # both M1 / both poly / both M2: a short
-                    model.Add(a1 + a2
-                              + pj[(t, c - 1)].Not() + pj[(t, c)].Not()
-                              + m2[(t, c - 1)].Not() + m2[(t, c)].Not()
-                              <= 5)
-                    model.Add(a1 + a2
-                              + pj[(t, c - 1)] + pj[(t, c)] <= 3)
-                    model.Add(a1 + a2
-                              + m2[(t, c - 1)] + m2[(t, c)] <= 3)
+                    _fam_gate(fam, "e5diff",
+                              model.Add(a1 + a2
+                                        + pj[(t, c - 1)].Not()
+                                        + pj[(t, c)].Not()
+                                        + m2[(t, c - 1)].Not()
+                                        + m2[(t, c)].Not()
+                                        <= 5))
+                    _fam_gate(fam, "e5diff",
+                              model.Add(a1 + a2
+                                        + pj[(t, c - 1)] + pj[(t, c)] <= 3))
+                    _fam_gate(fam, "e5diff",
+                              model.Add(a1 + a2
+                                        + m2[(t, c - 1)] + m2[(t, c)] <= 3))
 
     # --- vias: a vertical M1<->M2 connection between two adjacent
     # same-net segments on a track.  A via exists iff exactly one of the
@@ -850,23 +958,35 @@ def build_routing_model(netlist, placement, width_cols=None,
     for t in range(N_TRACKS):
         for c in range(1, width_cols - 1):
             v = via_l[(t, c)]
-            model.Add(v <= h_active[(t, c - 1)])
-            model.Add(v <= h_active[(t, c)])
-            model.Add(hseg[(t, c - 1)] == hseg[(t, c)]).OnlyEnforceIf(v)
-            model.Add(v <= m2[(t, c - 1)] + m2[(t, c)])
-            model.Add(v + m2[(t, c - 1)] + m2[(t, c)] <= 2)
-            model.Add(v <= pj[(t, c - 1)].Not())
-            model.Add(v <= pj[(t, c)].Not())
+            _fam_gate(fam, "viabound",
+                      model.Add(v <= h_active[(t, c - 1)]))
+            _fam_gate(fam, "viabound",
+                      model.Add(v <= h_active[(t, c)]))
+            cst = model.Add(hseg[(t, c - 1)] == hseg[(t, c)])
+            cst.OnlyEnforceIf(v)
+            _fam_gate(fam, "viabound", cst)
+            _fam_gate(fam, "viabound",
+                      model.Add(v <= m2[(t, c - 1)] + m2[(t, c)]))
+            _fam_gate(fam, "viabound",
+                      model.Add(v + m2[(t, c - 1)] + m2[(t, c)] <= 2))
+            _fam_gate(fam, "viabound",
+                      model.Add(v <= pj[(t, c - 1)].Not()))
+            _fam_gate(fam, "viabound",
+                      model.Add(v <= pj[(t, c)].Not()))
             # a same-net M1|M2 junction REQUIRES the via
             for n in nets:
                 a = h_lit[(n, t, c - 1)]
                 b = h_lit[(n, t, c)]
-                model.Add(v == 1).OnlyEnforceIf(
-                    a, b, pj[(t, c - 1)].Not(), pj[(t, c)].Not(),
-                    m2[(t, c - 1)], m2[(t, c)].Not())
-                model.Add(v == 1).OnlyEnforceIf(
-                    a, b, pj[(t, c - 1)].Not(), pj[(t, c)].Not(),
-                    m2[(t, c - 1)].Not(), m2[(t, c)])
+                cst = model.Add(v == 1)
+                cst.OnlyEnforceIf(a, b, pj[(t, c - 1)].Not(),
+                                  pj[(t, c)].Not(),
+                                  m2[(t, c - 1)], m2[(t, c)].Not())
+                _fam_gate(fam, "viaforce", cst)
+                cst = model.Add(v == 1)
+                cst.OnlyEnforceIf(a, b, pj[(t, c - 1)].Not(),
+                                  pj[(t, c)].Not(),
+                                  m2[(t, c - 1)].Not(), m2[(t, c)])
+                _fam_gate(fam, "viaforce", cst)
     # an M2 segment never touches a bar or a gate -- its only junctions
     # are vias to adjacent M1 segments.  So every maximal M2 run must end
     # in a via on BOTH sides; without this the sweep counts dead M2 metal
@@ -874,11 +994,16 @@ def build_routing_model(netlist, placement, width_cols=None,
     # never host a via on one side, so no M2 there.
     if (width_cols >= 2):
         for t in range(N_TRACKS):
-            model.Add(m2[(t, 0)] == 0)
-            model.Add(m2[(t, width_cols - 2)] == 0)
+            _fam_gate(fam, "m2run", model.Add(m2[(t, 0)] == 0))
+            _fam_gate(fam, "m2run",
+                      model.Add(m2[(t, width_cols - 2)] == 0))
             for c in range(1, width_cols - 2):
-                model.Add(via_l[(t, c)] >= m2[(t, c)] - m2[(t, c - 1)])
-                model.Add(via_l[(t, c + 1)] >= m2[(t, c)] - m2[(t, c + 1)])
+                _fam_gate(fam, "m2run",
+                          model.Add(via_l[(t, c)]
+                                    >= m2[(t, c)] - m2[(t, c - 1)]))
+                _fam_gate(fam, "m2run",
+                          model.Add(via_l[(t, c + 1)]
+                                    >= m2[(t, c)] - m2[(t, c + 1)]))
 
     # --- poly jump anchoring (E4): every maximal poly run of a net must
     # cross a same-net gate.  CP-SAT automaton per (net, row track): the
@@ -904,11 +1029,12 @@ def build_routing_model(netlist, placement, width_cols=None,
                     seq.append(v)
                 if (not seq):
                     continue            # width-1 window: no poly runs
-                model.AddAutomaton(
-                    seq, 0, [0, 2],
-                    [(0, 0, 0), (0, 1, 1), (0, 2, 2),
-                     (1, 1, 1), (1, 2, 2),
-                     (2, 0, 0), (2, 1, 2), (2, 2, 2)])
+                _fam_gate(fam, "pjanchor:" + n,
+                          model.AddAutomaton(
+                              seq, 0, [0, 2],
+                              [(0, 0, 0), (0, 1, 1), (0, 2, 2),
+                               (1, 1, 1), (1, 2, 2),
+                               (2, 0, 0), (2, 1, 2), (2, 2, 2)]))
 
     # --- gate access points: a horizontal segment crosses the column on
     # a track the stripe spans ---
@@ -927,7 +1053,7 @@ def build_routing_model(netlist, placement, width_cols=None,
                     lits.append(_gm_lit(model, h_lit, m2, net, t, c,
                                         gm_memo))
             if (lits):
-                model.Add(sum(lits) >= 1)
+                _fam_gate(fam, "gate:" + net, model.Add(sum(lits) >= 1))
             else:
                 # no candidate crossing track (the column is past the
                 # last segment column, or the stripe is too shallow to
@@ -935,7 +1061,12 @@ def build_routing_model(netlist, placement, width_cols=None,
                 # the model must REFUSE -- an empty clause is always
                 # false.  Silently skipping here produced a "solved"
                 # route the verify then rejected (mixed-width INV).
-                model.AddBoolOr([])
+                # Probe mode: the family literal NOT'd into the clause
+                # -- assuming it makes exactly this family the wall.
+                if (fam is None):
+                    model.AddBoolOr([])
+                else:
+                    model.AddBoolOr([fam.lit("gate:" + net).Not()])
 
     # --- connectivity: track-aware sweep + transitions at joins ---
     # A net's wire is a chain of segments; adjacent segments on the SAME
@@ -977,10 +1108,10 @@ def build_routing_model(netlist, placement, width_cols=None,
             model.Add(bp <= sum(lits))
             covP[c] = bp
         for c in range(cmin, cmax + 1):
-            model.Add(covN[c] + covP[c] >= 1)
+            _fam_gate(fam, "pres:" + n, model.Add(covN[c] + covP[c] >= 1))
         for c in range(cmin, cmax):
             lits = [h_lit[(n, t, c)] for t in range(N_TRACKS)]
-            model.Add(sum(lits) >= 1)
+            _fam_gate(fam, "bridge:" + n, model.Add(sum(lits) >= 1))
         # track transitions at column c: a segment ending on track t1
         # (from c-1) and a segment starting on track t2 (to c+1)
         pairs = [(t1, t2) for t1 in range(N_TRACKS)
@@ -1010,8 +1141,9 @@ def build_routing_model(netlist, placement, width_cols=None,
                     model.Add(both <= m1x)
                     model.Add(both <= gmb)
                     model.Add(both >= m1a + m1x + gmb - 2)
-                    model.Add(h_lit[(n, t1, c - 1)] + h_lit[(n, t2, c)]
-                              <= 1 + both)
+                    _fam_gate(fam, "gjoin:" + n,
+                              model.Add(h_lit[(n, t1, c - 1)]
+                                        + h_lit[(n, t2, c)] <= 1 + both))
                     if (m2_spans):
                         # the same track change through the metal2 span:
                         # left M1 end - via - span - via - right M1
@@ -1026,8 +1158,10 @@ def build_routing_model(netlist, placement, width_cols=None,
                         model.Add(j2 >= sum(lits2) - 3)
                         for lit2 in lits2:
                             model.Add(j2 <= lit2)
-                        model.Add(h_lit[(n, t1, c - 1)] + h_lit[(n, t2, c)]
-                                  <= 1 + both + j2)
+                        _fam_gate(fam, "gjoin:" + n,
+                                  model.Add(h_lit[(n, t1, c - 1)]
+                                            + h_lit[(n, t2, c)]
+                                            <= 1 + both + j2))
                     continue
                 # NOT a (fully gate-spanned) gate join: the change must
                 # happen through a same-net BAR at c -- which the exact
@@ -1059,8 +1193,9 @@ def build_routing_model(netlist, placement, width_cols=None,
                 model.Add(join >= sum(lits) - (len(lits) - 1))
                 for lit in lits:
                     model.Add(join <= lit)
-                model.Add(h_lit[(n, t1, c - 1)] + h_lit[(n, t2, c)]
-                          <= 1 + join)
+                _fam_gate(fam, "tjoin:" + n,
+                          model.Add(h_lit[(n, t1, c - 1)] + h_lit[(n, t2, c)]
+                                    <= 1 + join))
                 if (m2_spans):
                     # the same track change through the metal2 span:
                     # left M1 end - node via - span - node via - right
@@ -1071,8 +1206,10 @@ def build_routing_model(netlist, placement, width_cols=None,
                     model.Add(j2 >= sum(lits2) - 3)
                     for lit2 in lits2:
                         model.Add(j2 <= lit2)
-                    model.Add(h_lit[(n, t1, c - 1)] + h_lit[(n, t2, c)]
-                              <= 1 + join + j2)
+                    _fam_gate(fam, "tjoin:" + n,
+                              model.Add(h_lit[(n, t1, c - 1)]
+                                        + h_lit[(n, t2, c)]
+                                        <= 1 + join + j2))
         # every diffusion access bar must connect: a same-track M1
         # segment touching it, a T3 segment touching a bar that reaches
         # the boundary, or a merged T3 pair
@@ -1098,12 +1235,15 @@ def build_routing_model(netlist, placement, width_cols=None,
                                         BOUNDARY_T, t3c, m1_memo) - 1)
                     lits.append(both)
             if (not m2_spans):
-                model.Add(dual[(n, c)] + sum(lits) >= 1)
+                _fam_gate(fam, "acccon:" + n,
+                          model.Add(dual[(n, c)] + sum(lits) >= 1))
             else:
                 # the honest forms of the old dual disjunct: the merged
                 # T3 pair, or the M2 span crossover (both bars anchor
                 # the same span through node vias)
-                model.Add(merged[(n, c)] + xover[(n, c)] + sum(lits) >= 1)
+                _fam_gate(fam, "acccon:" + n,
+                          model.Add(merged[(n, c)] + xover[(n, c)]
+                                    + sum(lits) >= 1))
 
     # --- objective: active horizontal segments / vertical stripes ---
     h_count = model.NewIntVar(
@@ -1146,6 +1286,9 @@ def build_routing_model(netlist, placement, width_cols=None,
             + m2via_count * M2_SPAN_VIA_WEIGHT
     model.Minimize(obj)
 
+    if (fam is not None):
+        fam.assume_all()        # all families ON: exactly the default model
+
     return RoutingModel(model, owner_n, owner_p, lo_n, hi_n, lo_p, hi_p,
                         hseg, pj, m2, via_l, reachT3_n, reachT3_p,
                         (diffusion, gate, power), width_cols, nets,
@@ -1153,7 +1296,8 @@ def build_routing_model(netlist, placement, width_cols=None,
                         span_on=span_on or None,
                         span_start=span_start or None,
                         span_end=span_end or None,
-                        span_cmp=span_cmp or None, nv=nv or None)
+                        span_cmp=span_cmp or None, nv=nv or None,
+                        assumptions=fam)
 
 
 def _decode_spans(rm, solver):
@@ -1175,11 +1319,11 @@ def _decode_spans(rm, solver):
 
 def solve_routing(netlist, placement, width_cols=None, poly_jumps=True,
                   metal2=True, time_limit_s=SOLVE_TIME_LIMIT_S,
-                  m2_spans=False):
+                  m2_spans=False, assumptions=False):
     """Stage-2 solve; returns RouteResult (UNKNOWN on failure)."""
     rm = build_routing_model(netlist, placement, width_cols=width_cols,
                              poly_jumps=poly_jumps, metal2=metal2,
-                             m2_spans=m2_spans)
+                             m2_spans=m2_spans, assumptions=assumptions)
     solver = cp_model.CpSolver()
     # single worker: parallel search picks different equal-cost optima
     # across runs (AGENTS.md invariant 9 -- the engine must be
