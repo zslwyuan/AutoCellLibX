@@ -1653,3 +1653,24 @@ multiplier/COMPLEX4（1.90µm，真视图试布 + blocks 转发的直接成果�
 **工程终态**：五档引擎阶梯 + 诊断工具链（假设核/双 census/窗口证明
 /探针/基准 harness）为永久资产；745 绿 + 1 诚实 skip；AUDIT
 §5.41-5.52 完整记录。
+
+## §5.53 研究级排布空间：核引导与 pair-splits 落地（2026-10-21）
+
+agent R 实现两个研究包后死于静默模型失败（本会话第四次），协调者
+验收补完（其跨进程测试的辅助脚本 import 错位——row_seeds/
+build_bigcell_blocks 写进了 place_sa 的导入，实属 netlist_ext）。
+
+**(1) 核引导 fitness（深类，探针证据落地）**：假设核的具名连通性关
+键网络（core_critical_nets，溯源到 agent M 的提取表）加权 census 与
+选择。实测：COMPLEX20 布局 13→12 列、floor 32→4 冲突；DFFNEGX1
+17→16；COMPLEX10 27→28（build-fail 选择）。**宽度改善但全部模型仍
+INFEASIBLE——墙在核引导空间之外持续存在**。
+
+**(2) pair-splits（机制落地，census 扫描未跑）**：
+pair_split_decompositions + pair_split_classes 把链分割维度扩展到双
+链同时分割；XOR/MUX/LATCH 的 pair-split 空间 census 重跑是 agent R
+未及到达的实验（其死亡点）。
+
+**(3) 状态**：770 绿（+13 研究测试）；跨进程确定性在修复 import 后
+通过（XOR2X1 全链双哈希种子一致）。剩余 cell 的替换率未变；两个研
+究维度的机制已入库，其 census/OPTIMAL 证据表是下一会话的第一项。
