@@ -17,7 +17,13 @@ build_diffusion_blocks) -- this module only adds what big cells need:
    exceeds the budget into ``legs`` parallel fingers, represented in
    geometry.py's format as ``(legs, leg_width_cols)`` for that device
    (smt_engine folds in place the same way, layout_model.py:99-114).
-   Folding runs BEFORE block building.
+   Folding runs BEFORE block building.  ``fold_overrides={name: legs}``
+   (the fold-variant lever, place_sa's lazy phase 6) gives the TOTAL leg
+   count the named device's fold occupies -- a series chain with any
+   member named folds into that count and is exempt from the width-fold
+   pass; any other named device width-folds into it even when
+   under-budget.  Bounds-checked int >= 1; None (the default) is
+   byte-identical.
 2. ``row_seeds(blocks)``: per-polarity initial block order, sorted by
    (-width, first-device-name) -- the same discipline as
    build_diffusion_blocks.
@@ -141,8 +147,31 @@ def _leg_device(dev, leg_k, legs, junctions):
                   dev.width_um / legs)
 
 
+def _validated_overrides(fold_overrides):
+    """Normalized fold overrides or None (pure, invariant 9).
+
+    ``fold_overrides`` maps device name -> leg count.  Bounds-checked
+    here: every value must be an int >= 1 (:class:`ValueError`
+    otherwise -- a 0/negative leg count is never a legal fold).  Names
+    not present in the netlist stay in the table and are simply inert
+    (a caller may key one table for several cells).  None passes
+    through as None so the default path stays byte-identical.
+    """
+    if fold_overrides is None:
+        return None
+    out = {}
+    for name, legs in fold_overrides.items():
+        if not isinstance(legs, int) or isinstance(legs, bool) or legs < 1:
+            raise ValueError(
+                "fold override for %r must be an int >= 1 (got %r)"
+                % (name, legs))
+        out[name] = legs
+    return out
+
+
 def fold_devices(netlist, p_budget_um=FOLD_BUDGET_P_UM,
-                 n_budget_um=FOLD_BUDGET_N_UM, grid_um=GRID_UM):
+                 n_budget_um=FOLD_BUDGET_N_UM, grid_um=GRID_UM,
+                 fold_overrides=None):
     """Fold decisions made up front; returns (netlist2, leg_widths).
 
     ``netlist2`` is the input ``CellNetlist`` unchanged when no series
@@ -156,14 +185,33 @@ def fold_devices(netlist, p_budget_um=FOLD_BUDGET_P_UM,
     width-fold decision (in place, like smt_engine's k/legw) with
     ``leg_width_cols = 1`` -- one column per leg, W drawn vertically
     (doc/BIGCELL_SLOT_GEOMETRY.md section 3).
+
+    ``fold_overrides`` (the fold-variant lever, place_sa's lazy phase 6):
+    optional ``{device name: legs}`` giving the TOTAL leg count the named
+    device's fold occupies, replacing the default decision.  A series
+    chain with ANY member named folds into that leg count (the
+    lexicographically smallest named member wins on a multi-name
+    conflict; the over-budget trigger is unchanged) and its members --
+    originals and leg copies alike -- are exempt from the width-fold
+    pass (the override is consumed by the series decision; a residual
+    strip wider than the budget is the caller's DRC choice).  Any other
+    named device's width-fold legs is the given value even when the
+    budget would keep it at 1 -- splitting an under-budget device into
+    2+ legs, i.e. two gates of the same net, two gate columns to choose
+    from.  Every consumer's own contactability rules still apply
+    downstream through ``leg_widths`` (geometry/route_grid/verify walk
+    the (legs, cols) slots as drawn).  None (the default) is
+    byte-identical to the unparameterized fold.
     """
+    overrides = _validated_overrides(fold_overrides)
     chains, _internal = find_series_chains(netlist)
     # work on copies: the input netlist stays untouched (purity)
     devices = [Device(d.name, d.drain, d.gate, d.source, d.bulk, d.is_p,
                       d.width_um) for d in netlist.devices]
     by_name = {d.name: d for d in devices}
     new_devices = []
-    for chain in chains:
+    series_folded = set()              # names whose fold the series pass
+    for chain in chains:               # decided (exempt at the width pass)
         # ASTRAN folds a series stack only when EVERY member is over the
         # budget, into ceil(widest/budget) legs (foldingSeries,
         # cellnetlst.cpp:802-845); length-1 chains degrade to plain width
@@ -172,9 +220,23 @@ def fold_devices(netlist, p_budget_um=FOLD_BUDGET_P_UM,
                    for d in chain):
             continue
         biggest = max(chain, key=lambda d: (d.width_um, d.name))
-        legs = int(math.ceil(biggest.width_um
-                             / _budget_um(biggest, p_budget_um, n_budget_um)
-                             - _EPS))
+        # the chain folds as ONE decision: any member's override names
+        # it (the lexicographically smallest named member wins on a
+        # multi-name conflict) -- keying only the biggest member would
+        # hide behind the width tie-break
+        named = sorted(d.name for d in chain
+                       if overrides is not None and d.name in overrides)
+        if named:
+            legs = overrides[named[0]]
+            series_folded.update(d.name for d in chain)
+            series_folded.update("%s#leg%d" % (d.name, k)
+                                 for k in range(2, legs + 1)
+                                 for d in chain)
+        else:
+            legs = int(math.ceil(biggest.width_um
+                                 / _budget_um(biggest, p_budget_um,
+                                              n_budget_um)
+                                 - _EPS))
         junctions = _junction_nets(chain)
         for leg_k in range(legs, 1, -1):        # ASTRAN: copies K=legs..2
             for dev in chain:
@@ -192,10 +254,17 @@ def fold_devices(netlist, p_budget_um=FOLD_BUDGET_P_UM,
     # leg_width_cols = 1) with the leg's W/legs as its strip height.
     leg_widths = {}
     for dev in all_devices:
-        bud = _budget_um(dev, p_budget_um, n_budget_um)
-        legs = 1
-        if dev.width_um > bud + _EPS:
-            legs = int(math.ceil(dev.width_um / bud - _EPS))
+        if dev.name in series_folded:
+            legs = 1               # the series pass decided this fold
+        elif overrides is not None and dev.name in overrides:
+            legs = overrides[dev.name]
+        else:
+            legs = 1
+            if dev.width_um > _budget_um(dev, p_budget_um, n_budget_um) \
+                    + _EPS:
+                legs = int(math.ceil(
+                    dev.width_um
+                    / _budget_um(dev, p_budget_um, n_budget_um) - _EPS))
         leg_widths[dev.name] = (legs, 1)
 
     if not new_devices:

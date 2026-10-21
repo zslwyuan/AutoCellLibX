@@ -235,6 +235,41 @@ census-guided and capped at PAIR_SPLIT_MAX_CLASSES decompositions).
 They join :func:`select_orderings` as a lazy FIFTH phase under the same
 no-cage-free-FEASIBLE gate.
 
+Fold-variant classes (the fold lever becomes a PLACEMENT variable): the
+up-front fold decision (netlist_ext.fold_devices, the 1.2 um budget) is
+the one structure the censused spaces all keep FIXED -- but folding
+changes the block structure itself: a device folded into MORE legs
+occupies more slot columns whose gate columns land at different x
+positions, and even an UNDER-budget device split into 2 legs gives its
+gate net a second gate column to choose from.  The assumption cores
+(AUDIT 5.51) name per cell the nets whose connectivity binds, and those
+nets' gate columns are exactly what every census proved trapped inside
+the power-coverage bands.  :func:`fold_variant_classes` therefore
+re-runs ``fold_devices`` with per-device ``fold_overrides`` (legs =
+default +/- 1, bounded >= 1 and <= FOLD_VARIANT_MAX_LEGS, plus the
+max-fold variant for over-budget devices) for every device whose GATE
+net is core-critical, and builds the usual classes per variant (euler +
+budget-bounded SA + proven mirrors + alignment nominees) -- the
+existing machinery end to end, ranked census-guided and capped at
+FOLD_VARIANT_MAX_CLASSES variants.  Candidates dedupe by the fold
+signature (the resulting leg map, :func:`fold_signature`) TOGETHER with
+the ordering signature: two overrides producing the same leg map
+produce the same space.  Each fold candidate trials against ITS OWN
+netlist/leg map (the pool's trial context).  They join
+:func:`select_orderings` as a lazy SIXTH phase under the same
+no-cage-free-FEASIBLE gate, after the pair-splits -- every cell closing
+earlier keeps its exact pools and selections byte-for-byte.  The phase
+re-folds the netlist the selection received (the production chain's
+already-folded netlist; on the wall cells the production fold is
+inactive so this is the original netlist -- where series folding fired,
+the variants express width-leg overrides on top of it).  A winning fold
+candidate's report carries ``fold_overrides``/``fold_signature``
+provenance (JSON-safe; the winner's netlist/leg map are recovered
+deterministically via fold_devices(netlist, fold_overrides=...), and
+:func:`sa_refine_routable` does exactly that for its breakdown) so the
+consuming chain can lay out and route against the variant's own fold
+decision (engine wiring delivered as a patch).
+
 Core-guided fitness (the research round's WP2, opt-in): the assumption
 cores of AUDIT 5.51 name, per remaining cell, the nets whose
 connectivity binds (:data:`CORE_CRITICAL_NETS`,
@@ -1642,6 +1677,19 @@ def ordering_signature(ordering_p, ordering_n):
     return (row_key(ordering_p), row_key(ordering_n))
 
 
+def fold_signature(leg_widths):
+    """Canonical dedupe key for a FOLD decision: the sorted (device,
+    legs) pairs of a leg map.
+
+    Two fold overrides producing the same leg map produce the same
+    block widths everywhere, hence the same ordering space -- the
+    fold-variant classes dedupe by (fold signature, ordering signature)
+    for exactly that reason.  Sorted (invariant 9); pure.
+    """
+    return tuple(sorted((name, legs)
+                        for name, (legs, _cols) in leg_widths.items()))
+
+
 def _row_flipped(row):
     """Every block mirrored IN PLACE, sequence order kept (the
     orientation the mirrored-demo closure evidence used)."""
@@ -2137,6 +2185,190 @@ def pair_split_classes(netlist, leg_widths,
     return out
 
 
+# --------------------------------------------------------------------------
+# fold-variant candidate classes (the fold decision becomes a placement
+# variable)
+# --------------------------------------------------------------------------
+# The censused spaces (contiguous, single/pair-split, core-guided fitness)
+# all keep the up-front FOLD decision fixed: fold_devices runs once with
+# the budget default and every arrangement inherits its block structure.
+# But the fold decision IS a placement variable: a device folded into more
+# legs occupies more slot columns (its gate net gains one gate column per
+# leg, at different x positions), and even an UNDER-budget device split
+# into 2 legs gives its gate net two gate columns to choose from -- the
+# assumption cores (AUDIT 5.51) name exactly these gate columns as bound
+# (DFFNEG/DFFPOS -> Q/a_66_6# resp. a_22_6#/a_34_4#; XOR -> B+a_13_43#;
+# MUX -> A+B; LATCH -> D+a_2_6#), and the censuses proved no arrangement
+# of the FIXED-fold spaces avoids their bands.  The lever:
+# netlist_ext.fold_devices' ``fold_overrides`` -- per-device leg counts
+# (bounds-checked there) -- re-run per variant, then the EXISTING chain
+# end to end (blocks -> euler -> budget-bounded SA -> classes -> census/
+# trial), so a fold variant costs one more pipeline of machinery the
+# production path already trusts.
+
+#: legs cap for one fold variant (documented: a leg's drawn strip height
+#: is width_um/legs, so the cap bounds how thin the fingers get; the
+#: default±1 nominations and the max-fold variant stop here)
+FOLD_VARIANT_MAX_LEGS = 4
+
+#: fold variants that build candidate classes at most, census-guided
+#: (the pair-split classes' own cap discipline: the euler seed's
+#: (crossing, cage) census ranks the variants, the best few build
+#: classes) -- the fold variants multiply the chain cost, this bounds it
+FOLD_VARIANT_MAX_CLASSES = 4
+
+#: alignment nominees per fold variant (the variant classes' own cap
+#: discipline applies)
+FOLD_VARIANT_ALIGN_LIMIT = ALIGN_CANDIDATES
+
+
+def _fold_override_candidates(netlist, leg_widths, critical_nets):
+    """Per-device fold overrides for the core-gated devices (sorted).
+
+    ``critical_nets`` is the cell's assumption-core net set; a device
+    whose GATE net is core-critical nominates ``{name: legs}`` with
+    legs = default - 1 (when >= 1) and legs = default + 1 (when <=
+    :data:`FOLD_VARIANT_MAX_LEGS`), plus -- for a device whose electrical
+    width exceeds its fold budget -- the max-fold variant
+    ``{name: FOLD_VARIANT_MAX_LEGS}`` (an over-budget device folded into
+    the cap's legs; skipped when the default already reaches the cap).
+    One device per variant (composing devices is a future dimension);
+    sorted by device name then legs, duplicates removed.  Empty when the
+    cell is unlisted (every consumer's phase then never fires).  Pure
+    (invariant 9).
+    """
+    from bigcell_engine.netlist_ext import (FOLD_BUDGET_N_UM,
+                                            FOLD_BUDGET_P_UM)
+    core = set(critical_nets or ())
+    if not core:
+        return []
+    nominated = []
+    for dev in sorted(netlist.devices, key=lambda d: d.name):
+        if dev.gate not in core:
+            continue
+        dlegs = leg_widths.get(dev.name, (1, 1))[0]
+        for legs in (dlegs - 1, dlegs + 1):
+            if 1 <= legs <= FOLD_VARIANT_MAX_LEGS:
+                nominated.append(({dev.name: legs}, dev.name, legs))
+        bud = FOLD_BUDGET_P_UM if dev.is_p else FOLD_BUDGET_N_UM
+        if dev.width_um > bud + 1e-9 and dlegs < FOLD_VARIANT_MAX_LEGS:
+            nominated.append(({dev.name: FOLD_VARIANT_MAX_LEGS},
+                              dev.name, FOLD_VARIANT_MAX_LEGS))
+    out = []
+    seen = set()
+    for ov, name, legs in sorted(nominated, key=lambda t: (t[1], t[2])):
+        key = tuple(sorted(ov.items()))
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(ov)
+    return out
+
+
+def fold_variant_classes(netlist, leg_widths,
+                         align_limit=FOLD_VARIANT_ALIGN_LIMIT, cage=True,
+                         critical_nets=None):
+    """The fold-variant candidate classes for the speculate pool.
+
+    For every core-gated fold override
+    (:func:`_fold_override_candidates`): ``netlist_ext.fold_devices``
+    with that override -> build blocks -> row seeds -> euler -> a
+    budget-bounded Threshold-Accept refine (the same size-aware budgets
+    as :func:`chain_split_classes`; above _VARIANT_SA_PROBLEM_CAP the
+    euler seed stands in) and nominate
+
+        1. the variant's SA best ("fold:<dev>=<legs>"),
+        2. its both-rows flip / die-mirror (the proven closure classes),
+        3. up to ``align_limit`` alignment nominees
+           ("fold:<dev>=<legs>-align<j>", the same
+           :func:`alignment_candidates` caps).
+
+    CENSUS GUIDANCE (the documented constant pair of this lever): the
+    overrides are ranked by their euler seed's census (crossing, cage --
+    :func:`crossing_cage_penalty` / :func:`gate_cage_penalty`, one
+    O(width x tracks) call each) and only the best
+    FOLD_VARIANT_MAX_CLASSES variants build classes -- each variant is a
+    full pipeline, the cap bounds the pool cost.  Overrides whose leg
+    map equals the received ``leg_widths`` (no structural change -- the
+    space is the main pool's) are skipped.
+
+    Returns ``(classes, fold_ctx)``: ``classes`` is the familiar
+    ``(kind, ordering_p, ordering_n)`` list, ``fold_ctx`` maps kind ->
+    ``(netlist_f, leg_widths_f)`` -- the fold-variant candidate's OWN
+    netlist and leg map, which its trial must route against (the pool's
+    trial context; regular candidates absent from the map keep the
+    chain's).  Deduped internally by (fold signature, ordering
+    signature); the caller dedupes against the pool on the same pair.
+    Pure and deterministic (invariant 9).
+    """
+    from bigcell_engine.netlist_ext import (build_bigcell_blocks,
+                                            fold_devices, row_seeds)
+    from bigcell_engine.place_euler import euler_orderings
+    base_fold = fold_signature(leg_widths)
+    ranked = []
+    for ov in _fold_override_candidates(netlist, leg_widths, critical_nets):
+        netlist_f, leg_widths_f = fold_devices(netlist,
+                                               fold_overrides=ov)
+        fold = fold_signature(leg_widths_f)
+        if fold == base_fold:
+            continue                     # no structural change
+        blocks_f = build_bigcell_blocks(netlist_f)
+        seeds = row_seeds(blocks_f, leg_widths_f)
+        eop, eon = euler_orderings(seeds, leg_widths_f)
+        crossing = crossing_cage_penalty(eop, eon, netlist_f,
+                                         leg_widths_f)[0]
+        cage_count = gate_cage_penalty(eop, eon, netlist_f,
+                                       leg_widths_f)[0]
+        name = next(iter(sorted(ov)))
+        ranked.append(((crossing, cage_count, name, ov[name]),
+                       ov, netlist_f, leg_widths_f, blocks_f, eop, eon,
+                       len(seeds[P_ROW]) * len(seeds[N_ROW])))
+    ranked.sort(key=lambda t: t[0])
+    out = []
+    fold_ctx = {}
+    seen = set()
+    nominated = 0
+    for _key, ov, netlist_f, leg_widths_f, blocks_f, eop, eon, \
+            problem_size in ranked:
+        if nominated >= FOLD_VARIANT_MAX_CLASSES:
+            break
+        nominated += 1
+        if problem_size <= _VARIANT_SA_PROBLEM_CAP:
+            bp, bn, _bd = sa_refine(eop, eon, netlist_f, leg_widths_f,
+                                    iterations=_variant_sa_iterations(
+                                        problem_size),
+                                    cage=cage,
+                                    critical_nets=critical_nets or None)
+        else:
+            bp, bn = eop, eon
+        name = next(iter(sorted(ov)))
+        base = "fold:%s=%d" % (name, ov[name])
+        classes = [(base, bp, bn),
+                   (base + "-flip-both", _row_flipped(bp), _row_flipped(bn)),
+                   (base + "-die-both", _row_die_mirror(bp),
+                    _row_die_mirror(bn))]
+        for j, (op, on) in enumerate(
+                alignment_candidates([blk for blk in blocks_f
+                                      if blk.first.is_p],
+                                     [blk for blk in blocks_f
+                                      if not blk.first.is_p],
+                                     leg_widths_f,
+                                     limit=align_limit,
+                                     pair_cap=_alignment_pair_cap(
+                                         problem_size),
+                                     netlist=netlist_f), start=1):
+            classes.append((base + "-align%d" % j, op, on))
+        fold = fold_signature(leg_widths_f)
+        for kind, op, on in classes:
+            key = (fold, ordering_signature(op, on))
+            if key in seen:
+                continue
+            seen.add(key)
+            fold_ctx[kind] = (netlist_f, leg_widths_f)
+            out.append((kind, op, on))
+    return out, fold_ctx
+
+
 def generate_candidates(best_p, best_n, seed_p, seed_n, leg_widths,
                         candidate_count=DEFAULT_CANDIDATES,
                         extra_classes=None, netlist=None,
@@ -2369,7 +2601,15 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
     When even the fourth phase left no cage-free FEASIBLE winner, the
     PAIR-SPLIT classes (:func:`pair_split_classes` -- the split lever
     composed two chains deep, census-guided and capped) join as a lazy
-    fifth phase under the same gate.
+    fifth phase under the same gate.  When even the fifth phase left no
+    cage-free FEASIBLE winner, the FOLD-VARIANT classes
+    (:func:`fold_variant_classes` -- the fold decision itself becomes a
+    placement variable: core-gated devices re-folded at default +/- 1
+    legs / max-fold, each variant re-running the chain end to end and
+    trialing against its own fold decision, census-guided and capped)
+    join as a lazy SIXTH phase under the same gate; a winning fold
+    candidate's report carries its ``fold_overrides``/``fold_signature``
+    provenance.
 
     ``trial_router`` defaults to ``route_grid.route_cell`` and is
     called as ``router(netlist, placements, width_cols, leg_widths,
@@ -2419,21 +2659,45 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
     entries = []
     fallback = None               # (conflicts, cage, cost, index) -> entry
     feasible = None               # (cage, index) -> entry, FEASIBLE tier
+    # fold-variant candidates' trial context: kind -> (netlist_f,
+    # leg_widths_f) -- the fold decision each candidate's ordering
+    # decomposes and routes against (populated by phase 6)
+    fold_ctx = {}
 
-    def _census_entry(op, on):
+    def _fold_fields(kind):
+        """JSON-safe provenance fields for a fold-variant winner ({}
+        for every other kind): the override that produced the winning
+        fold decision and the resulting leg-map signature.  The winner's
+        netlist/leg map are recoverable deterministically via
+        netlist_ext.fold_devices(netlist, fold_overrides=...)."""
+        ctx = fold_ctx.get(kind)
+        if ctx is None:
+            return {}
+        _nl_f, lws_f = ctx
+        base = dict(fold_signature(leg_widths))
+        var = dict(fold_signature(lws_f))
+        return {"fold_overrides": {n: l for n, l in var.items()
+                                   if base.get(n) != l},
+                "fold_signature": list(fold_signature(lws_f))}
+
+    def _census_entry(op, on, t_netlist=None, t_lws=None):
         """The census fields for one candidate: the raw counts exactly
         as the public penalties compute them, plus -- on a core-guided
         chain -- the critical-net attribution and core score (one view
-        build serves both censuses)."""
+        build serves both censuses).  ``t_netlist``/``t_lws`` override
+        the chain's netlist/leg map (a fold-variant candidate trials
+        against its OWN fold decision)."""
+        t_netlist = netlist if t_netlist is None else t_netlist
+        t_lws = leg_widths if t_lws is None else t_lws
         if crit is None:
-            return {"cage": gate_cage_penalty(op, on, netlist,
-                                              leg_widths)[0],
-                    "crossing": crossing_cage_penalty(op, on, netlist,
-                                                      leg_widths)[0]}
-        exposed = frozenset(exposed_net_set(netlist))
-        vp = _cage_row_view([_entry(b, False, leg_widths)
+            return {"cage": gate_cage_penalty(op, on, t_netlist,
+                                              t_lws)[0],
+                    "crossing": crossing_cage_penalty(op, on, t_netlist,
+                                                      t_lws)[0]}
+        exposed = frozenset(exposed_net_set(t_netlist))
+        vp = _cage_row_view([_entry(b, False, t_lws)
                              for b in op], True, exposed)
-        vn = _cage_row_view([_entry(b, False, leg_widths)
+        vn = _cage_row_view([_entry(b, False, t_lws)
                              for b in on], False, exposed)
         cage, _ccols, cage_crit = _cage_from_views(vp, vn, exposed, crit)
         crossing, _xcols, crossing_crit = _crossing_from_views(
@@ -2446,7 +2710,14 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
     def _trial(idx):
         """Trial-route pool[idx]; append the report entry; return it."""
         kind, op, on = pool[idx]
-        placements, width = layout_cell(op, on, leg_widths)
+        # a fold-variant candidate trials against its OWN fold decision
+        # (its netlist and leg map; every other kind keeps the chain's --
+        # the same objects as before, so regular trials are
+        # byte-identical)
+        ctx = fold_ctx.get(kind)
+        t_netlist = netlist if ctx is None else ctx[0]
+        t_lws = leg_widths if ctx is None else ctx[1]
+        placements, width = layout_cell(op, on, t_lws)
         # the candidate's OWN die view: the orientation-aware block view
         # the production route would consume for exactly this placement
         # (engine meta["blocks"] is list(ordering_p) + list(ordering_n)
@@ -2459,11 +2730,11 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
         blocks_view = list(op) + list(on)
         try:
             if blocks_aware:
-                result = router(netlist, placements, width, leg_widths,
+                result = router(t_netlist, placements, width, t_lws,
                                 max_attempts=trial_attempts,
                                 blocks=blocks_view)
             else:
-                result = router(netlist, placements, width, leg_widths,
+                result = router(t_netlist, placements, width, t_lws,
                                 max_attempts=trial_attempts)
         except Exception as exc:                   # noqa: BLE001
             result = None
@@ -2473,13 +2744,13 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
             note = getattr(result, "fail_note", None)
         conflicts = _trial_conflicts(result) if result is not None \
             else _UNROUTABLE
-        cost = _SAState(op, on, leg_widths).total
+        cost = _SAState(op, on, t_lws).total
         entry = {"index": idx, "kind": kind, "cost": cost,
                  "width_cols": width, "conflicts": conflicts,
                  "feasible": conflicts == 0,
                  "attempts": getattr(result, "attempts_used", None),
                  "note": note}
-        entry.update(_census_entry(op, on))
+        entry.update(_census_entry(op, on, t_netlist, t_lws))
         entries.append(entry)
         return entry
 
@@ -2503,6 +2774,7 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
                     else "blocks-less",
                     "candidate_count": len(pool), "candidates": entries,
                 }
+                won.update(_fold_fields(entry["kind"]))
                 if crit is not None:
                     won["cage_crit"] = entry["cage_crit"]
                     won["crossing_crit"] = entry["crossing_crit"]
@@ -2542,6 +2814,7 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
             "trial_view": "blocks" if blocks_aware else "blocks-less",
             "candidate_count": len(pool), "candidates": entries,
         }
+        out.update(_fold_fields(entry["kind"]))
         if crit is not None:
             out["cage_crit"] = entry["cage_crit"]
             out["crossing_crit"] = entry["crossing_crit"]
@@ -2643,6 +2916,45 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
                 won = _keep(entry, pool[idx][1], pool[idx][2])
                 if won is not None:
                     return won
+        # phase 6: the FOLD-VARIANT classes (the fold decision becomes a
+        # placement variable -- the one structure every censused space
+        # kept fixed).  Fired under the same no-cage-free-FEASIBLE gate
+        # as phases 3/4/5 -- reaching this point means no cage-free
+        # FEASIBLE candidate exists in the fixed/variant/legacy/split
+        # phases, so every cell closing earlier keeps its exact pool,
+        # trials and selection byte-for-byte.  Core-guided: variants
+        # nominate fold overrides (legs = default +/- 1, bounded, plus
+        # max-fold for over-budget devices) for devices whose GATE net
+        # is an assumption-core net; each variant re-runs fold_devices,
+        # rebuilds the chain and trials against its OWN fold decision
+        # (fold_ctx).  Deduped by (fold signature, ordering signature) --
+        # a fold decision already expressed by the pool contributes
+        # nothing new.
+        if variant_classes and cage and \
+                (feasible is None or feasible["cage"] > 0):
+            extra, extra_ctx = fold_variant_classes(
+                netlist, leg_widths, cage=cage,
+                critical_nets=critical or None)
+            base_fold = fold_signature(leg_widths)
+            # every pre-phase-6 pool entry decomposes the chain's own
+            # fold decision, so (base fold signature, ordering signature)
+            # covers them all: a fold variant matching either is a
+            # re-expression of an existing candidate
+            fold_known = {(base_fold, ordering_signature(op, on))
+                          for _k, op, on in pool}
+            for kind, op, on in extra:
+                ctx = extra_ctx[kind]
+                key = (fold_signature(ctx[1]), ordering_signature(op, on))
+                if key in fold_known:
+                    continue
+                fold_known.add(key)
+                fold_ctx[kind] = ctx
+                pool.append((kind, op, on))
+            for idx in range(len(entries), len(pool)):
+                entry = _trial(idx)
+                won = _keep(entry, pool[idx][1], pool[idx][2])
+                if won is not None:
+                    return won
     # feasible tracks the ENTRY dict; fallback tracks (key, entry)
     winner = feasible if feasible is not None else fallback[1]
     op, on = pool[winner["index"]][1], pool[winner["index"]][2]
@@ -2716,7 +3028,12 @@ def sa_refine_routable(ordering_p, ordering_n, netlist, leg_widths,
     (variants, chain splits, pair splits) inherit the same steering.
     The legacy-basin twin stays PURE (its contract is the exact ASTRAN
     cost).  Unlisted cells (an empty net set) make the whole flag
-    inert.
+    inert.  On a steered core-guided chain the fold-variant classes
+    (phase 6, :func:`fold_variant_classes`) join under the same
+    no-cage-free-FEASIBLE gate; when one of them wins, the returned
+    orderings decompose the OVERRIDE fold decision
+    (``breakdown["selection"]["fold_overrides"]`` names it) and the
+    breakdown is computed against the variant's own leg map.
     """
     if cage is None:
         cage = bool(variant_classes)
@@ -2741,6 +3058,16 @@ def sa_refine_routable(ordering_p, ordering_n, netlist, leg_widths,
         candidate_count=eff_candidates, trial_attempts=trial_attempts,
         trial_router=trial_router, variant_classes=variant_classes,
         cage=cage, legacy_best=legacy_best, core_guided=core_guided)
-    breakdown = _SAState(sel_p, sel_n, leg_widths).breakdown()
+    if sel.get("fold_overrides"):
+        # a fold-variant winner: the selected orderings decompose the
+        # OVERRIDE fold decision, so the honest breakdown is computed
+        # against the variant's own leg map (recovered deterministically
+        # -- fold_devices is pure)
+        from bigcell_engine.netlist_ext import fold_devices
+        _nl_f, lw_f = fold_devices(netlist,
+                                   fold_overrides=sel["fold_overrides"])
+        breakdown = _SAState(sel_p, sel_n, lw_f).breakdown()
+    else:
+        breakdown = _SAState(sel_p, sel_n, leg_widths).breakdown()
     breakdown["selection"] = sel
     return sel_p, sel_n, breakdown
