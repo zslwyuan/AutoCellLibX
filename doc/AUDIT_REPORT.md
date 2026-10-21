@@ -1748,3 +1748,32 @@ track、四个排布空间世代），且行内轨的证据强于其余：**即�
 超出物理可实现（0.25µm 条带内 2-3 轨低于 ~0.19µm M1 间距）的自由
 度，cell 仍 INFEASIBLE**。剩余 21 cell 的 ASTRAN 回退档终态的证据
 链至此完备。
+
+## §5.57 folding 组合变体判决：census 墙溶解、精确模型拒绝全部自由排布——战役正式关闭（2026-10-22）
+
+组合实验（agent U2）：核心门控器件的选项集笛卡尔积
+（fold_combo_candidates，FOLD_COMBO_MAX_COMBOS=64——本语料最宽核 6
+器件 → 63 组合，无截断）接入 select_orderings 为惰性 phase-7。腿拷贝
+器件（name#legK）排除在门控集外（对拷贝 override 会再折一条腿链）。
+
+**组合假设在 census 层证实**：XOR2X1 39/63 组合达到 census-
+(crossing=0, cage=0)、MUX2X1 9/15——per-device 空间为零处，组合互相
+搬家成真。**精确模型全部否决**：48 个 census-(0,0) 见证 INFEASIBLE
+（0.4-60s，无超时）。见证核（族级不可约）指名绑定机制：
+bridge/tjoin/e5same/gjoin——**金属跳线容量绑定，非栅摆放**。§5.54
+的两级墙精确复现：局部电源带墙在组合下溶解，全局连通性墙接住每一个
+被释放的排布。
+
+**LATCH 的结构性理由**：残余笼蔽栅是网络 Q 的——在核（D, a_2_6#）
+之外，核门控 fold 无法搬动（Q 门控提名规则记录为界外）。
+
+**生产级收益**：平台期 cell 的回退 floor 实质改善（XOR2X1 16→12、
+LATCH 35→6、DFFNEGX1 UNROUTABLE→150）；core-OFF 生产引擎构造上不
+受影响。12 新测试；800 绿。
+
+**战役正式关闭**：六个排布空间世代（contiguous、single-split、
+pair-split、fold-per-device、fold-combination、+行内轨模型）× 三个
+词汇杠杆（M2 双柱、8th track、假设核松弛）全部以 CP-SAT 级证明穷
+举。**28/49 诚实闭合（同口径中位 0.82）+ 完整回退档 = 最终交付状
+态**。剩余 21 cell 重开研究的入口：金属跳线容量（bridge/tjoin 词汇
+的下一步）与 Q 门控类提名规则——均记录在案，无先验理由预期不同结果。
