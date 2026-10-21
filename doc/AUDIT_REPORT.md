@@ -1700,3 +1700,23 @@ pair-split、core-guided fitness、cage-avoidance、crossing-avoidance、
 两个 M2 词汇、窗口修复。剩余 21 cell 的 ASTRAN 回退档是**带完整证明
 的终态**；未来重开需：folding 进排布变量、行内轨扩展、或新排布空间
 族——均研究级且无先验理由预期不同结果。
+
+## §5.55 fold 维度判决：census 极小值改善但零 (0,0)——第四个穷举的排布维度（2026-10-22）
+
+「folding 进排布变量」落地：fold_devices 增 fold_overrides（{device:
+legs}，纯函数、默认字节不变——对 7 个 cell 与 HEAD 直接对拍），specu
+late 池增惰性 phase-6 fold 变体（核引导提名：栅网络在核内的器件提名
+默认腿数 ±1 + max-fold；每变体重跑 fold→blocks→euler→有界 SA，按自
+己的 netlist/腿表试布，(fold, ordering) 双签名去重）。
+
+**探针表（穷举级）**：fold 维度**严格改善 census 极小值**——
+XOR2X1/MUX2X1 (0,2)→(0,1)、LATCH (0,3)→(0,2)（全排序空间穷举
+147,456 排布/决策；baseline 重跑精确复现 §5.50 记录）——核门控器件
+拆 2 腿确实挪动了栅列、解笼一个接触。**但每个变体的每个排布仍剩一
+个笼蔽栅：五个 cell 全部零 (0,0)**——CP-SAT/全链阶段无见证可跑（两
+路径均烟雾验证可执行）。fold 死在比 split 更早的一层（census 层），
+否定证据并入 §5.52 接受案：**第四个穷举的排布维度**（contiguous、
+single-split、pair-split、fold）。
+
+引擎接线 diff 已交付未应用（core_guided 只转向 8 个未闭合的核列出
+cell，闭合保持字节不变）。18 新测试；788 绿。
