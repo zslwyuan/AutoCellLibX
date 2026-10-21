@@ -61,23 +61,30 @@ build_diffusion_blocks) -- this module only adds what big cells need:
      maximal-split extreme (maximum diffusion breaks / corridors);
    - ``"max_merge"``: "default" with ``max_coupler_degree=None``.
 
-5. ``chain_split_decompositions(...)``: the chain-SPLIT candidate
-   decompositions -- the arrangement-space extension for the
-   entangled-wall class (AUDIT 5.50/5.52).  A series chain may legally
-   place as two sub-chains with its internal node wired by metal instead
-   of shared diffusion; each decomposition splits ONE series chain of
-   the default decomposition at ONE internal point into two sub-chain
-   blocks (facing ends carry the same internal net, so every consumer's
-   break rule inserts the gap exactly when the sub-chains sit
-   non-adjacent, and the net becomes multi-region/contactable like a
-   tree block's re-exposed branch net).  Placed adjacent the pair IS the
-   original block, so splits only ADD arrangements.  Bounded
-   (``CHAIN_SPLIT_MAX_DECOMPOSITIONS``, :func:`split_points_for_chain`)
-   and deterministic; consumed by place_sa.chain_split_classes.
+5. ``chain_split_decompositions(...)`` / ``pair_split_decompositions(...)``:
+   the chain-SPLIT candidate decompositions -- the arrangement-space
+   extension for the entangled-wall class (AUDIT 5.50/5.52).  A series
+   chain may legally place as two sub-chains with its internal node wired
+   by metal instead of shared diffusion; each decomposition splits ONE
+   series chain of the default decomposition at ONE internal point into
+   two sub-chain blocks (facing ends carry the same internal net, so
+   every consumer's break rule inserts the gap exactly when the
+   sub-chains sit non-adjacent, and the net becomes
+   multi-region/contactable like a tree block's re-exposed branch net).
+   Placed adjacent the pair IS the original block, so splits only ADD
+   arrangements.  ``pair_split_decompositions`` composes TWO distinct
+   chains' splits (the single-split space's census-(0,0) witnesses are
+   globally walled -- AUDIT 5.52's two-level wall -- so the research
+   round opens the two-split dimension; guided enumeration per
+   place_sa.pair_split_classes).  Bounded
+   (``CHAIN_SPLIT_MAX_DECOMPOSITIONS`` / ``PAIR_SPLIT_MAX_DECOMPOSITIONS``,
+   :func:`split_points_for_chain`) and deterministic; consumed by
+   place_sa.chain_split_classes / place_sa.pair_split_classes.
 
 All iterations are over sorted structures (AGENTS.md invariant 9).
 """
 
+import itertools
 import math
 
 from smt_cell_placer import Device, TransistorNetlist
@@ -720,6 +727,54 @@ def chain_split_decompositions(
             split = split_chain_in_blocks(blocks, name, point)
             if split is not None:
                 out.append((name, point, split))
+    return out
+
+
+#: pair-split decompositions generated at most, in sorted
+#: ((chainA, pointA), (chainB, pointB)) order -- the pool-cost cap (the
+#: chain-split cap's two-split twin; XOR2X1's whole pair space is 6
+#: compositions, so the cap binds only on chain-heavy cells)
+PAIR_SPLIT_MAX_DECOMPOSITIONS = 8
+
+
+def pair_split_decompositions(
+        netlist, max_decompositions=PAIR_SPLIT_MAX_DECOMPOSITIONS):
+    """The PAIR-split candidate decompositions: two DISTINCT series
+    chains of the default decomposition, each split at one internal
+    point -- ``[((chainA, pointA), (chainB, pointB), blocks)]``.
+
+    The single-split space's census-(0,0) witnesses are globally walled
+    (AUDIT 5.52's funnel: all 7 XOR2X1/XNOR2X1 witnesses re-walled by the
+    router's reachability analysis), so the split dimension composes TWO
+    chains' splits: a second split adds a second metal-tied internal net
+    and relocates more gate columns.  Composition is via
+    :func:`split_chain_in_blocks` twice (chain B is untouched by A's
+    split, so its name still identifies it); adjacent placement of both
+    sub-chain pairs IS the original arrangement, so pair-splits only ADD
+    arrangements.  Nominations are enumerated in sorted
+    ((chainA, pointA), (chainB, pointB)) order with chainA < chainB and
+    capped by ``max_decompositions`` (the first sorted pairs).
+    Deterministic (invariant 9); pure.
+    """
+    blocks = build_bigcell_blocks(netlist)
+    chains = sorted(
+        (block.first.name for block in blocks
+         if block.kind == "series" and len(block.members) > 1))
+    members_of = {block.first.name: len(block.members) for block in blocks
+                  if block.kind == "series" and len(block.members) > 1}
+    out = []
+    for a, b in itertools.combinations(chains, 2):
+        for pa in split_points_for_chain(members_of[a]):
+            for pb in split_points_for_chain(members_of[b]):
+                if len(out) >= max_decompositions:
+                    return out
+                split = split_chain_in_blocks(blocks, a, pa)
+                if split is None:
+                    continue
+                split = split_chain_in_blocks(split, b, pb)
+                if split is None:
+                    continue
+                out.append(((a, pa), (b, pb), split))
     return out
 
 

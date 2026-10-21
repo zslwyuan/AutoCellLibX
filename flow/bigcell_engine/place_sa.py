@@ -225,6 +225,25 @@ the variant classes (euler + budget-bounded SA refine + proven mirrors
 :func:`select_orderings` as a lazy LAST phase under the same
 no-cage-free-FEASIBLE gate as the legacy twins, so all earlier
 closures keep their exact pools and selections byte-for-byte.
+
+Pair-split classes (the research round's WP1): the single-split space's
+census-(0,0) witnesses are globally walled (AUDIT 5.52's funnel -- all
+7 XOR2X1/XNOR2X1 witnesses re-walled by the router's reachability
+analysis), so the split lever composes TWO chains' splits
+(:func:`pair_split_classes` over netlist_ext.pair_split_decompositions,
+census-guided and capped at PAIR_SPLIT_MAX_CLASSES decompositions).
+They join :func:`select_orderings` as a lazy FIFTH phase under the same
+no-cage-free-FEASIBLE gate.
+
+Core-guided fitness (the research round's WP2, opt-in): the assumption
+cores of AUDIT 5.51 name, per remaining cell, the nets whose
+connectivity binds (:data:`CORE_CRITICAL_NETS`,
+:func:`core_critical_nets`).  ``core_guided=True`` chains weight those
+nets' blocked entities (caged gate contacts, walled demanded crossings)
+in the SA cost and the selection ranks -- their access quality dominates
+the ranking behind the measured floor.  Unlisted cells and the default
+flag-off path are byte-identical to HEAD (the pinned census/fallback
+contracts untouched); production wiring waits on the round's evidence.
 """
 
 import hashlib
@@ -435,10 +454,17 @@ def _cage_row_view(entries, is_p, exposed):
     return edges, counts, gates, forced, active, col
 
 
-def _cage_from_views(vp, vn, exposed):
+def _cage_from_views(vp, vn, exposed, critical=None):
     """The census over two row views (see :func:`gate_cage_penalty` for
     the model).  Split from it so the alignment nomination can score
-    pairs from per-row precomputed views without re-walking."""
+    pairs from per-row precomputed views without re-walking.
+
+    Returns ``(caged, columns, caged_crit)``: the raw caged-gate count
+    and columns exactly as before, plus -- only when ``critical`` (a
+    frozenset of connectivity-critical net names, the assumption-core
+    nets) is given -- the count of caged entities whose gate net is
+    critical (0 otherwise).  The third element is additive: every
+    existing consumer reads the first two unchanged."""
     span_n, span_p, span_np, corridor = _track_model()
     span_of = {False: span_p, True: span_np}   # keyed by "carries P row"
     B = CAGE_BOUNDARY_T
@@ -477,6 +503,7 @@ def _cage_from_views(vp, vn, exposed):
             got[1] = True
         gspans.setdefault(c, {}).setdefault(net, span_of[False])
     caged = 0
+    caged_crit = 0
     columns = set()
     for (net, c), (legal, in_n, in_p) in legal_of.items():
         if in_n and in_p:
@@ -520,16 +547,26 @@ def _cage_from_views(vp, vn, exposed):
         if not free:
             caged += 1
             columns.add(c)
-    return caged, tuple(sorted(columns))
+            if critical is not None and net in critical:
+                caged_crit += 1
+    return caged, tuple(sorted(columns)), caged_crit
 
 
-def gate_cage_penalty(ordering_p, ordering_n, netlist, leg_widths=None):
+def gate_cage_penalty(ordering_p, ordering_n, netlist, leg_widths=None,
+                      critical_nets=None):
     """Static gate-cage census over one ordering pair (AUDIT 5.46).
 
     Returns ``(caged_gates, blocked_columns)``: how many gate contacts
     are hard-blocked and which columns host them -- 0/() when every
     gate contact has a free lane.  O(width x tracks) per call, no
     router involved.
+
+    With ``critical_nets`` (the assumption-core nets,
+    :func:`core_critical_nets`) the returned count is the WEIGHTED
+    census ``noncrit + CORE_CENSUS_WEIGHT * critical`` -- one critical
+    net's blocked contact outweighs CORE_CENSUS_WEIGHT non-critical
+    ones, so the core nets' access quality dominates the rank.  The
+    default None keeps the raw count (every pinned contract).
 
     The model (port of flow/_stage3_check/diag_forced_census.py's
     forced-coverage census, derived from the ordering pair via the same
@@ -570,7 +607,12 @@ def gate_cage_penalty(ordering_p, ordering_n, netlist, leg_widths=None):
                          for b in ordering_p], True, exposed)
     vn = _cage_row_view([_entry(b, False, leg_widths)
                          for b in ordering_n], False, exposed)
-    return _cage_from_views(vp, vn, exposed)
+    caged, columns, caged_crit = _cage_from_views(
+        vp, vn, exposed,
+        frozenset(critical_nets) if critical_nets is not None else None)
+    if critical_nets is not None:
+        caged += CORE_CENSUS_WEIGHT * caged_crit
+    return caged, columns
 
 
 # --------------------------------------------------------------------------
@@ -589,13 +631,19 @@ def gate_cage_penalty(ordering_p, ordering_n, netlist, leg_widths=None):
 # can still wall the net's OTHER crossings (a plain M1 span has no
 # contact to hide behind).
 
-def _crossing_from_views(vp, vn, exposed):
+def _crossing_from_views(vp, vn, exposed, critical=None):
     """The crossing-contest census over two row views (see
     :func:`crossing_cage_penalty` for the model).  Split from it so the
     alignment nomination can score pairs from per-row precomputed views
     without re-walking.  Same slot conventions as :func:`_cage_from_views`
     (N slot for t < BOUNDARY_T, P slot above; same-net dual blankets
-    rail-to-rail through the corridor; the poly escape on row tracks)."""
+    rail-to-rail through the corridor; the poly escape on row tracks).
+
+    Returns ``(contested, columns, contested_crit)`` -- the third element
+    additive as in :func:`_cage_from_views`: when ``critical`` is given,
+    the count of contested entities attributable to a critical net
+    (level-1 walls on the net's own demanded boundaries; level-2 forced
+    claims contesting a node the net is forced onto)."""
     B = CAGE_BOUNDARY_T
     ep, counts_p, gates_p, forced_p, active_p, wp = vp
     en, counts_n, gates_n, forced_n, active_n, wn = vn
@@ -683,6 +731,7 @@ def _crossing_from_views(vp, vn, exposed):
         return out
 
     contested = 0
+    contested_crit = 0
     columns = set()
     claims = {}                              # (track, col) -> {nets}
     for net in sorted(presence):
@@ -703,6 +752,8 @@ def _crossing_from_views(vp, vn, exposed):
                 # blanket / foreign rail pin, no anchored poly escape)
                 contested += 1
                 columns.add(c)
+                if critical is not None and net in critical:
+                    contested_crit += 1
             elif len(escapes) == 1:
                 # level 2: the sole surviving lane FORCES the
                 # crossing onto it (route_grid._gate_forced's rule:
@@ -716,10 +767,13 @@ def _crossing_from_views(vp, vn, exposed):
         if len(nets) > 1:
             contested += 1
             columns.add(cc)
-    return contested, tuple(sorted(columns))
+            if critical is not None and not critical.isdisjoint(nets):
+                contested_crit += 1
+    return contested, tuple(sorted(columns)), contested_crit
 
 
-def crossing_cage_penalty(ordering_p, ordering_n, netlist, leg_widths=None):
+def crossing_cage_penalty(ordering_p, ordering_n, netlist, leg_widths=None,
+                          critical_nets=None):
     """Static crossing-contest census over one ordering pair (AUDIT
     5.49's placement-axis lever).
 
@@ -728,6 +782,11 @@ def crossing_cage_penalty(ordering_p, ordering_n, netlist, leg_widths=None):
     escapable track at all, and the sorted left columns of those
     boundaries -- 0/() when every demanded crossing has a lane.
     O(width x tracks x nets) per call, no router involved.
+
+    With ``critical_nets`` the returned count is the WEIGHTED census
+    ``noncrit + CORE_CENSUS_WEIGHT * critical`` (see
+    :func:`gate_cage_penalty`) -- the assumption-core nets' walled
+    crossings dominate the rank.  The default None keeps the raw count.
 
     The model (the gate-contact census of :func:`gate_cage_penalty`
     extended one level deeper, contact escapable -> crossing escapable):
@@ -788,7 +847,103 @@ def crossing_cage_penalty(ordering_p, ordering_n, netlist, leg_widths=None):
                          for b in ordering_p], True, exposed)
     vn = _cage_row_view([_entry(b, False, leg_widths)
                          for b in ordering_n], False, exposed)
-    return _crossing_from_views(vp, vn, exposed)
+    contested, columns, contested_crit = _crossing_from_views(
+        vp, vn, exposed,
+        frozenset(critical_nets) if critical_nets is not None else None)
+    if critical_nets is not None:
+        contested += CORE_CENSUS_WEIGHT * contested_crit
+    return contested, columns
+
+
+# --------------------------------------------------------------------------
+# assumption-core-guided net weighting (AUDIT 5.51's cores, the research
+# round's WP2)
+# --------------------------------------------------------------------------
+# The assumption cores (commit 7274200, AUDIT 5.51) name, per remaining
+# cell, the nets whose connectivity binds the infeasibility: every net-
+# suffixed core member ("family:net" -- pres/pjanchor/bridge/tjoin/gate/
+# acccon/...) marks that net CONNECTIVITY-CRITICAL.  The cores were
+# extracted per cell in scratch (flow/_stage3_check/_core_probe.py ->
+# _core_probe_results.json; every member irreducible-certified by the
+# deletion filter, every drop witness verify-dirty on exactly its own
+# violation class).  This table formalizes them as the placement-side
+# fitness signal: in the cage/crossing censuses and the speculate
+# selection, a critical net's blocked entities (caged gate contacts,
+# walled demanded crossings) dominate the ranking.
+#
+# Provenance per entry (member families quoted from the probe results):
+# - XOR2X1 12T: gate:B, gate:a_13_43# (with csP on the same nets);
+# - XNOR2X1 12T: gate:B, gate:a_12_41#;
+# - MUX2X1 10T: gate:A, gate:B;
+# - LATCH 12T: gate:D, gate:a_2_6# (with bridge/tjoin on a_2_6#);
+# - DFFNEGX1 22T: gate:Q, gate:a_66_6# (with csP, bridge:Q, tjoin);
+# - DFFPOSX1 22T: pjanchor:a_22_6#, pjanchor:a_34_4# (with csP, pres);
+# - adder/COMPLEX10 36T: pres+pjanchor on the 10 nets below (the probe's
+#   core carries both families on exactly this net set);
+# - max/COMPLEX20 18T: csP on 12 nets with pjanchor:cl1#Y,
+#   pjanchor:cl3#a_2_6# -- the union below (the core binds broadly:
+#   12 of the cell's 13 signal nets, so the weighting is diffuse there;
+#   documented as measured).
+# Deliberately NOT tabled: TBUFX2 (its 17-member core names m2run/
+# viabound/... but the cell CLOSES on the production ladder at 1.33 um --
+# steering a closing cell's search risks its byte-identity for zero
+# need) and the INV-ctrl/TBUFX2-exact probe controls.
+CORE_CRITICAL_NETS = {
+    "XOR2X1": ("B", "a_13_43#"),
+    "XNOR2X1": ("B", "a_12_41#"),
+    "MUX2X1": ("A", "B"),
+    "LATCH": ("D", "a_2_6#"),
+    "DFFNEGX1": ("Q", "a_66_6#"),
+    "DFFPOSX1": ("a_22_6#", "a_34_4#"),
+    "COMPLEX10": ("cl0#a_2_6#", "cl1#A", "cl1#Y", "cl1#a_13_43#",
+                  "cl1#a_2_6#", "cl2#B", "cl2#Y", "cl2#a_2_6#",
+                  "cl3#A", "cl3#Y"),
+    "COMPLEX20": ("cl0#B", "cl0#C", "cl0#Y", "cl0#a_2_54#", "cl1#A",
+                  "cl1#Y", "cl2#A", "cl2#Y", "cl3#A", "cl3#B", "cl3#Y",
+                  "cl3#a_2_6#"),
+}
+
+
+def core_critical_nets(cell_name):
+    """The cell's connectivity-critical nets (AUDIT 5.51's assumption
+    cores, see :data:`CORE_CRITICAL_NETS`); () for unlisted cells --
+    every consumer's net-weighting is then inert and its behaviour
+    byte-identical to the unweighted path.  Pure (invariant 9)."""
+    return CORE_CRITICAL_NETS.get(cell_name, ())
+
+
+#: census weighting: one critical-net blocked entity outweighs this many
+#: non-critical ones, so a candidate that keeps the core nets' accesses
+#: clean wins the rank regardless of the non-critical residue.  Integer
+#: currency (invariant 9); only applied when the caller passes
+#: ``critical_nets`` (the default None keeps every existing count
+#: byte-identical -- the pinned census contracts).
+CORE_CENSUS_WEIGHT = 10 ** 4
+
+#: SA-cost weight of one core-critical blocked entity (caged gate or
+#: walled crossing of a critical net).  Provenance: the same argument as
+#: CAGE_WEIGHT's (a measured routability floor, not a proxy) one level
+#: below it -- the term must dominate the legacy total (bounded by ~10^6
+#: for the corpus) and stay below CAGE_WEIGHT (10^7, the proven wall).
+CORE_SA_WEIGHT = 10 ** 6
+
+#: the core-guided refine's budgets.  The per-move core term adds the
+#: crossing census (~0.8 ms on a 36T arrangement vs 43 us for the cage
+#: scan) to every cost evaluation, so the pass runs at a REDUCED budget:
+#: 6 TA iterations at quality 5 and the initial-threshold bisection
+#: capped at 64 moves/step -- measured ~4 s on a 22T cell, ~10 s on the
+#: 36T (vs ~200 s at the full budget, which would silently quadruple the
+#: placement stage).  Pure constants (invariant 9).
+CORE_REFINE_ITERATIONS = 6
+CORE_REFINE_QUALITY = 5.0
+CORE_REFINE_INIT_MOVES = 64
+
+
+def _cell_name(netlist):
+    """The netlist's subcircuit name ("" when absent) -- the core table's
+    lookup key.  Pure."""
+    sub = getattr(netlist, "subckt", None)
+    return getattr(sub, "subckt_name", "") or ""
 
 
 def cell_seed(netlist):
@@ -919,9 +1074,23 @@ class _SAState(object):
     == full) keeps holding.  ``netlist=None`` (the default) skips the
     scan: the cost is byte-identical legacy -- the pure-cost path's
     contract, consumed by tests that construct the state directly.
+
+    With ``critical_nets`` additionally given (the assumption-core
+    nets, only meaningful together with ``netlist``), the cost carries
+    the CORE-GUIDED term (weight CORE_SA_WEIGHT per blocked entity of a
+    critical net -- caged gate contacts and walled demanded crossings,
+    the same two censuses' critical-net attribution): total +=
+    CORE_SA_WEIGHT * (caged_crit + contested_crit).  The crossing
+    census runs inside the same content-cached refresh (a rejected
+    move's undo restores the row content and hits the cache), so the
+    per-move cost is one census pair per ACCEPTED move -- callers must
+    budget accordingly (see CORE_REFINE_ITERATIONS).  Without
+    ``critical_nets`` the crossing census never runs and the total is
+    byte-identical to the unweighted path.
     """
 
-    def __init__(self, ordering_p, ordering_n, leg_widths, netlist=None):
+    def __init__(self, ordering_p, ordering_n, leg_widths, netlist=None,
+                 critical_nets=None):
         if leg_widths is None:
             # geometry.default_leg_widths' slot-model semantics: one leg
             # of one column per device (W is vertical).
@@ -935,6 +1104,10 @@ class _SAState(object):
         # the census's exposure set, frozen once (None disables the term)
         self.exposed = None if netlist is None else \
             frozenset(exposed_net_set(netlist))
+        # the core-guided weighting's net set (None disables the term)
+        self.critical = None if (self.exposed is None
+                                 or not critical_nets) \
+            else frozenset(critical_nets)
         self._cage_cache = None
         self._view_cache = [None, None]
         total_w = sum(e.width for row in self.rows for e in row)
@@ -1037,10 +1210,23 @@ class _SAState(object):
         self.local_cong = sum(v * v for v in self.cong)
         self.max_cong = max(self.cong)
         self._refresh_cage()
-        self.total = self._total_from_terms() + CAGE_WEIGHT * self.caged
+        self.total = self._grand_total()
+
+    def _grand_total(self):
+        """The full cost: legacy terms + the cage wall + (on a
+        core-guided state) the critical-net term.  Without
+        ``critical_nets`` the added term is exactly 0, so the total is
+        byte-identical to the unweighted path."""
+        core = 0
+        if self.critical is not None:
+            core = self.caged_crit + self.contested_crit
+        return (self._total_from_terms()
+                + CAGE_WEIGHT * self.caged + CORE_SA_WEIGHT * core)
 
     def _refresh_cage(self):
-        """Re-run the gate-cage census over the current rows.
+        """Re-run the gate-cage census over the current rows (plus, on a
+        core-guided state, the crossing census -- both cached by row
+        content).
 
         The census is a pure function of the two rows' ENTRY sequences,
         and an undone move restores the exact previous entry objects
@@ -1052,11 +1238,15 @@ class _SAState(object):
         if self.exposed is None:
             self.caged = 0
             self.cage_cols = ()
+            self.caged_crit = 0
+            self.contested = 0
+            self.contested_crit = 0
             return
         cache = self._cage_cache
         if cache is not None \
                 and cache[0] == self.rows[0] and cache[1] == self.rows[1]:
-            self.caged, self.cage_cols = cache[2], cache[3]
+            (self.caged, self.cage_cols, self.caged_crit,
+             self.contested, self.contested_crit) = cache[2]
             return
         vc = self._view_cache
         views = []
@@ -1066,10 +1256,18 @@ class _SAState(object):
                 vc[r] = (_cage_row_view(self.rows[r], r == 0, self.exposed),
                          list(self.rows[r]))
             views.append(vc[r][0])
-        self.caged, self.cage_cols = _cage_from_views(
-            views[0], views[1], self.exposed)
+        self.caged, self.cage_cols, self.caged_crit = _cage_from_views(
+            views[0], views[1], self.exposed, self.critical)
+        if self.critical is not None:
+            self.contested, _cols, self.contested_crit = \
+                _crossing_from_views(views[0], views[1], self.exposed,
+                                     self.critical)
+        else:
+            self.contested = 0
+            self.contested_crit = 0
         self._cage_cache = (list(self.rows[0]), list(self.rows[1]),
-                            self.caged, self.cage_cols)
+                            (self.caged, self.cage_cols, self.caged_crit,
+                             self.contested, self.contested_crit))
 
     def _refresh_net(self, net):
         """Merge a net's changed per-row bounds into its global bbox;
@@ -1126,7 +1324,7 @@ class _SAState(object):
         return self.total
 
     def breakdown(self):
-        return {
+        out = {
             "width": max(self.pic[0][3], self.pic[1][3]),
             "gaps": self.pic[0][2] + self.pic[1][2],
             "gate_mismatch": self.gate_mismatch,
@@ -1136,6 +1334,11 @@ class _SAState(object):
             "caged_gates": self.caged,
             "total": self.total,
         }
+        if self.critical is not None:
+            out["caged_gates_crit"] = self.caged_crit
+            out["contested_crossings"] = self.contested
+            out["contested_crossings_crit"] = self.contested_crit
+        return out
 
     # -- full recompute (the incremental path's reference) --------------
 
@@ -1163,7 +1366,7 @@ class _SAState(object):
         self.gate_mismatch = sum(
             1 for col in set(g0) & set(g1) if g0[col] != g1[col])
         self._refresh_cage()
-        self.total = self._total_from_terms() + CAGE_WEIGHT * self.caged
+        self.total = self._grand_total()
         return self.total
 
     # -- snapshot / restore ---------------------------------------------
@@ -1225,7 +1428,7 @@ def _find_initial_threshold(state, rng, moves):
 
 def sa_refine(ordering_p, ordering_n, netlist, leg_widths, iterations=None,
               quality=DEFAULT_QUALITY, init_moves=None, seed=None,
-              check=True, cage=False):
+              check=True, cage=False, critical_nets=None):
     """Refine the seed orderings with Threshold Accept; returns
     (ordering_p, ordering_n, cost_breakdown).
 
@@ -1246,9 +1449,18 @@ def sa_refine(ordering_p, ordering_n, netlist, leg_widths, iterations=None,
     cage-free states over cheaper caged ones.  The default False keeps
     the pure ASTRAN cost byte-for-byte (the pure-cost research path and
     its pinned phase-1 specimens; the production chain opts in).
+
+    ``critical_nets`` (the assumption-core nets, requires ``cage=True``
+    to have an exposed set) adds the CORE-GUIDED term
+    (CORE_SA_WEIGHT per blocked critical-net entity, :func:`_SAState`)
+    on top of the cage term.  The per-move cost then includes the
+    crossing census, so callers must budget down (the core-guided chain
+    uses CORE_REFINE_ITERATIONS / CORE_REFINE_QUALITY /
+    CORE_REFINE_INIT_MOVES).  None keeps the cost byte-identical.
     """
     state = _SAState(ordering_p, ordering_n, leg_widths,
-                     netlist=netlist if cage else None)
+                     netlist=netlist if cage else None,
+                     critical_nets=critical_nets)
     rng = random.Random(seed if seed is not None else cell_seed(netlist))
     problem_size = len(state.rows[0]) * len(state.rows[1])
     num_reps = max(1, int(problem_size * quality))
@@ -1256,6 +1468,10 @@ def sa_refine(ordering_p, ordering_n, netlist, leg_widths, iterations=None,
         iterations = DEFAULT_ITERATIONS
     if init_moves is None:
         init_moves = min(2000, max(500, 4 * problem_size))
+    if state.critical is not None:
+        # the core-guided term's per-move crossing census: cap the
+        # bisection pass (documented budget, see CORE_REFINE_INIT_MOVES)
+        init_moves = min(init_moves, CORE_REFINE_INIT_MOVES)
 
     threshold = _find_initial_threshold(state, rng, init_moves)
     cost = state.cost()
@@ -1649,7 +1865,8 @@ def decomposition_variant_classes(netlist, leg_widths,
                                   variant_names=DECOMPOSITION_VARIANTS,
                                   sa_iterations=VARIANT_SA_ITERATIONS,
                                   align_limit=ALIGN_CANDIDATES,
-                                  cage=False, basin="steered"):
+                                  cage=False, basin="steered",
+                                  critical_nets=None):
     """The per-variant candidate classes for the speculate pool.
 
     For every decomposition variant (netlist_ext.BLOCK_VARIANTS minus
@@ -1707,7 +1924,8 @@ def decomposition_variant_classes(netlist, leg_widths,
             bp, bn, _bd = sa_refine(eop, eon, netlist, leg_widths,
                                     iterations=_variant_sa_iterations(
                                         problem_size, cap=sa_iterations),
-                                    cage=cage)
+                                    cage=cage,
+                                    critical_nets=critical_nets)
         else:
             bp, bn = eop, eon
         classes = [("var:%s%s" % (name, suffix), bp, bn),
@@ -1766,7 +1984,8 @@ CHAIN_SPLIT_ALIGN_LIMIT = ALIGN_CANDIDATES
 
 
 def chain_split_classes(netlist, leg_widths,
-                        align_limit=CHAIN_SPLIT_ALIGN_LIMIT, cage=True):
+                        align_limit=CHAIN_SPLIT_ALIGN_LIMIT, cage=True,
+                        critical_nets=None):
     """The chain-split candidate classes for the speculate pool.
 
     For every split decomposition (:func:`netlist_ext.chain_split_decompositions`,
@@ -1783,7 +2002,8 @@ def chain_split_classes(netlist, leg_widths,
            :func:`alignment_candidates` caps).
 
     Deduped internally by :func:`ordering_signature`; the caller dedupes
-    against the pool.  Pure and deterministic (invariant 9).
+    against the pool.  ``critical_nets`` (core-guided chains) steers the
+    split refines' SA cost.  Pure and deterministic (invariant 9).
     """
     from bigcell_engine.netlist_ext import (chain_split_decompositions,
                                             row_seeds)
@@ -1800,7 +2020,8 @@ def chain_split_classes(netlist, leg_widths,
             bp, bn, _bd = sa_refine(eop, eon, netlist, leg_widths,
                                     iterations=_variant_sa_iterations(
                                         problem_size),
-                                    cage=cage)
+                                    cage=cage,
+                                    critical_nets=critical_nets)
         else:
             bp, bn = eop, eon
         base = "split:%s@%d" % (name, point)
@@ -1810,6 +2031,98 @@ def chain_split_classes(netlist, leg_widths,
                     _row_die_mirror(bn))]
         for j, (op, on) in enumerate(
                 alignment_candidates(p_blocks, n_blocks, leg_widths,
+                                     limit=align_limit,
+                                     pair_cap=_alignment_pair_cap(
+                                         problem_size),
+                                     netlist=netlist), start=1):
+            classes.append((base + "-align%d" % j, op, on))
+        for kind, op, on in classes:
+            sig = ordering_signature(op, on)
+            if sig in seen:
+                continue
+            seen.add(sig)
+            out.append((kind, op, on))
+    return out
+
+
+#: pair-split decompositions that build candidate classes (the same
+#: build discipline as the chain splits, applied to the census-guided
+#: top decompositions); the blind pair space is 6 compositions x up to
+#: 18M orderings per cell, so the pool sees the census-most-promising
+#: four
+PAIR_SPLIT_MAX_CLASSES = 4
+
+
+def pair_split_classes(netlist, leg_widths,
+                       align_limit=CHAIN_SPLIT_ALIGN_LIMIT, cage=True,
+                       critical_nets=None):
+    """The pair-split candidate classes for the speculate pool (the
+    chain-split lever composed two chains deep, AUDIT 5.52's open
+    dimension).
+
+    For every pair decomposition (:func:`netlist_ext.pair_split_decompositions`,
+    two distinct series chains each split at one internal point): build
+    blocks -> row seeds -> euler -> a budget-bounded Threshold-Accept
+    refine (the same size-aware budgets as :func:`chain_split_classes`;
+    above _VARIANT_SA_PROBLEM_CAP the euler seed stands in) and nominate
+
+        1. the pair-split's SA best ("pairsplit:<A>@<a>+<B>@<b>"),
+        2. its both-rows flip / die-mirror (the proven closure classes),
+        3. up to ``align_limit`` alignment nominees
+           ("pairsplit:...-align<j>", the same :func:`alignment_candidates`
+           caps).
+
+    CENSUS GUIDANCE (the documented constant pair of this lever): the
+    decompositions are ranked by their euler seed's census
+    (crossing, cage -- :func:`crossing_cage_penalty` /
+    :func:`gate_cage_penalty`, one O(width x tracks) call each) and only
+    the best PAIR_SPLIT_MAX_CLASSES decompositions build classes -- the
+    blind pair space is 6 compositions x up to 18M orderings per cell
+    (agent N's bound), intractable for trial routing, so the pool sees
+    the census-most-promising splits first.  Deduped internally by
+    :func:`ordering_signature`; the caller dedupes against the pool.
+    Pure and deterministic (invariant 9).
+    """
+    from bigcell_engine.netlist_ext import (pair_split_decompositions,
+                                            row_seeds)
+    from bigcell_engine.place_euler import euler_orderings
+    ranked = []
+    for (a, pa), (b, pb), blocks in pair_split_decompositions(netlist):
+        p_blocks = [blk for blk in blocks if blk.first.is_p]
+        n_blocks = [blk for blk in blocks if not blk.first.is_p]
+        seeds = row_seeds(blocks, leg_widths)
+        eop, eon = euler_orderings(seeds, leg_widths)
+        crossing = crossing_cage_penalty(eop, eon, netlist, leg_widths)[0]
+        cage_count = gate_cage_penalty(eop, eon, netlist, leg_widths)[0]
+        ranked.append(((crossing, cage_count, a, pa, b, pb),
+                       (a, pa), (b, pb), blocks, eop, eon,
+                       len(seeds[P_ROW]) * len(seeds[N_ROW])))
+    ranked.sort(key=lambda t: t[0])
+    out = []
+    seen = set()
+    nominated = 0
+    for _key, (a, pa), (b, pb), blocks, eop, eon, problem_size in ranked:
+        if nominated >= PAIR_SPLIT_MAX_CLASSES:
+            break
+        nominated += 1
+        if problem_size <= _VARIANT_SA_PROBLEM_CAP:
+            bp, bn, _bd = sa_refine(eop, eon, netlist, leg_widths,
+                                    iterations=_variant_sa_iterations(
+                                        problem_size),
+                                    cage=cage,
+                                    critical_nets=critical_nets)
+        else:
+            bp, bn = eop, eon
+        base = "pairsplit:%s@%d+%s@%d" % (a, pa, b, pb)
+        classes = [(base, bp, bn),
+                   (base + "-flip-both", _row_flipped(bp), _row_flipped(bn)),
+                   (base + "-die-both", _row_die_mirror(bp),
+                    _row_die_mirror(bn))]
+        for j, (op, on) in enumerate(
+                alignment_candidates([blk for blk in blocks if blk.first.is_p],
+                                     [blk for blk in blocks
+                                      if not blk.first.is_p],
+                                     leg_widths,
                                      limit=align_limit,
                                      pair_cap=_alignment_pair_cap(
                                          problem_size),
@@ -1971,7 +2284,7 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
                      candidate_count=DEFAULT_CANDIDATES,
                      trial_attempts=DEFAULT_TRIAL_ATTEMPTS,
                      trial_router=None, variant_classes=False,
-                     cage=False, legacy_best=None):
+                     cage=False, legacy_best=None, core_guided=False):
     """Speculate stage (doc section 2.2 "Composition"): score the
     candidate pool by a fast trial route and pick the winner.
 
@@ -2012,6 +2325,21 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
       byte-compatible with the pinned contracts (equal-(floor, cost)
       ties resolve by pool index exactly as before).
 
+    ``core_guided`` (the assumption-core lever, AUDIT 5.51): when True,
+    the cell's connectivity-critical nets (:func:`core_critical_nets`)
+    gain the CONNECTIVITY-CRITICAL weighting -- every entry additionally
+    carries ``cage_crit``/``crossing_crit`` (the two censuses' critical-
+    net attribution) and a ``core_score`` (CORE_CENSUS_WEIGHT per
+    critical blocked entity), and the core score breaks every measured
+    tie BEFORE the legacy cost/pool index: the caged-FEASIBLE tier key
+    becomes (cage, crossing, core_score, index), the real-floor
+    fallback (conflicts, core_score, cost, index) and the _UNROUTABLE
+    rank (cage, core_score, cost, index) -- the measured floor still
+    leads (a route outranks any static census, the §5.50 policy), but
+    among equal-floor candidates the core nets' access quality
+    dominates.  Unlisted cells (empty net set) and core_guided=False
+    chains keep every key byte-identical.
+
     ``variant_classes`` extends the pool with the decomposition-variant
     classes (:func:`decomposition_variant_classes`) when the fixed
     classes all fail their trials -- the conflict evidence shows
@@ -2038,6 +2366,10 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
     as a lazy fourth phase under the same gate -- the
     arrangement-space extension for the entangled-wall class; every
     cell closing earlier keeps its exact pool, trials and selection.
+    When even the fourth phase left no cage-free FEASIBLE winner, the
+    PAIR-SPLIT classes (:func:`pair_split_classes` -- the split lever
+    composed two chains deep, census-guided and capped) join as a lazy
+    fifth phase under the same gate.
 
     ``trial_router`` defaults to ``route_grid.route_cell`` and is
     called as ``router(netlist, placements, width_cols, leg_widths,
@@ -2073,6 +2405,8 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
     router = trial_router if trial_router is not None \
         else _default_trial_router()
     blocks_aware = _router_accepts_blocks(router)
+    critical = core_critical_nets(_cell_name(netlist)) if core_guided else ()
+    crit = frozenset(critical) if critical else None
     if leg_widths is None:
         from bigcell_engine.geometry import default_leg_widths
         leg_widths = default_leg_widths(
@@ -2085,6 +2419,29 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
     entries = []
     fallback = None               # (conflicts, cage, cost, index) -> entry
     feasible = None               # (cage, index) -> entry, FEASIBLE tier
+
+    def _census_entry(op, on):
+        """The census fields for one candidate: the raw counts exactly
+        as the public penalties compute them, plus -- on a core-guided
+        chain -- the critical-net attribution and core score (one view
+        build serves both censuses)."""
+        if crit is None:
+            return {"cage": gate_cage_penalty(op, on, netlist,
+                                              leg_widths)[0],
+                    "crossing": crossing_cage_penalty(op, on, netlist,
+                                                      leg_widths)[0]}
+        exposed = frozenset(exposed_net_set(netlist))
+        vp = _cage_row_view([_entry(b, False, leg_widths)
+                             for b in op], True, exposed)
+        vn = _cage_row_view([_entry(b, False, leg_widths)
+                             for b in on], False, exposed)
+        cage, _ccols, cage_crit = _cage_from_views(vp, vn, exposed, crit)
+        crossing, _xcols, crossing_crit = _crossing_from_views(
+            vp, vn, exposed, crit)
+        return {"cage": cage, "crossing": crossing,
+                "cage_crit": cage_crit, "crossing_crit": crossing_crit,
+                "core_score": CORE_CENSUS_WEIGHT * cage_crit
+                + crossing_crit}
 
     def _trial(idx):
         """Trial-route pool[idx]; append the report entry; return it."""
@@ -2119,22 +2476,25 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
         cost = _SAState(op, on, leg_widths).total
         entry = {"index": idx, "kind": kind, "cost": cost,
                  "width_cols": width, "conflicts": conflicts,
-                 "cage": gate_cage_penalty(op, on, netlist, leg_widths)[0],
-                 "crossing": crossing_cage_penalty(
-                     op, on, netlist, leg_widths)[0],
                  "feasible": conflicts == 0,
                  "attempts": getattr(result, "attempts_used", None),
                  "note": note}
+        entry.update(_census_entry(op, on))
         entries.append(entry)
         return entry
+
+    def _entry_core(entry):
+        """The core score of a report entry (0 when not core-guided)."""
+        return entry.get("core_score", 0)
 
     def _keep(entry, op, on):
         """Short-circuit on FEASIBLE cage-free; track the tier winners."""
         nonlocal fallback, feasible
         if entry["conflicts"] == 0:
-            key = (entry["cage"], entry["crossing"], entry["index"])
+            key = (entry["cage"], entry["crossing"], _entry_core(entry),
+                   entry["index"])
             if entry["cage"] == 0:
-                return op, on, {
+                won = {
                     "selected": entry["index"], "kind": entry["kind"],
                     "feasible": True, "conflicts": 0, "cage": 0,
                     "crossing": entry["crossing"],
@@ -2143,26 +2503,37 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
                     else "blocks-less",
                     "candidate_count": len(pool), "candidates": entries,
                 }
+                if crit is not None:
+                    won["cage_crit"] = entry["cage_crit"]
+                    won["crossing_crit"] = entry["crossing_crit"]
+                    won["core_score"] = entry["core_score"]
+                return op, on, won
             if feasible is None or key < (feasible["cage"],
                                           feasible["crossing"],
+                                          _entry_core(feasible),
                                           feasible["index"]):
                 feasible = entry
             return None
         if entry["conflicts"] == _UNROUTABLE:
             # no measured floor: today's (cage, cost, index) rank
-            # verbatim
-            key = (1, entry["cage"], entry["cost"], entry["index"])
+            # verbatim -- on a core-guided chain the core score breaks
+            # the tie before the legacy cost
+            key = (1, entry["cage"], _entry_core(entry), entry["cost"],
+                   entry["index"])
         else:
             # a real negotiation plateau: today's (conflicts, cost,
-            # index) rank verbatim -- the router's honest floor leads
-            key = (0, entry["conflicts"], entry["cost"], entry["index"])
+            # index) rank verbatim -- the router's honest floor leads;
+            # on a core-guided chain the core score breaks the tie
+            # before the legacy cost
+            key = (0, entry["conflicts"], _entry_core(entry),
+                   entry["cost"], entry["index"])
         if fallback is None or key < fallback[0]:
             fallback = (key, entry)
         return None
 
     def _won(entry, op, on):
         """The winner report for a tracked tier entry."""
-        return op, on, {
+        out = {
             "selected": entry["index"], "kind": entry["kind"],
             "feasible": entry["conflicts"] == 0,
             "conflicts": entry["conflicts"], "cage": entry["cage"],
@@ -2171,6 +2542,11 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
             "trial_view": "blocks" if blocks_aware else "blocks-less",
             "candidate_count": len(pool), "candidates": entries,
         }
+        if crit is not None:
+            out["cage_crit"] = entry["cage_crit"]
+            out["crossing_crit"] = entry["crossing_crit"]
+            out["core_score"] = entry["core_score"]
+        return op, on, out
 
     for idx in range(len(pool)):
         entry = _trial(idx)
@@ -2181,7 +2557,9 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
         # phase 2: the decomposition-variant classes, deduped against
         # everything already trialed
         extra = decomposition_variant_classes(netlist, leg_widths,
-                                              cage=cage)
+                                              cage=cage,
+                                              critical_nets=critical
+                                              or None)
         known = {ordering_signature(op, on) for _k, op, on in pool}
         for kind, op, on in extra:
             if ordering_signature(op, on) in known:
@@ -2228,7 +2606,33 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
         # additional candidates.
         if variant_classes and cage and \
                 (feasible is None or feasible["cage"] > 0):
-            extra = chain_split_classes(netlist, leg_widths, cage=cage)
+            extra = chain_split_classes(netlist, leg_widths, cage=cage,
+                                        critical_nets=critical or None)
+            for kind, op, on in extra:
+                if ordering_signature(op, on) in known:
+                    continue
+                known.add(ordering_signature(op, on))
+                pool.append((kind, op, on))
+            for idx in range(len(entries), len(pool)):
+                entry = _trial(idx)
+                won = _keep(entry, pool[idx][1], pool[idx][2])
+                if won is not None:
+                    return won
+        # phase 5: the PAIR-SPLIT classes (the split lever composed two
+        # chains deep -- the research round's open dimension, AUDIT
+        # 5.52).  Fired under the same no-cage-free-FEASIBLE gate as
+        # phases 3/4 -- structurally, reaching this point means no
+        # cage-free FEASIBLE candidate exists in the fixed/variant/
+        # legacy/single-split phases, so every cell closing earlier
+        # keeps its exact pool, trials and selection byte-for-byte.
+        # The decompositions are census-guided and capped (see
+        # :func:`pair_split_classes`): the blind two-split ordering
+        # space is agent-N-bounded at 6 compositions x up to 18M pairs
+        # per cell, intractable for trial routing.
+        if variant_classes and cage and \
+                (feasible is None or feasible["cage"] > 0):
+            extra = pair_split_classes(netlist, leg_widths, cage=cage,
+                                       critical_nets=critical or None)
             for kind, op, on in extra:
                 if ordering_signature(op, on) in known:
                     continue
@@ -2251,7 +2655,7 @@ def sa_refine_routable(ordering_p, ordering_n, netlist, leg_widths,
                        trial_router=None, iterations=None,
                        quality=DEFAULT_QUALITY, init_moves=None,
                        seed=None, check=True, variant_classes=False,
-                       cage=None):
+                       cage=None, core_guided=False):
     """``sa_refine`` + the speculate selection stage: the rung-3 entry
     point for routability-aware placement.
 
@@ -2300,13 +2704,29 @@ def sa_refine_routable(ordering_p, ordering_n, netlist, leg_widths,
     budgets verbatim (agent E's size-aware variant scaling is
     untouched); above _VARIANT_SA_PROBLEM_CAP the variant twins
     degenerate to the euler seed and dedupe away.
+
+    ``core_guided`` (the assumption-core lever, AUDIT 5.51 -- opt-in,
+    default False keeps every existing chain byte-identical): the
+    cell's connectivity-critical nets (:func:`core_critical_nets`)
+    steer the MAIN refine's SA cost (CORE_SA_WEIGHT per blocked
+    critical-net entity, :func:`sa_refine` ``critical_nets`` -- the
+    reduced core-refine budgets apply) and the speculation selection
+    (the core score breaks measured ties before the legacy cost, see
+    :func:`select_orderings`), and the steered lazy-phase refines
+    (variants, chain splits, pair splits) inherit the same steering.
+    The legacy-basin twin stays PURE (its contract is the exact ASTRAN
+    cost).  Unlisted cells (an empty net set) make the whole flag
+    inert.
     """
     if cage is None:
         cage = bool(variant_classes)
+    critical = core_critical_nets(_cell_name(netlist)) if core_guided \
+        else ()
     cost_p, cost_n, _bd = sa_refine(
         ordering_p, ordering_n, netlist, leg_widths,
         iterations=iterations, quality=quality, init_moves=init_moves,
-        seed=seed, check=check, cage=cage)
+        seed=seed, check=check, cage=cage,
+        critical_nets=critical or None)
     legacy_best = None
     eff_candidates = candidate_count
     if cage:
@@ -2320,7 +2740,7 @@ def sa_refine_routable(ordering_p, ordering_n, netlist, leg_widths,
         cost_p, cost_n, ordering_p, ordering_n, netlist, leg_widths,
         candidate_count=eff_candidates, trial_attempts=trial_attempts,
         trial_router=trial_router, variant_classes=variant_classes,
-        cage=cage, legacy_best=legacy_best)
+        cage=cage, legacy_best=legacy_best, core_guided=core_guided)
     breakdown = _SAState(sel_p, sel_n, leg_widths).breakdown()
     breakdown["selection"] = sel
     return sel_p, sel_n, breakdown
