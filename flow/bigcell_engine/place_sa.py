@@ -270,6 +270,23 @@ deterministically via fold_devices(netlist, fold_overrides=...), and
 consuming chain can lay out and route against the variant's own fold
 decision (engine wiring delivered as a patch).
 
+FOLD COMBOS (the composition of that dimension): S2's variants override
+ONE device each, so every variant relocates only its own gate columns --
+and the fold census (AUDIT 5.55) proved every per-device variant's whole
+ordering space still holds exactly one caged gate.  The open composition
+question: device A's fold moves A's gate columns OUT of the band where
+device B's caged gate sits, and vice versa, so overriding BOTH
+simultaneously may free both cages where either alone frees one.
+:func:`fold_combo_candidates` enumerates the sorted Cartesian product of
+the core-gated devices' per-device option sets (the same nominations,
+composed), deduped by :func:`fold_signature` and capped at
+:data:`FOLD_COMBO_MAX_COMBOS`; :func:`fold_combo_classes` builds the
+usual classes per census-best combo (the same
+FOLD_VARIANT_MAX_CLASSES cap) and they join
+:func:`select_orderings` as a lazy SEVENTH phase under the same
+no-cage-free-FEASIBLE gate, after the one-device fold variants.  A
+winning combo's ``fold_overrides`` names the whole override table.
+
 Core-guided fitness (the research round's WP2, opt-in): the assumption
 cores of AUDIT 5.51 name, per remaining cell, the nets whose
 connectivity binds (:data:`CORE_CRITICAL_NETS`,
@@ -2369,6 +2386,189 @@ def fold_variant_classes(netlist, leg_widths,
     return out, fold_ctx
 
 
+# --------------------------------------------------------------------------
+# fold COMBOS: the fold dimension COMPOSED (several core-gated devices
+# overridden SIMULTANEOUSLY)
+# --------------------------------------------------------------------------
+# S2's fold variants (above) compose NOTHING: one device per override, so
+# each variant relocates only ITS gate columns -- and the fold census
+# (_fold_census_*.json, AUDIT 5.55) proved every per-device variant's
+# whole ordering space still holds exactly one caged gate.  The remaining
+# composition question the per-device exhaustion could not answer: device
+# A's fold moves A's gate columns OUT of the band where device B's caged
+# gate sits, and vice versa, so overriding BOTH simultaneously may free
+# both cages where either alone frees one.  The lever is the same
+# fold_devices(fold_overrides=...) -- only the override table carries
+# several devices at once -- so the composition costs one more pipeline of
+# machinery the production path already trusts.
+
+#: fold-override combinations nominated at most, in sorted-(device, legs)
+#: order (documented cap: the widest core table on the corpus gates 6
+#: devices with option sets {default, default+1} -- 63 non-empty combos;
+#: the cap bounds a hypothetical wider core table).  The exhaustive
+#: per-combo census evidence (flow/_stage3_check/_foldcombo_census.py)
+#: runs the same cap.
+FOLD_COMBO_MAX_COMBOS = 64
+
+
+def fold_combo_candidates(netlist, leg_widths, critical_nets,
+                          max_combos=None):
+    """All SIMULTANEOUS fold-override combinations of the core-gated
+    devices (the composition of :func:`fold_variant_classes`' one-device
+    dimension).
+
+    One core-gated device's option set is its default leg count plus
+    every leg count the per-device nomination
+    (:func:`_fold_override_candidates`) produces for it (default +/- 1,
+    bounded to :data:`FOLD_VARIANT_MAX_LEGS`, plus the max-fold variant
+    for an over-budget device); the combination space is the sorted
+    Cartesian product over the sorted core-gated devices' option sets.
+    The gated set is the core-gated ORIGINAL devices: a series fold's
+    leg copies (named ``name#legK``, the gate net shared with their
+    original) are represented by that original -- an override keyed on a
+    copy name would re-fold one leg chain into more legs, a fold of a
+    fold no assumption core names.
+    Every combo is folded (:func:`bigcell_engine.netlist_ext.fold_devices`
+    -- pure) and DEDUPED BY :func:`fold_signature`: two combos whose leg
+    maps agree are the same fold decision (a series chain overridden
+    through either of its members folds into one count -- the smallest
+    named member wins, so e.g. {A:2} and {A:2, B:2} collide), and a combo
+    whose signature equals the received leg map's changes no structure
+    (the space is the main pool's).  Capped at ``max_combos`` (default
+    :data:`FOLD_COMBO_MAX_COMBOS`), the first sorted combos.  Returns the
+    sorted list of ``{device: legs}`` overrides.  Empty when the cell is
+    unlisted.  Pure and deterministic (invariant 9).
+    """
+    from bigcell_engine.netlist_ext import fold_devices
+    cap = FOLD_COMBO_MAX_COMBOS if max_combos is None else max_combos
+    core = set(critical_nets or ())
+    if not core or cap <= 0:
+        return []
+    per_dev = {}
+    for ov in _fold_override_candidates(netlist, leg_widths, critical_nets):
+        (name, legs), = ov.items()
+        if "#leg" in name:
+            continue                   # a copy is its original's business
+        per_dev.setdefault(name, set()).add(legs)
+    gated = sorted({d.name for d in netlist.devices
+                    if d.gate in core and "#leg" not in d.name})
+    if not gated:
+        return []
+    base_fold = fold_signature(leg_widths)
+    out = []
+    seen = set()
+    option_sets = [
+        sorted(per_dev[n] | {leg_widths.get(n, (1, 1))[0]})
+        if n in per_dev else (leg_widths.get(n, (1, 1))[0],)
+        for n in gated]
+    for choice in itertools.product(*option_sets):
+        ov = dict(zip(gated, choice))
+        _nl_f, lw_f = fold_devices(netlist, fold_overrides=ov)
+        fold = fold_signature(lw_f)
+        if fold == base_fold or fold in seen:
+            continue
+        seen.add(fold)
+        out.append(ov)
+        if len(out) >= cap:
+            break
+    return out
+
+
+def fold_combo_classes(netlist, leg_widths,
+                       align_limit=FOLD_VARIANT_ALIGN_LIMIT, cage=True,
+                       critical_nets=None, max_combos=None):
+    """The fold-COMBO candidate classes for the speculate pool (the fold
+    dimension composed -- several core-gated devices overridden
+    SIMULTANEOUSLY, see :func:`fold_combo_candidates`).
+
+    For every combination: ``fold_devices`` with the combo's override
+    table -> build blocks (the combo's OWN fold decision) -> row seeds ->
+    euler -> a budget-bounded Threshold-Accept refine (the same
+    size-aware budgets as :func:`fold_variant_classes`; above
+    _VARIANT_SA_PROBLEM_CAP the euler seed stands in) and nominate the
+    same three class shapes under the kind prefix
+
+        "foldcombo:" + "+".join("%s=%d" % (dev, legs) for sorted items)
+
+    CENSUS GUIDANCE (the documented constant pair of this lever, the
+    fold variants' own): the combos are ranked by their euler seed's
+    census (crossing, cage -- :func:`crossing_cage_penalty` /
+    :func:`gate_cage_penalty`, one O(width x tracks) call each) and only
+    the best FOLD_VARIANT_MAX_CLASSES combos build classes -- each combo
+    is a full pipeline, the cap bounds the pool cost.  Combos whose leg
+    map equals the received ``leg_widths`` (no structural change) are
+    already excluded by :func:`fold_combo_candidates`.
+
+    Returns ``(classes, fold_ctx)`` with the same shapes and dedupe
+    discipline as :func:`fold_variant_classes` (the fold-variant twin;
+    ``fold_ctx`` maps kind -> the combo's own (netlist, leg map), which
+    its trial must route against).  Pure and deterministic (invariant 9).
+    """
+    from bigcell_engine.netlist_ext import (build_bigcell_blocks,
+                                            fold_devices, row_seeds)
+    from bigcell_engine.place_euler import euler_orderings
+    ranked = []
+    for ov in fold_combo_candidates(netlist, leg_widths, critical_nets,
+                                    max_combos=max_combos):
+        netlist_f, leg_widths_f = fold_devices(netlist,
+                                               fold_overrides=ov)
+        blocks_f = build_bigcell_blocks(netlist_f)
+        seeds = row_seeds(blocks_f, leg_widths_f)
+        eop, eon = euler_orderings(seeds, leg_widths_f)
+        crossing = crossing_cage_penalty(eop, eon, netlist_f,
+                                         leg_widths_f)[0]
+        cage_count = gate_cage_penalty(eop, eon, netlist_f,
+                                       leg_widths_f)[0]
+        sig = tuple(sorted(ov.items()))
+        ranked.append(((crossing, cage_count, sig), ov, netlist_f,
+                       leg_widths_f, blocks_f, eop, eon,
+                       len(seeds[P_ROW]) * len(seeds[N_ROW])))
+    ranked.sort(key=lambda t: t[0])
+    out = []
+    fold_ctx = {}
+    seen = set()
+    nominated = 0
+    for _key, ov, netlist_f, leg_widths_f, blocks_f, eop, eon, \
+            problem_size in ranked:
+        if nominated >= FOLD_VARIANT_MAX_CLASSES:
+            break
+        nominated += 1
+        if problem_size <= _VARIANT_SA_PROBLEM_CAP:
+            bp, bn, _bd = sa_refine(eop, eon, netlist_f, leg_widths_f,
+                                    iterations=_variant_sa_iterations(
+                                        problem_size),
+                                    cage=cage,
+                                    critical_nets=critical_nets or None)
+        else:
+            bp, bn = eop, eon
+        base = "foldcombo:" + "+".join("%s=%d" % kv
+                                       for kv in sorted(ov.items()))
+        classes = [(base, bp, bn),
+                   (base + "-flip-both", _row_flipped(bp), _row_flipped(bn)),
+                   (base + "-die-both", _row_die_mirror(bp),
+                    _row_die_mirror(bn))]
+        for j, (op, on) in enumerate(
+                alignment_candidates([blk for blk in blocks_f
+                                      if blk.first.is_p],
+                                     [blk for blk in blocks_f
+                                      if not blk.first.is_p],
+                                     leg_widths_f,
+                                     limit=align_limit,
+                                     pair_cap=_alignment_pair_cap(
+                                         problem_size),
+                                     netlist=netlist_f), start=1):
+            classes.append((base + "-align%d" % j, op, on))
+        fold = fold_signature(leg_widths_f)
+        for kind, op, on in classes:
+            key = (fold, ordering_signature(op, on))
+            if key in seen:
+                continue
+            seen.add(key)
+            fold_ctx[kind] = (netlist_f, leg_widths_f)
+            out.append((kind, op, on))
+    return out, fold_ctx
+
+
 def generate_candidates(best_p, best_n, seed_p, seed_n, leg_widths,
                         candidate_count=DEFAULT_CANDIDATES,
                         extra_classes=None, netlist=None,
@@ -2609,7 +2809,15 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
     trialing against its own fold decision, census-guided and capped)
     join as a lazy SIXTH phase under the same gate; a winning fold
     candidate's report carries its ``fold_overrides``/``fold_signature``
-    provenance.
+    provenance.  When even the sixth phase left no cage-free FEASIBLE
+    winner, the FOLD-COMBO classes (:func:`fold_combo_classes` -- the
+    fold dimension COMPOSED: several core-gated devices overridden
+    SIMULTANEOUSLY, census-guided and capped at
+    :data:`FOLD_COMBO_MAX_COMBOS`) join as a lazy SEVENTH phase under
+    the same gate -- the composition the one-device exhaustion could not
+    answer (each device's fold relocates its own gate columns out of the
+    band where the other devices' caged gates sit); a winning combo's
+    report carries the same provenance with the whole override table.
 
     ``trial_router`` defaults to ``route_grid.route_cell`` and is
     called as ``router(netlist, placements, width_cols, leg_widths,
@@ -2955,6 +3163,38 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
                 won = _keep(entry, pool[idx][1], pool[idx][2])
                 if won is not None:
                     return won
+            # phase 7: the FOLD-COMBO classes (the fold dimension
+            # COMPOSED -- several core-gated devices overridden
+            # SIMULTANEOUSLY, see :func:`fold_combo_classes`).  S2's
+            # per-device variants each left exactly one caged gate (the
+            # fold census, AUDIT 5.55); the composition is the one
+            # question that exhaustion could not answer -- device A's
+            # fold relocates A's gate columns out of the band where
+            # device B's caged gate sits, and vice versa.  Fired under
+            # the same no-cage-free-FEASIBLE gate as phases 3-6, after
+            # the one-device fold variants; deduped on the same
+            # (fold signature, ordering signature) pair, so a combo
+            # re-expressing the pool's fold decisions contributes
+            # nothing new.
+            if variant_classes and cage and \
+                    (feasible is None or feasible["cage"] > 0):
+                extra, extra_ctx = fold_combo_classes(
+                    netlist, leg_widths, cage=cage,
+                    critical_nets=critical or None)
+                for kind, op, on in extra:
+                    ctx = extra_ctx[kind]
+                    key = (fold_signature(ctx[1]),
+                           ordering_signature(op, on))
+                    if key in fold_known:
+                        continue
+                    fold_known.add(key)
+                    fold_ctx[kind] = ctx
+                    pool.append((kind, op, on))
+                for idx in range(len(entries), len(pool)):
+                    entry = _trial(idx)
+                    won = _keep(entry, pool[idx][1], pool[idx][2])
+                    if won is not None:
+                        return won
     # feasible tracks the ENTRY dict; fallback tracks (key, entry)
     winner = feasible if feasible is not None else fallback[1]
     op, on = pool[winner["index"]][1], pool[winner["index"]][2]
@@ -3030,8 +3270,10 @@ def sa_refine_routable(ordering_p, ordering_n, netlist, leg_widths,
     cost).  Unlisted cells (an empty net set) make the whole flag
     inert.  On a steered core-guided chain the fold-variant classes
     (phase 6, :func:`fold_variant_classes`) join under the same
-    no-cage-free-FEASIBLE gate; when one of them wins, the returned
-    orderings decompose the OVERRIDE fold decision
+    no-cage-free-FEASIBLE gate, and behind them the fold-COMBO classes
+    (phase 7, :func:`fold_combo_classes` -- the fold dimension
+    composed); when one of them wins, the returned orderings decompose
+    the OVERRIDE fold decision
     (``breakdown["selection"]["fold_overrides"]`` names it) and the
     breakdown is computed against the variant's own leg map.
     """
