@@ -1674,3 +1674,29 @@ pair_split_decompositions + pair_split_classes 把链分割维度扩展到双
 **(3) 状态**：770 绿（+13 研究测试）；跨进程确定性在修复 import 后
 通过（XOR2X1 全链双哈希种子一致）。剩余 cell 的替换率未变；两个研
 究维度的机制已入库，其 census/OPTIMAL 证据表是下一会话的第一项。
+
+## §5.54 pair-split 空间判决：110 个 census-(0,0) 见证全部倒在全局笼蔽（2026-10-21）
+
+agent R 的扫描器（其遗产）对 XOR2X1/XNOR2X1/MUX2X1/LATCH 的全部
+24 个 pair 分解跑完 census：**四个 cell 都存在 (crossing=0, cage=0)
+见证**（XOR 94 / XNOR 85 / MUX 96 / LATCH 33 个；XOR 单分解扫描
+2,983,798 对）——局部电源带墙被 pair-split 维度溶解，与单分割同构。
+
+**漏斗判决（110 个见证逐一实测，4 cell × 24 分解 × 前 6 见证）**：
+零闭合——每个 census-clean 排布都倒在路由器的全局连通性笼蔽，与
+agent N 的单分割见证模式完全一致。两代排布空间（contiguous 589,824
+穷举 + pair-split 3M 扫描）的漏斗收敛于同一结构：**两级墙 = 局部电
+源带（可分割溶解）+ 全局连通性笼蔽（金属跳线重挤走廊，不可由分割
+溶解）**。
+
+**正式接受案升级为三重证据**（§5.52 的证据链闭合）：
+1. 假设核表（不可约、全部见证 verify-dirty）；
+2. census 穷举（contiguous 全空 + 两代 split 空间的 (0,0) 见证全部
+   漏斗淘汰）；
+3. 词汇扩展探针（M2 双柱、8th track——前者必要不充分，后者无价值）。
+
+**研究维度的完整清单已全部穷举**：contiguous、single-split、
+pair-split、core-guided fitness、cage-avoidance、crossing-avoidance、
+两个 M2 词汇、窗口修复。剩余 21 cell 的 ASTRAN 回退档是**带完整证明
+的终态**；未来重开需：folding 进排布变量、行内轨扩展、或新排布空间
+族——均研究级且无先验理由预期不同结果。
