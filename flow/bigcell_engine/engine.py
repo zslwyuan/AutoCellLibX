@@ -253,8 +253,17 @@ def _heuristic_placement(netlist):
     blocks = build_bigcell_blocks(netlist3)
     seeds = row_seeds(blocks, leg_widths)
     ordering_p, ordering_n = euler_orderings(seeds, leg_widths)
-    ordering_p, ordering_n, _cost = sa_refine_routable(
-        ordering_p, ordering_n, netlist3, leg_widths, variant_classes=True)
+    ordering_p, ordering_n, cost = sa_refine_routable(
+        ordering_p, ordering_n, netlist3, leg_widths, variant_classes=True,
+        core_guided=True)
+    # fold-variant winner (place_sa's lazy phase 6): the selected
+    # orderings decompose the OVERRIDE fold decision, so every consumer
+    # below (layout, router, verify, GDS emit) must work against the
+    # variant's own netlist/leg map -- recovered deterministically
+    sel = cost.get("selection", {})
+    if sel.get("fold_overrides"):
+        netlist3, leg_widths = fold_devices(
+            netlist3, fold_overrides=sel["fold_overrides"])
     placements, width_cols = geometry.layout_cell(
         ordering_p, ordering_n, leg_widths)
     blocks_view = list(ordering_p) + list(ordering_n)

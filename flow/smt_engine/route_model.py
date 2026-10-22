@@ -386,7 +386,7 @@ def _fam_gate(fam, name, cst):
 def build_routing_model(netlist, placement, width_cols=None,
                         grid_um=0.19, height_um=2.47, poly_jumps=True,
                         metal2=True, accesses=None, m2_spans=False,
-                        assumptions=False):
+                        assumptions=False, jump_m2=False):
     """Stage-2 CP-SAT model over the fixed placement.
 
     ``accesses`` optionally supplies the (diffusion, gate, power) access
@@ -416,6 +416,25 @@ def build_routing_model(netlist, placement, width_cols=None,
     (orthogonal to ``m2_spans``; the span families gate the same way).
     Default False builds a model byte-identical to the historical one.
     The RoutingModel exposes the registry as ``.assumptions``.
+
+    ``jump_m2`` is the metal-jump capacity extension (the fold-combo
+    witnesses' binding mechanism, doc/AUDIT_REPORT.md 5.57): it
+    requires ``m2_spans`` (a jump rides the span vocabulary) and
+    (1) lets the span track-change disjuncts actually fire -- the
+    fd4fee3 ``j2``/``j2g`` literals were strangled by the tighter
+    unconditional ``<= 1 + join`` duplicate emitted alongside them,
+    so under ``jump_m2`` the jump build emits ONLY the relaxed
+    inequality; (2) adds the M2 forms the verify BFS accepts and the
+    fd4fee3 model lacked: a track change with an M2 segment on either
+    side (the span joins the same-net M2 segment endpoint at its
+    column), an M2 run whose end anchors through a live span of its
+    own net instead of an adjacent M1 segment (the m2run relaxation),
+    and a diffusion access bar reaching an M2 hop through a node via
+    + span (the acccon anchor).  A span is LIVE iff at least one node
+    via anchors it to the net's M1 -- a dead span must not anchor
+    anything, or the sweep would count M2 islands the BFS ignores.
+    Default False builds a model byte-identical to the historical one
+    (both pinned proto hashes hold).
 
     Returns RoutingModel; solve_routing wraps it.
     """
@@ -480,6 +499,7 @@ def build_routing_model(netlist, placement, width_cols=None,
         for v in via_l.values():
             model.Add(v == 0)
     m2_spans = m2_spans and metal2      # a span is metal2: no M2, no spans
+    jump_m2 = jump_m2 and m2_spans      # a jump rides the span vocabulary
 
     # bar endpoints are y-ordered: lo <= hi (the old rail-index domain
     # allowed inverted (lo, hi) bars spanning half the cell)
@@ -693,10 +713,13 @@ def build_routing_model(netlist, placement, width_cols=None,
     nv = {}
     xover = {}
     merged = {}
+    slive = {}
     _and_memo = {}
 
     def _and_lit(lits, tag):
-        """Bool: AND of 2-3 literals (memoized on the literal tuple)."""
+        """Bool: AND of the literals (memoized on the literal tuple;
+        any length -- the encoding v >= sum - (k-1), v <= each is
+        exact for every k)."""
         key = (tag,) + tuple(lit.Index() if hasattr(lit, "Index")
                              else lit for lit in lits)
         if (key in _and_memo):
@@ -766,6 +789,18 @@ def build_routing_model(netlist, placement, width_cols=None,
                             m1side.append(_m1_lit(
                                 model, h_lit, pj, m2, n, t, cseg, m1_memo))
                     model.Add(sum(m1side) >= v)
+        if jump_m2:
+            # a span is LIVE iff at least one node via anchors it to the
+            # net's M1 (exact OR): every M2-run anchor below rides this
+            # literal -- a dead span must not anchor anything, or the
+            # sweep would count M2 islands the BFS ignores
+            for (n, c) in sorted(span_on):
+                sv = model.NewBoolVar("slv_%s_%d" % (n, c))
+                for t in range(N_TRACKS):
+                    model.Add(sv >= nv[(n, t, c)])
+                model.Add(sv <= sum(nv[(n, t, c)]
+                                    for t in range(N_TRACKS)))
+                slive[(n, c)] = sv
         # the M2 crossover: BOTH halves' bars anchor the same span
         # through node vias -- the BFS joins NB(c) - node(tN, c) - span -
         # node(tP, c) - PB(c), which is exactly the connection the old
@@ -819,6 +854,13 @@ def build_routing_model(netlist, placement, width_cols=None,
                                   model.Add(span_on[(n, c)] + st + te
                                             + m2[(t, cseg)]
                                             - h_lit[(n, t, cseg)] <= 3))
+
+    def _span_anchor(n, t, cb):
+        """AND(the span of ``n`` at column ``cb`` covers ``t``, the span
+        is live) -- an M2 run end's anchor through the span vocabulary
+        (called only under jump_m2: span_cmp/slive are populated then)."""
+        st, te = span_cmp[(n, cb, t)]
+        return _and_lit([slive[(n, cb)], st, te], ("anch", n, cb, t))
 
     for n in nets:
         for t in range(N_TRACKS):
@@ -998,12 +1040,34 @@ def build_routing_model(netlist, placement, width_cols=None,
             _fam_gate(fam, "m2run",
                       model.Add(m2[(t, width_cols - 2)] == 0))
             for c in range(1, width_cols - 2):
-                _fam_gate(fam, "m2run",
-                          model.Add(via_l[(t, c)]
-                                    >= m2[(t, c)] - m2[(t, c - 1)]))
-                _fam_gate(fam, "m2run",
-                          model.Add(via_l[(t, c + 1)]
-                                    >= m2[(t, c)] - m2[(t, c + 1)]))
+                if (jump_m2):
+                    # the run's ends may anchor through a LIVE span of
+                    # the segment's own net instead of an adjacent M1
+                    # segment (the verify BFS joins the span to the
+                    # same-net M2 segment endpoint and, through a node
+                    # via, to the net's M1 point); at most one net owns
+                    # the segment, so the AND-literal sum is an exact OR
+                    ownS = sum(_and_lit(
+                        [h_lit[(n, t, c)], m2[(t, c)],
+                         _span_anchor(n, t, c)], ("runs", n, t, c))
+                        for n in nets)
+                    ownE = sum(_and_lit(
+                        [h_lit[(n, t, c)], m2[(t, c)],
+                         _span_anchor(n, t, c + 1)], ("rune", n, t, c))
+                        for n in nets)
+                    _fam_gate(fam, "m2run",
+                              model.Add(via_l[(t, c)] + ownS
+                                        >= m2[(t, c)] - m2[(t, c - 1)]))
+                    _fam_gate(fam, "m2run",
+                              model.Add(via_l[(t, c + 1)] + ownE
+                                        >= m2[(t, c)] - m2[(t, c + 1)]))
+                else:
+                    _fam_gate(fam, "m2run",
+                              model.Add(via_l[(t, c)]
+                                        >= m2[(t, c)] - m2[(t, c - 1)]))
+                    _fam_gate(fam, "m2run",
+                              model.Add(via_l[(t, c + 1)]
+                                        >= m2[(t, c)] - m2[(t, c + 1)]))
 
     # --- poly jump anchoring (E4): every maximal poly run of a net must
     # cross a same-net gate.  CP-SAT automaton per (net, row track): the
@@ -1141,9 +1205,11 @@ def build_routing_model(netlist, placement, width_cols=None,
                     model.Add(both <= m1x)
                     model.Add(both <= gmb)
                     model.Add(both >= m1a + m1x + gmb - 2)
-                    _fam_gate(fam, "gjoin:" + n,
-                              model.Add(h_lit[(n, t1, c - 1)]
-                                        + h_lit[(n, t2, c)] <= 1 + both))
+                    if (not jump_m2):
+                        _fam_gate(fam, "gjoin:" + n,
+                                  model.Add(h_lit[(n, t1, c - 1)]
+                                            + h_lit[(n, t2, c)]
+                                            <= 1 + both))
                     if (m2_spans):
                         # the same track change through the metal2 span:
                         # left M1 end - via - span - via - right M1
@@ -1158,10 +1224,30 @@ def build_routing_model(netlist, placement, width_cols=None,
                         model.Add(j2 >= sum(lits2) - 3)
                         for lit2 in lits2:
                             model.Add(j2 <= lit2)
-                        _fam_gate(fam, "gjoin:" + n,
-                                  model.Add(h_lit[(n, t1, c - 1)]
-                                            + h_lit[(n, t2, c)]
-                                            <= 1 + both + j2))
+                        if (not jump_m2):
+                            # the fd4fee3 form: the relaxed inequality
+                            # sits alongside the tight one, which wins --
+                            # this disjunct never fires on the legacy
+                            # builds (kept byte-identical)
+                            _fam_gate(fam, "gjoin:" + n,
+                                      model.Add(h_lit[(n, t1, c - 1)]
+                                                + h_lit[(n, t2, c)]
+                                                <= 1 + both + j2))
+                        else:
+                            # the jump build: the span disjunct actually
+                            # fires, and the left bridge may arrive ON
+                            # M2 -- the span joins its endpoint at c and
+                            # drops to the M1 crossing through the node
+                            # via (the gate contact itself stays M1/poly)
+                            both2 = _and_lit(
+                                [h_lit[(n, t1, c - 1)], m2[(t1, c - 1)],
+                                 m1x, gmb, nv[(n, t1, c)]],
+                                ("gj2m", n, c, t1, t2))
+                            _fam_gate(fam, "gjoin:" + n,
+                                      model.Add(h_lit[(n, t1, c - 1)]
+                                                + h_lit[(n, t2, c)]
+                                                <= 1 + both + j2
+                                                + both2))
                     continue
                 # NOT a (fully gate-spanned) gate join: the change must
                 # happen through a same-net BAR at c -- which the exact
@@ -1193,9 +1279,11 @@ def build_routing_model(netlist, placement, width_cols=None,
                 model.Add(join >= sum(lits) - (len(lits) - 1))
                 for lit in lits:
                     model.Add(join <= lit)
-                _fam_gate(fam, "tjoin:" + n,
-                          model.Add(h_lit[(n, t1, c - 1)] + h_lit[(n, t2, c)]
-                                    <= 1 + join))
+                if (not jump_m2):
+                    _fam_gate(fam, "tjoin:" + n,
+                              model.Add(h_lit[(n, t1, c - 1)]
+                                        + h_lit[(n, t2, c)]
+                                        <= 1 + join))
                 if (m2_spans):
                     # the same track change through the metal2 span:
                     # left M1 end - node via - span - node via - right
@@ -1206,10 +1294,47 @@ def build_routing_model(netlist, placement, width_cols=None,
                     model.Add(j2 >= sum(lits2) - 3)
                     for lit2 in lits2:
                         model.Add(j2 <= lit2)
-                    _fam_gate(fam, "tjoin:" + n,
-                              model.Add(h_lit[(n, t1, c - 1)]
-                                        + h_lit[(n, t2, c)]
-                                        <= 1 + join + j2))
+                    if (not jump_m2):
+                        # the fd4fee3 form: the relaxed inequality sits
+                        # alongside the tight one, which wins -- this
+                        # disjunct never fires on the legacy builds
+                        # (kept byte-identical)
+                        _fam_gate(fam, "tjoin:" + n,
+                                  model.Add(h_lit[(n, t1, c - 1)]
+                                            + h_lit[(n, t2, c)]
+                                            <= 1 + join + j2))
+                    else:
+                        # the jump build: the span disjunct actually
+                        # fires, and the change may also land on or
+                        # leave an M2 segment -- the span joins the
+                        # same-net M2 segment endpoint at its column
+                        # (verify's BFS M2-M2 merge edge); the M2-side
+                        # run ends anchor through the live span below
+                        # (the m2run relaxation), so no island is counted
+                        st1, te1 = span_cmp[(n, c, t1)]
+                        st2, te2 = span_cmp[(n, c, t2)]
+                        m2r = _and_lit(
+                            [m1a, h_lit[(n, t2, c)], m2[(t2, c)],
+                             nv[(n, t1, c)], st2, te2],
+                            ("j2r", n, c, t1, t2))
+                        m2l = _and_lit(
+                            [h_lit[(n, t1, c - 1)], m2[(t1, c - 1)], m1b,
+                             nv[(n, t2, c)], st1, te1],
+                            ("j2l", n, c, t1, t2))
+                        m2b = _and_lit(
+                            [_and_lit([h_lit[(n, t1, c - 1)],
+                                       m2[(t1, c - 1)]],
+                                      ("j2bl", n, c, t1)),
+                             _and_lit([h_lit[(n, t2, c)], m2[(t2, c)]],
+                                      ("j2br", n, c, t2)),
+                             _and_lit([st1, te1, st2, te2],
+                                      ("j2bc", n, c, t1, t2)),
+                             slive[(n, c)]], ("j2b", n, c, t1, t2))
+                        _fam_gate(fam, "tjoin:" + n,
+                                  model.Add(h_lit[(n, t1, c - 1)]
+                                            + h_lit[(n, t2, c)]
+                                            <= 1 + join + j2 + m2r
+                                            + m2l + m2b))
         # every diffusion access bar must connect: a same-track M1
         # segment touching it, a T3 segment touching a bar that reaches
         # the boundary, or a merged T3 pair
@@ -1238,6 +1363,17 @@ def build_routing_model(netlist, placement, width_cols=None,
                 _fam_gate(fam, "acccon:" + n,
                           model.Add(dual[(n, c)] + sum(lits) >= 1))
             else:
+                if (jump_m2):
+                    # the access bar may also reach an M2 hop: node via
+                    # at the bar point (the bar's coverage is the via's
+                    # M1 side) -> span -> the same-net M2 segment
+                    # endpoint at this column; the hop's other end
+                    # anchors through the m2run relaxation above
+                    for cseg in (c - 1, c):
+                        if (0 <= cseg <= width_cols - 2):
+                            lits.append(_and_lit(
+                                [h_lit[(n, t, cseg)], m2[(t, cseg)],
+                                 nv[(n, t, c)]], ("accm", n, t, c, cseg)))
                 # the honest forms of the old dual disjunct: the merged
                 # T3 pair, or the M2 span crossover (both bars anchor
                 # the same span through node vias)
@@ -1319,11 +1455,19 @@ def _decode_spans(rm, solver):
 
 def solve_routing(netlist, placement, width_cols=None, poly_jumps=True,
                   metal2=True, time_limit_s=SOLVE_TIME_LIMIT_S,
-                  m2_spans=False, assumptions=False):
-    """Stage-2 solve; returns RouteResult (UNKNOWN on failure)."""
+                  m2_spans=False, assumptions=False, jump_m2=False,
+                  accesses=None):
+    """Stage-2 solve; returns RouteResult (UNKNOWN on failure).
+
+    ``accesses`` optionally supplies the (diffusion, gate, power) maps
+    in :func:`_access_points`' rail form (the window-fixer / probe
+    protocol: verify-style slot accesses); default None derives them
+    from the base walk -- the historical behaviour.
+    """
     rm = build_routing_model(netlist, placement, width_cols=width_cols,
                              poly_jumps=poly_jumps, metal2=metal2,
-                             m2_spans=m2_spans, assumptions=assumptions)
+                             m2_spans=m2_spans, assumptions=assumptions,
+                             jump_m2=jump_m2, accesses=accesses)
     solver = cp_model.CpSolver()
     # single worker: parallel search picks different equal-cost optima
     # across runs (AGENTS.md invariant 9 -- the engine must be
