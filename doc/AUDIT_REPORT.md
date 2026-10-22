@@ -1777,3 +1777,30 @@ pair-split、fold-per-device、fold-combination、+行内轨模型）× 三个
 举。**28/49 诚实闭合（同口径中位 0.82）+ 完整回退档 = 最终交付状
 态**。剩余 21 cell 重开研究的入口：金属跳线容量（bridge/tjoin 词汇
 的下一步）与 Q 门控类提名规则——均记录在案，无先验理由预期不同结果。
+
+## §5.58 跳线容量化：fd4fee3 的死析取激活，MUX2X1 以 1.286× 闭合（2026-10-22）
+
+**审计发现（缺陷）**：fd4fee3 的跳线 span 析取（j2/j2g）是死的——无
+条件更紧不等式与松弛式同时发出，j2 ≥ 0 使松弛式被蕴含而永不生效；
+双柱规则正确门控于 if (not m2_spans)，跳线形式漏了。fd4fee3 的阳性
+对照（TBUFX2）只经双柱规则闭合，惰性因此未被发现。
+
+**修复**：jump_m2=False 新参数（钳制要求 m2_spans；三个 proto hash
+钉死）——死析取激活 + 三种缺失形式补齐（M2 段侧换轨、span 锚定
+M2 跑道端点 E1 逐网精确 OR、bar 锚定 M2 跳点 E3）。bridge 不加析取
+（逐间隙列 presence 是 BFS 必要，垂直 span 跨不过列间隙）；e5same
+审计后无 M2 类比（verify 本身将 poly↔metal 同网络邻接切换记为违规，
+模型编码的正是 verify 的规则）。verify/gds 零改动。
+
+**闭合**：MUX2X1 最宽 fold-combo override（M1=2+M4=2+M6=2+M9=2）
+INFEASIBLE 0.8s → OPTIMAL 2.3s——8 M2 span / 4 M2 段 / 13 节点 via，
+内部网络 a_2_10# 携带三条 span（与假设机制精确吻合）；全链
+verify+GDS+sanity 清，**1.71µm vs ASTRAN 1.33 = 1.286，入 0.8-1.3
+验收带**。其余 47 见证核重塑后仍拒绝（MUX2X1 的墙从 M1 跳线容量移
+到交叉安全+访问摆放；XOR2X1 不变）。S2 的 core_guided 引擎 diff 逐
+字应用：8 个核列出 cell 经生产链复现 phase-7 floors，28 个闭合构造
+上不受影响（CORE_CRITICAL_NETS 对它们为空——标志惰性）。6 新测试；
+806 绿。
+
+**剩余**：jump_m2 未接入窗口修复器/生产引擎——MUX2X1 的生产闭合
+（试布 floor 2）差一步窗口修复器接线；47 个否定核重塑后并入接受案。
