@@ -124,20 +124,33 @@ def _plateau_partial(netlist, placement, width_cols, blocks=None):
 
     The failed RouteResult carries only the fail_note, but the window
     fixer needs the per-column stripes and outside-window segments as
-    blockages.  route_grid is deterministic (AGENTS.md invariants 8/9),
-    so re-running _RouteGrid reproduces the failure state exactly -- on
-    the SAME view the failed run consumed: ``blocks`` is the
-    orientation-aware block view the rung-3 router was wired with
-    (route_cell forwards it into both of its phase grids), so the re-run
-    sees the identical graph; if the re-run does NOT fail the same way,
-    refuse to fix a moving target.  Returns a RouteResult-shaped
-    snapshot of the final trees (build_result) or None.
+    blockages.  The re-run replicates route_cell's EXACT two-phase
+    sequence -- the phase-1 skip gate (a dirty structural diagnosis
+    skips phase 1 entirely), then the phase-2 metal2-freedom grid on a
+    phase-1 stall -- so the failure state reproduced is the PHASE-2
+    grid's final trees in every failure mode; a single-phase re-run
+    reproduces a DIFFERENT failure state and the window fixer would
+    refuse it.  route_grid is deterministic (AGENTS.md invariants 8/9)
+    and ``blocks`` is the orientation-aware block view the rung-3
+    router was wired with (route_cell forwards it into both of its
+    phase grids), so the re-run sees the identical graph; if the re-run
+    does NOT fail the same way, refuse to fix a moving target.  Returns
+    a RouteResult-shaped snapshot of the final trees (build_result) or
+    None.
     """
-    from bigcell_engine.route_grid import _RouteGrid
+    from bigcell_engine.route_grid import MAX_ATTEMPTS, _RouteGrid
     grid = _RouteGrid(netlist, placement, width_cols, blocks=blocks)
     if (grid._fail_note is not None):
         return None              # build-time failure: no plateau state
-    if (grid.route()):
+    skip = False
+    contests, walled = grid.structural_diagnosis()
+    if (contests or walled):
+        skip = True              # phase 1 is a proven stall: skip it
+    if (not skip and grid.route(max_attempts=MAX_ATTEMPTS)):
+        return None              # the re-run closes: not a moving target
+    grid = _RouteGrid(netlist, placement, width_cols,
+                      metal2_verticals=True, blocks=blocks)
+    if (grid.route(max_attempts=MAX_ATTEMPTS)):
         return None
     return grid.build_result()
 
@@ -174,6 +187,13 @@ def _window_fix_rung(meta, rung, netlist, placement, blocks, failed_route):
         _attempt(meta, rung, _ENG_WINDOW, False, status="SKIPPED",
                  stage="routing", note=reason)
         return None
+    if (route_width <= route_model.WINDOW_MAX_COLS):
+        # the route vocabulary includes the trailing edge-escape column
+        # (slot geometry: route grid = placement W + 1) -- a window that
+        # stops at the placement width would deny the exact model the
+        # escape lane the heuristic router never had.  Whole-cell
+        # windows that fit the budget also need no plateau state.
+        window = (0, route_width)
     partial = None
     if (window != (0, route_width)):
         partial = _plateau_partial(netlist, placement, route_width,
@@ -188,7 +208,7 @@ def _window_fix_rung(meta, rung, netlist, placement, blocks, failed_route):
     try:
         fix = route_model.solve_window_routing(
             netlist, placement, route_width, window, partial=partial,
-            blocks=blocks)
+            blocks=blocks, m2_spans=True, jump_m2=True)
     except Exception as exc:                       # noqa: BLE001
         _attempt(meta, rung, _ENG_WINDOW, False, status="ERROR",
                  stage="routing", window=list(window),

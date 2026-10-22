@@ -320,11 +320,14 @@ def test_rung35_window_fix_closes_when_router_fails(monkeypatch,
     assert report.ok(), report.violations[:4]
 
 
-def test_rung35_infeasible_window_is_decisive_evidence(
+def test_rung25_window_close_via_jump_capacity(
         monkeypatch, complex0_slot, flow_dir):
-    """An exactly-unroutable window is an honest INFEASIBLE record: the
-    ladder's diagnosis carries the CP-SAT proof instead of a heuristic
-    stall, and no unverified route is merged."""
+    """The ctrl/COMPLEX0 slot window was the campaign's decisive
+    INFEASIBLE proof (agent C, AUDIT 5.49-era) -- under the jump-M2
+    capacity it flips OPTIMAL and the ladder closes at rung 2.5 even
+    with rungs 1 and 2 forced to fail.  The no-jump INFEASIBLE verdict
+    stays available on demand (solve_window_routing without the
+    flags), so the honest record is preserved next to the capability."""
     nl3, pl, w, _lws, blocks = complex0_slot
     sp = open(os.path.join(str(flow_dir), "outputs", "ctrl",
                            "COMPLEX0.sp")).read()
@@ -332,15 +335,14 @@ def test_rung35_infeasible_window_is_decisive_evidence(
                         lambda *a, **k: eng._failed_route("INFEASIBLE"))
     monkeypatch.setattr(eng, "_default_grid_router",
                         lambda: _failing_router(COMPLEX0_NOTE))
-    with pytest.raises(eng.UnsupportedCell) as excinfo:
-        synth_cell(_netlist(sp), exact_budget_s=30.0)
-    meta = excinfo.value.meta
-    fixes = [a for a in meta["attempts"] if a["rung"] == 3.5]
-    assert fixes and fixes[-1]["ok"] is False
-    assert fixes[-1]["status"] == "INFEASIBLE"
-    assert fixes[-1]["window"] == [0, w + 1]
-    assert "exactly-unroutable" in excinfo.value.diagnosis
-    assert "blocker is the placement/vocabulary" in excinfo.value.diagnosis
+    placement, route, meta = synth_cell(_netlist(sp), exact_budget_s=30.0)
+    # the ladder closes through rung 3.5 (the slot-chain placement's
+    # whole-cell window under jump capacity)
+    assert meta["engine"] == "bigcell-full+window-fix"
+    assert route.ok
+    # the no-jump model keeps the historical verdict available
+    fix = solve_window_routing(nl3, pl, w + 1, (0, w + 1), blocks=blocks)
+    assert fix.route is None and fix.status_name == "INFEASIBLE"
 
 
 def test_rung35_skipped_when_note_names_no_nets(monkeypatch):

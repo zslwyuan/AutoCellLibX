@@ -266,8 +266,11 @@ def test_plateau_partial_threads_blocks(monkeypatch):
 
     class _FakeGrid(object):
         def __init__(self, netlist, placement, width_cols, **kwargs):
-            recorded["blocks"] = kwargs.get("blocks")
+            recorded.setdefault("blocks", []).append(kwargs.get("blocks"))
             self._fail_note = None
+
+        def structural_diagnosis(self):
+            return [], []              # clean: phase 1 runs
 
         def route(self, max_attempts=1):
             return False               # plateaued: the snapshot is taken
@@ -278,9 +281,11 @@ def test_plateau_partial_threads_blocks(monkeypatch):
     monkeypatch.setattr(rg, "_RouteGrid", _FakeGrid)
     assert eng._plateau_partial(None, None, 4, blocks="VIEW") \
         is sentinel_route
-    assert recorded["blocks"] == "VIEW"
+    # both phase grids consume the caller's block view (the two-phase
+    # sequence: phase 1 + the metal2-freedom phase 2)
+    assert recorded["blocks"] == ["VIEW", "VIEW"]
     eng._plateau_partial(None, None, 4)
-    assert recorded["blocks"] is None
+    assert recorded["blocks"][-1] is None
 
 
 # ------------- full-chain pins (long-running; -m slow) ------------------

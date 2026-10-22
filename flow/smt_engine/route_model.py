@@ -2378,7 +2378,7 @@ def solve_window_routing(netlist, placement, width_cols, window,
                          partial=None, blocks=None, poly_jumps=True,
                          metal2=True,
                          time_limit_s=WINDOW_SOLVE_TIME_LIMIT_S,
-                         m2_spans=False):
+                         m2_spans=False, jump_m2=False):
     """The exact engine as a window fixer (doc section 2.4, rung 1's
     narrowed role).
 
@@ -2472,7 +2472,7 @@ def solve_window_routing(netlist, placement, width_cols, window,
     rm = build_routing_model(netlist, shifted, width_cols=width,
                              accesses=(diffusion, gate, power),
                              poly_jumps=poly_jumps, metal2=metal2,
-                             m2_spans=m2_spans)
+                             m2_spans=m2_spans, jump_m2=jump_m2)
     if (partial is not None):
         model = rm.model
         ch = _WindowChanneling(model, rm)
