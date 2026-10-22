@@ -1804,3 +1804,25 @@ verify+GDS+sanity 清，**1.71µm vs ASTRAN 1.33 = 1.286，入 0.8-1.3
 
 **剩余**：jump_m2 未接入窗口修复器/生产引擎——MUX2X1 的生产闭合
 （试布 floor 2）差一步窗口修复器接线；47 个否定核重塑后并入接受案。
+
+## §5.59 窗口修复器接入 jump 容量 + 生产闭合的最后一环定位（2026-10-22）
+
+**(1) 接线落地**：solve_window_routing 增 jump_m2（透传
+build_routing_model，钳制要求 m2_spans）；引擎窗口档传
+m2_spans=True + jump_m2=True。两个伴生修复：①窗口推导覆盖整路由宽
+度（≤WINDOW_MAX_COLS 时）——路由词汇含尾随逃逸列（槽位几何：路由网
+格 = 布局 W+1），停在布局宽度的窗口会剥夺精确模型的逃逸列；②
+_plateau_partial 复现 route_cell 的精确两相序列（相-1 跳过门 + 相-2
+metal2 网格）——单相复跑再现的是不同的失败态，诚实守卫据此拒绝了
+每一个相-2 plateau 的窗口修复。
+
+**(2) MUX2X1 的生产闭合定位**：接线的窗口求解在**被选中的
+pairsplit 排布**上仍 INFEASIBLE（精确证明）——jump 容量关闭的是
+**fold-combo 见证排布**（agent V：OPTIMAL 2.3s、1.71µm=1.286×）。
+生产链的最后一环 = phase-7 fold-combo 候选的试布改用精确模型
+（jump_m2）——启发式试布无法度量 jump 容量，把 fold-combo 排布排在
+pairsplit 之下。运行时成本有界（15-63 组合 × 2-20s/个）。
+
+**(3) 状态**：807 绿（blocks 线程假网格增 structural_diagnosis 相与
+双相 blocks 钉）；全部闭合钉保持。MUX2X1 的精确模型闭合证据完整
+（agent V），生产接入是下一个精确步骤。
