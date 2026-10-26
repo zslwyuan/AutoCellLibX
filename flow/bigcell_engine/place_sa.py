@@ -2822,7 +2822,18 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
     ``trial_router`` defaults to ``route_grid.route_cell`` and is
     called as ``router(netlist, placements, width_cols, leg_widths,
     max_attempts=trial_attempts, blocks=<candidate's block view>)`` --
-    the TRUE-VIEW trial: each candidate is measured against its OWN
+
+    The GDS-seed candidate class (bigcell_engine.gds_seeds, AUDIT 5.60)
+    precedes the whole pool: when the cell's netlist is in the closure
+    table, ASTRAN's own extracted arrangement joins as the FIRST
+    candidate (pool priority 0, deduped against the generated pool), so
+    a seed-closing cell keeps its proven orientation exactly like the
+    SA-best candidate does for already-closing cells.  Netlists outside
+    the table see no seed -- the lookup is one digest and the pool is
+    byte-identical to the pre-seed chain.
+
+    The trial contract itself is the TRUE-VIEW trial: each candidate is
+    measured against its OWN
     orientation-aware die view (``list(ordering_p) + list(ordering_n)``,
     exactly the ``blocks`` the production route and verify consume for
     the winner), so the trial's verdict is the same view the
@@ -2863,6 +2874,16 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
     pool = generate_candidates(best_p, best_n, seed_p, seed_n, leg_widths,
                                candidate_count, netlist=netlist,
                                legacy_best=legacy_best)
+    # the GDS-seed candidate class (gds_seeds, AUDIT 5.60): ASTRAN's own
+    # arrangement for a table cell joins as the FIRST pool entry -- lazy
+    # (one digest lookup), empty for every netlist outside the closure
+    # table, so every existing chain keeps its exact pool byte-for-byte.
+    from bigcell_engine.gds_seeds import seed_candidates
+    for kind, op_s, on_s in seed_candidates(netlist):
+        if any(ordering_signature(op, on) == ordering_signature(op_s, on_s)
+               for _k, op, on in pool):
+            continue
+        pool.insert(0, (kind, op_s, on_s))
     from bigcell_engine.geometry import layout_cell
     entries = []
     fallback = None               # (conflicts, cage, cost, index) -> entry
