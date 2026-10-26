@@ -1,0 +1,22 @@
+.subckt inc2v VCC a0 a1 q0 q1 q2 GND
+Mg0_M0 q0 a0 VCC VCC PMOS W=0.5u L=0.05u
+Mg0_M1 q0 a0 GND GND NMOS W=0.25u L=0.05u
+Mg1_M0 g1#a_2_6# a0 VCC VCC PMOS W=0.5u L=0.05u
+Mg1_M1 VCC a1 g1#a_2_6# VCC PMOS W=0.5u L=0.05u
+Mg1_M2 q2 g1#a_2_6# VCC VCC PMOS W=0.5u L=0.05u
+Mg1_M3 g1#a_9_6# a0 g1#a_2_6# GND NMOS W=0.5u L=0.05u
+Mg1_M4 GND a1 g1#a_9_6# GND NMOS W=0.5u L=0.05u
+Mg1_M5 q2 g1#a_2_6# GND GND NMOS W=0.25u L=0.05u
+Mg2_M0 VCC a0 g2#a_2_6# VCC PMOS W=1u L=0.05u
+Mg2_M1 g2#a_18_54# g2#a_13_43# VCC VCC PMOS W=1u L=0.05u
+Mg2_M2 q1 a0 g2#a_18_54# VCC PMOS W=1u L=0.05u
+Mg2_M3 g2#a_35_54# g2#a_2_6# q1 VCC PMOS W=1u L=0.05u
+Mg2_M4 VCC a1 g2#a_35_54# VCC PMOS W=1u L=0.05u
+Mg2_M5 g2#a_13_43# a1 VCC VCC PMOS W=1u L=0.05u
+Mg2_M6 GND a0 g2#a_2_6# GND NMOS W=0.5u L=0.05u
+Mg2_M7 g2#a_18_6# g2#a_13_43# GND GND NMOS W=0.5u L=0.05u
+Mg2_M8 q1 g2#a_2_6# g2#a_18_6# GND NMOS W=0.5u L=0.05u
+Mg2_M9 g2#a_35_6# a0 q1 GND NMOS W=0.5u L=0.05u
+Mg2_M10 GND a1 g2#a_35_6# GND NMOS W=0.5u L=0.05u
+Mg2_M11 g2#a_13_43# a1 GND GND NMOS W=0.5u L=0.05u
+.ends inc2v

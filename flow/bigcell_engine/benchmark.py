@@ -6,9 +6,12 @@ Fixed benchmark set: the ASTRAN baseline cell decks
 LIBRARY cells (``LIBRARY_SOURCES`` -- one BenchmarkCell per .subckt
 block of ``std_celllib/cellsAstranFriendly.sp``, the gates the Python
 ladder closes).  Per-cell record: device count, ASTRAN width, Python
-width, producing engine, verify/layout-sanity verdicts.  Reports are
-written as JSON + markdown.  This is the continuous-verification
-backbone for the ASTRAN replacement -- every engine change re-runs it.
+width, producing engine, verify/layout-sanity verdicts **plus a quality
+panel** (pin accessibility on the engine's own GDS, the layout-sanity
+metrics dict, per-layer polygon counts, and per-cell runtime aggregated
+from the engine's meta attempts).  Reports are written as JSON +
+markdown.  This is the continuous-verification backbone for the ASTRAN
+replacement -- every engine change re-runs it.
 
 Measurement discipline (doc section 4 + AGENTS.md invariants):
 
@@ -464,6 +467,130 @@ def _default_sanity_checker(gds_path):
                         expected_height_um=HEIGHT_UM, grid_um=GRID_UM)
 
 
+# --- quality panel: pin access, layer counts, runtime ----------------------
+
+#: the engines whose width is drawn in ASTRAN's own slot semantics (W
+#: vertical, doc/BIGCELL_SLOT_GEOMETRY.md) -- only their python/astran
+#: width ratios are same-semantics comparable.  ``bigcell-grid`` /
+#: ``smt-exact`` cells keep the exact IR's placement (W drawn as
+#: horizontal columns), so their ratios overstate width.
+SAME_SEMANTICS_ENGINES = ("bigcell-full", "bigcell-full+window-fix")
+
+
+def _default_pin_access_scorer(gds_path):
+    """Pin accessibility of a produced cell, via flow/pin_accessibility.
+
+    The engine's GDS carries pin labels on metal1 (stream 49) and an
+    honest 1 um header, so no log calibration is needed: the score is
+    the mean per-pin score in [0, 1] (0.5 on-track + 0.5 not blocked,
+    -0.1 per crowd up to 3 -- see pin_accessibility.py).  Returns a
+    compact summary {score, n_pins, on_track, blocked, crowded_pins};
+    None when the GDS cannot be read (the record then carries the
+    error note instead of a fabricated score).
+    """
+    from pin_accessibility import cell_pin_accessibility
+    rep = cell_pin_accessibility(gds_path, grid_um=GRID_UM)
+    pins = rep.pins
+    return {
+        "score": round(rep.score, 3),
+        "n_pins": len(pins),
+        "on_track": sum(1 for p in pins if p["on_track"]),
+        "blocked": sum(1 for p in pins if p["blocked"]),
+        "crowded_pins": sum(1 for p in pins if p["crowd"]),
+    }
+
+
+def _layer_counts(gds_path):
+    """Per-stream polygon counts of the produced GDS (sorted str keys).
+
+    The DRC-quality signal beyond sanity ok/not: which layers the cell
+    actually drew and how dense each is (poly stripes, contacts, M1
+    segments, M2 jumps).  None when the file is unreadable -- never a
+    made-up histogram.
+    """
+    import gdstk
+    lib = gdstk.read_gds(gds_path)
+    counts = {}
+    for cell in lib.top_level() or lib.cells:
+        for poly in cell.polygons:
+            key = str(poly.layer)
+            counts[key] = counts.get(key, 0) + 1
+    return dict(sorted(counts.items())) or None
+
+
+def runtime_from_attempts(attempts):
+    """Per-cell runtime seconds aggregated from the engine's meta attempts.
+
+    Every attempt carries rounded wall seconds (engine.py ``_attempt``);
+    this splits them the way the ladder spends them: ``place`` (the
+    layout/routing-solve *placement* stages), ``route`` (router stages
+    plus the stageless rung-2 router call) and ``window`` (the window
+    fixer's attempts, which carry a ``window``).  ``total`` is the sum
+    of everything -- the honest wall-clock cost of the cell, ladder
+    retries included.  Pure function of the attempts list.
+    """
+    total = place = route = window = 0.0
+    for a in (attempts or []):
+        s = a.get("seconds")
+        if (not isinstance(s, (int, float))):
+            continue
+        total += s
+        if ("window" in a):
+            window += s
+        elif (a.get("stage") in ("layout", "placement")):
+            place += s
+        else:
+            route += s
+    return {"total": round(total, 1), "place": round(place, 1),
+            "route": round(route, 1), "window": round(window, 1)}
+
+
+def _percentile(values, q):
+    """Linear-interpolation percentile (numpy's default method).
+
+    Deterministic, dependency-free; ``values`` must be pre-sorted.
+    """
+    if (not values):
+        return None
+    if (len(values) == 1):
+        return values[0]
+    pos = (len(values) - 1) * q
+    lo = int(pos)
+    hi = min(lo + 1, len(values) - 1)
+    frac = pos - lo
+    return values[lo] + (values[hi] - values[lo]) * frac
+
+
+def _quality_panel(gds_path, sanity_report, attempts,
+                   pin_access_scorer=None):
+    """The per-cell quality panel: pin access + sanity metrics + layers
+    + runtime.  Every component degrades to None (with the error kept
+    as a note) instead of being invented -- a panel entry that is
+    missing says the measurement failed, not that the quality is good.
+    """
+    panel = {"pin_access": None, "sanity_metrics": None,
+             "layer_counts": None, "runtime_s": None}
+    if (pin_access_scorer is not None):
+        try:
+            panel["pin_access"] = pin_access_scorer(gds_path)
+        except Exception as exc:                   # noqa: BLE001
+            panel["pin_access"] = {"score": None, "n_pins": None,
+                                   "note": "pin access raised %s: %s" % (
+                                       type(exc).__name__, exc)}
+    if (sanity_report is not None):
+        metrics = getattr(sanity_report, "metrics", None)
+        if (isinstance(metrics, dict)):
+            panel["sanity_metrics"] = dict(
+                (k, v) for k, v in sorted(metrics.items()))
+    try:
+        panel["layer_counts"] = _layer_counts(gds_path)
+    except Exception:                              # noqa: BLE001
+        panel["layer_counts"] = None
+    if (attempts is not None):
+        panel["runtime_s"] = runtime_from_attempts(attempts)
+    return panel
+
+
 def _verdict(report, note=None):
     """Normalize a report-like (VerifyReport / LayoutSanityReport)."""
     if (report is None):
@@ -484,7 +611,7 @@ def run_benchmark(cells, out_dir, exact_budget_s=60.0, grid_budget_s=120.0,
                   grid_router=None, resume=True, baselines=None,
                   allow_baseline_runs=False, synth_runner=None,
                   gds_writer=None, verify_fn=None, sanity_checker=None,
-                  flow_dir=None):
+                  pin_access_scorer=None, flow_dir=None):
     """Run the engine over ``cells`` and write report.json + report.md.
 
     Per cell: synthesize (``synth_runner``, default
@@ -493,10 +620,15 @@ def run_benchmark(cells, out_dir, exact_budget_s=60.0, grid_budget_s=120.0,
     (invariant 7), verify structurally (``verify_fn``) and on the
     artifact (``sanity_checker``, default layout_sanity.check_layout --
     standalone, no GUI/log context needed), and record
-    {name, T, astran_um, python_um, engine, verdicts, ...}.  A resumed
-    (cached) cell carries its width/engine/verify verdict from the
-    previous ``out_dir/report.json`` and re-runs only the artifact
-    sanity check.
+    {name, T, astran_um, python_um, engine, verdicts, quality, ...}.
+    The quality panel (``_quality_panel``) carries the per-closed-cell
+    pin accessibility (``pin_access_scorer``, default
+    :func:`_default_pin_access_scorer` on flow/pin_accessibility; False
+    disables it), the sanity metrics dict, per-layer polygon counts and
+    the runtime split place/route/window aggregated from the meta
+    attempts.  A resumed (cached) cell carries its width/engine/verify
+    verdict (and its measured runtime) from the previous
+    ``out_dir/report.json`` and re-runs only the artifact checks.
 
     ``baselines`` injects a precomputed {source: entry} mapping; by
     default :func:`get_astran_baselines` runs with the persistent cache
@@ -518,6 +650,8 @@ def run_benchmark(cells, out_dir, exact_budget_s=60.0, grid_budget_s=120.0,
         verify_fn = verify_cell
     if (sanity_checker is None):
         sanity_checker = _default_sanity_checker
+    if (pin_access_scorer is None):
+        pin_access_scorer = _default_pin_access_scorer
     if (baselines is None):
         baselines = get_astran_baselines(cells, allow_runs=allow_baseline_runs,
                                          flow_dir=flow_dir)
@@ -565,9 +699,13 @@ def run_benchmark(cells, out_dir, exact_budget_s=60.0, grid_budget_s=120.0,
                 "ok": old_verify.get("ok"),
                 "note": "carried from the previous report (cached "
                         "artifacts carry no placement/route)"}
+            # provenance of the cached synthesis: the attempts (and the
+            # runtime they encode) describe the artifacts on disk
+            record["attempts"] = old.get("attempts") or []
             try:
                 sanity = sanity_checker(gds_path)
             except Exception as exc:               # noqa: BLE001
+                sanity = None
                 record["verdicts"]["sanity"] = {
                     "ok": None, "note": "sanity raised %s: %s" % (
                         type(exc).__name__, exc)}
@@ -578,6 +716,10 @@ def run_benchmark(cells, out_dir, exact_budget_s=60.0, grid_budget_s=120.0,
                     # measured M1 extent (includes the rail overhang)
                     record["python_um"] = getattr(
                         sanity, "metrics", {}).get("width_um")
+            record["quality"] = _quality_panel(
+                gds_path, sanity,
+                record["attempts"] if record["attempts"] else None,
+                pin_access_scorer=pin_access_scorer)
             record["note"] = "fresh artifact pair; synthesis skipped " \
                              "(invariant 7)"
             records.append(record)
@@ -592,11 +734,20 @@ def run_benchmark(cells, out_dir, exact_budget_s=60.0, grid_budget_s=120.0,
             record["status"] = "unsupported"
             record["note"] = exc.diagnosis
             record["attempts"] = exc.meta.get("attempts", [])
+            # a failed ladder run burns time too: the runtime of the
+            # attempts is the honest cost of the "unsupported" verdict
+            record["quality"] = {
+                "pin_access": None, "sanity_metrics": None,
+                "layer_counts": None,
+                "runtime_s": runtime_from_attempts(
+                    record["attempts"])}
             records.append(record)
             continue
         except Exception as exc:                   # noqa: BLE001
             record["note"] = "engine raised %s: %s" % (
                 type(exc).__name__, exc)
+            record["quality"] = {"pin_access": None, "sanity_metrics": None,
+                                 "layer_counts": None, "runtime_s": None}
             records.append(record)
             continue
         synth_calls += 1
@@ -625,12 +776,17 @@ def run_benchmark(cells, out_dir, exact_budget_s=60.0, grid_budget_s=120.0,
             record["verdicts"]["verify"] = {
                 "ok": None,
                 "note": "verify raised %s: %s" % (type(exc).__name__, exc)}
+        sanity_report = None
         try:
-            record["verdicts"]["sanity"] = _verdict(sanity_checker(gds_path))
+            sanity_report = sanity_checker(gds_path)
+            record["verdicts"]["sanity"] = _verdict(sanity_report)
         except Exception as exc:                   # noqa: BLE001
             record["verdicts"]["sanity"] = {
                 "ok": None, "note": "sanity raised %s: %s" % (
                     type(exc).__name__, exc)}
+        record["quality"] = _quality_panel(
+            gds_path, sanity_report, meta.get("attempts", []),
+            pin_access_scorer=pin_access_scorer)
 
         record["python_um"] = meta.get("width_um")
         if (record["python_um"] is None
@@ -654,6 +810,72 @@ def run_benchmark(cells, out_dir, exact_budget_s=60.0, grid_budget_s=120.0,
     with open(os.path.join(out_dir, "report.md"), "w") as fh:
         fh.write(_render_markdown(report))
     return report
+
+
+def _quality_summary(records):
+    """The SUMMARY quality block over the per-cell records.
+
+    - ``closure_rate``: ok+cached over all records (the ladder's honest
+      hit rate, unsupported/errors included in the denominator);
+    - ``ratio_same_semantics``: python/astran width ratios restricted to
+      the slot-model engines (SAME_SEMANTICS_ENGINES) -- the only
+      ratios that compare like-for-like against ASTRAN's slot geometry;
+    - ``pin_access``: median mean-pin score over the closed cells that
+      have one (n says how many did);
+    - ``runtime_s``: p50/p90/max of the per-cell total runtime over ALL
+      cells with a measured one -- closures AND honest failures (an
+      unsupported cell burns real solver time; excluding it would
+      understate the ladder's cost);
+    - ``engine_mix``: which rung closed what (the ladder's histogram).
+
+    Every statistic is a deterministic function of the records; n
+    counts are carried next to the numbers so a median over 3 cells
+    can never masquerade as a population statement.
+    """
+    closed = [r for r in records if r["status"] in ("ok", "cached")]
+    mix = {}
+    for r in closed:
+        if (r.get("engine")):
+            mix[r["engine"]] = mix.get(r["engine"], 0) + 1
+    ratios = sorted(r["python_um"] / r["astran_um"] for r in closed
+                    if (isinstance(r.get("astran_um"), (int, float))
+                        and r["astran_um"]
+                        and isinstance(r.get("python_um"), (int, float))
+                        and r.get("engine") in SAME_SEMANTICS_ENGINES))
+    scores = []
+    for r in closed:
+        pa = (r.get("quality") or {}).get("pin_access") or {}
+        if (isinstance(pa.get("score"), (int, float))):
+            scores.append(pa["score"])
+    scores.sort()
+    runtimes = []
+    for r in records:
+        rt = ((r.get("quality") or {}).get("runtime_s") or {})
+        if (isinstance(rt.get("total"), (int, float))):
+            runtimes.append(rt["total"])
+    runtimes.sort()
+    n_records = len(records)
+    return {
+        "closure_rate": round(len(closed) / n_records, 4) if n_records else None,
+        "ratio_same_semantics": {
+            "n": len(ratios),
+            "median": round(statistics.median(ratios), 4) if ratios else None,
+            "max": round(ratios[-1], 4) if ratios else None,
+        },
+        "pin_access": {
+            "n": len(scores),
+            "median": round(statistics.median(scores), 4) if scores else None,
+        },
+        "runtime_s": {
+            "n": len(runtimes),
+            "p50": round(_percentile(runtimes, 0.50), 1)
+                if runtimes else None,
+            "p90": round(_percentile(runtimes, 0.90), 1)
+                if runtimes else None,
+            "max": round(runtimes[-1], 1) if runtimes else None,
+        },
+        "engine_mix": dict(sorted(mix.items())),
+    }
 
 
 def _summarize(records, baselines):
@@ -689,6 +911,7 @@ def _summarize(records, baselines):
             "median": round(statistics.median(ratios), 4) if ratios else None,
             "worst": round(ratios[-1], 4) if ratios else None,
         },
+        "quality": _quality_summary(records),
     }
 
 
@@ -696,6 +919,11 @@ def _render_markdown(report):
     summary = report["summary"]
     base = summary["baselines"]
     ratio = summary["width_ratio_python_over_astran"]
+    quality = summary.get("quality") or {}
+    q_ratio = quality.get("ratio_same_semantics") or {}
+    q_pin = quality.get("pin_access") or {}
+    q_run = quality.get("runtime_s") or {}
+    mix = quality.get("engine_mix") or {}
     lines = [
         "# Big-cell benchmark (stage 3)",
         "",
@@ -717,15 +945,43 @@ def _render_markdown(report):
             _fmt_um(ratio["median"]) if ratio["median"] is not None
             else "n/a", ratio["n"]),
         "",
+        "**Quality**: closure rate %s; same-semantics ratio (%s) median "
+        "%s / max %s (n=%d); median pin access %s (n=%d); runtime p50 "
+        "%s s, p90 %s s, max %s s (n=%d); engine mix: %s." % (
+            ("%.0f%%" % (quality["closure_rate"] * 100))
+            if quality.get("closure_rate") is not None else "n/a",
+            ", ".join(SAME_SEMANTICS_ENGINES),
+            _fmt_um(q_ratio.get("median")) if q_ratio.get("median")
+            is not None else "n/a",
+            _fmt_um(q_ratio.get("max")) if q_ratio.get("max")
+            is not None else "n/a",
+            q_ratio.get("n") or 0,
+            ("%.3f" % q_pin["median"]) if q_pin.get("median") is not None
+            else "n/a",
+            q_pin.get("n") or 0,
+            _fmt_um(q_run.get("p50")) if q_run.get("p50") is not None
+            else "-",
+            _fmt_um(q_run.get("p90")) if q_run.get("p90") is not None
+            else "-",
+            _fmt_um(q_run.get("max")) if q_run.get("max") is not None
+            else "-",
+            q_run.get("n") or 0,
+            ", ".join("%s x%d" % kv for kv in sorted(mix.items()))
+            or "none"),
+        "",
         "Ratios are same-semantics comparable only for `bigcell-full` "
         "engines (slot model: W vertical, doc/BIGCELL_SLOT_GEOMETRY.md); "
         "`bigcell-grid` cells keep the exact engine's placement (W drawn "
         "as horizontal columns) and `smt-exact` cells likewise -- their "
-        "ratios overstate width against ASTRAN's slot geometry.",
+        "ratios overstate width against ASTRAN's slot geometry. Pin "
+        "access is the mean per-pin score of flow/pin_accessibility in "
+        "[0, 1] (on-track, unblocked, uncrowded metal1 pins); runtime is "
+        "the ladder's total wall seconds for the cell (place + route + "
+        "window retries).",
         "",
         "| cell | source | T | astran um | python um | ratio | engine "
-        "| verify | sanity | note |",
-        "|---|---|---|---|---|---|---|---|---|---|",
+        "| verify | sanity | pin | run s | note |",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for r in report["cells"]:
         both = (isinstance(r["python_um"], (int, float))
@@ -743,10 +999,316 @@ def _render_markdown(report):
                 return "FAIL"
             return "n/a" if v.get("ok") is None else "-"
 
+        quality = r.get("quality") or {}
+        pin = (quality.get("pin_access") or {}).get("score")
+        pin_txt = ("%.2f" % pin) if isinstance(pin, (int, float)) else "-"
+        run_s = (quality.get("runtime_s") or {}).get("total")
+        run_txt = ("%.0f" % run_s) if isinstance(run_s, (int, float)) \
+            else "-"
         note = (r.get("note") or "")[:80]
-        lines.append("| %s | %s | %d | %s | %s | %s | %s | %s | %s | %s |"
+        lines.append("| %s | %s | %d | %s | %s | %s | %s | %s | %s | %s "
+                     "| %s | %s |"
                      % (r["name"], r["source"], r["T"],
                         _fmt_um(r["astran_um"]), _fmt_um(r["python_um"]),
                         ratio_txt, r.get("engine") or "-",
-                        _flag(verify), _flag(sanity), note))
+                        _flag(verify), _flag(sanity), pin_txt, run_txt,
+                        note))
+    return "\n".join(lines) + "\n"
+
+
+# --- generalization: the hold-out evaluation -------------------------------
+
+#: The committed hold-out set: fresh combinational Verilog modules the
+#: ladder has never seen (they are NOT part of the 49-cell development
+#: benchmark -- no deck, no log, no baseline), synthesized once into
+#: ASTRAN-ready .sp decks by ``flow/_generalization/generate.py`` and
+#: committed next to their sources.  Determinism: the modules are fixed
+#: files, the decks are committed artifacts (yosys+abc is deterministic
+#: for a fixed binary/liberty), nothing is generated at run time.
+HOLDOUT_DIR = "_generalization"
+
+#: (name, min_T, max_T) size bands of the generalization verdict --
+#: transistor counts per flattened cell.
+SIZE_BANDS = (("small", 1, 8), ("medium", 9, 16), ("large", 17, None))
+
+#: The development-set report the hold-out closure rates are compared
+#: against (49 cells; regenerate with run_benchmark over
+#: load_benchmark_cells()).  Scratch location by convention -- when it
+#: is absent the comparison degrades to an honest "dev rates unknown".
+DEV_REPORT_PATH = os.path.join(STAGE3_CHECK_DIR, "bench_int7", "report.json")
+
+#: A hold-out band within this many percentage points of the dev band
+#: counts as "consistent" (closure-rate noise for n<=20 cells).
+GENERALIZATION_TOLERANCE = 0.10
+
+
+def size_band(transistors):
+    """The SIZE_BANDS name of a transistor count (None when it fits none)."""
+    for name, lo, hi in SIZE_BANDS:
+        if (transistors >= lo and (hi is None or transistors <= hi)):
+            return name
+    return None
+
+
+def load_holdout_cells(flow_dir=None):
+    """The committed hold-out cells, sorted by (name, source).
+
+    One BenchmarkCell per ``<HOLDOUT_DIR>/*.sp`` deck -- the same
+    identity rule as the development set (source is the unique key;
+    the subckt name is the cell name).  A deck the shared parser
+    cannot read is skipped: the hold-out set holds cells, not parser
+    fixtures.
+    """
+    if (flow_dir is None):
+        flow_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    cells = []
+    for path in sorted(glob.glob(os.path.join(flow_dir, HOLDOUT_DIR,
+                                              "*.sp"))):
+        rel = os.path.relpath(path, flow_dir).replace(os.sep, "/")
+        try:
+            with open(path, "r", errors="replace", newline="") as fh:
+                text = fh.read()
+        except OSError:
+            continue
+        parsed = _parse_or_none(text)
+        if (parsed is None):
+            continue
+        cells.append(BenchmarkCell(
+            name=parsed.subckt_name, source=rel,
+            netlist=CellNetlist(parsed), transistors=len(parsed.devices),
+            text=text))
+    cells.sort(key=lambda c: (c.name, c.source))
+    return cells
+
+
+def band_closure(records):
+    """Per-band closure over report cell records.
+
+    {band: {"cells": n, "closed": k, "rate": r}}; a band with no cells
+    carries rate None (never a fabricated 0%).  Closure is status
+    ok/cached -- the same definition the summary uses.
+    """
+    out = {}
+    for name, lo, hi in SIZE_BANDS:
+        band = [r for r in records
+                if (isinstance(r.get("T"), int) and r["T"] >= lo
+                    and (hi is None or r["T"] <= hi))]
+        closed = [r for r in band if r["status"] in ("ok", "cached")]
+        out[name] = {"cells": len(band), "closed": len(closed),
+                     "rate": (round(len(closed) / len(band), 4)
+                              if band else None)}
+    return out
+
+
+def generalization_verdict(holdout_bands, dev_bands,
+                           tolerance=GENERALIZATION_TOLERANCE):
+    """The honest one-line verdict from the per-band closure rates.
+
+    Compares every band that has hold-out cells AND dev cells; the
+    verdict follows the WORST band (a single dropped band is an overfit
+    signal even when the others hold).  Returns (verdict, worst) where
+    worst is (band, delta_rate) or None when no band is comparable --
+    the caller reports that as "dev rates unknown", never as success.
+    """
+    worst = None
+    for name, _lo, _hi in SIZE_BANDS:
+        h = (holdout_bands or {}).get(name) or {}
+        d = (dev_bands or {}).get(name) or {}
+        if (not h.get("cells") or not d.get("cells")):
+            continue
+        delta = h["rate"] - d["rate"]
+        if (worst is None or delta < worst[1]):
+            worst = (name, delta)
+    if (worst is None):
+        return ("no comparable band (development-set rates unavailable)",
+                None)
+    band, delta = worst
+    if (delta >= -tolerance):
+        return ("consistent with the development set (worst band %s at "
+                "%+.0f pp)" % (band, delta * 100), worst)
+    return ("closure drops on the hold-out set (worst band %s at %+.0f "
+            "pp) -- an overfit signal" % (band, delta * 100), worst)
+
+
+def run_generalization(out_dir, dev_report=None, cells=None,
+                       exact_budget_s=60.0, grid_budget_s=120.0,
+                       flow_dir=None, **kwargs):
+    """Run the ladder over the committed hold-out set; write the report.
+
+    The hold-out cells go through :func:`run_benchmark` unchanged (the
+    same ladder, the same verify/sanity/quality gates) with NO ASTRAN
+    baselines -- these cells have no .Astranlog and none is generated,
+    so the deliverable is the closure rate and, where the ladder
+    closes, the quality panel; where it fails, the per-cell diagnosis
+    (which rung, why -- the note carried verbatim into the report).
+
+    ``dev_report`` (a report dict, a {"cells": [...]} mapping, or a
+    path to a report.json; default: DEV_REPORT_PATH when it exists)
+    supplies the development-set band rates the verdict compares
+    against; without it the comparison degrades to an honest "unknown".
+
+    Writes ``generalization.json`` + ``generalization.md`` next to
+    run_benchmark's own report files and returns
+    {holdout, bands, dev_bands, dev_source, verdict, worst_band}.
+    """
+    if (flow_dir is None):
+        flow_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if (cells is None):
+        cells = load_holdout_cells(flow_dir)
+    if (not cells):
+        raise RuntimeError("no hold-out cells under %s (expected the "
+                           "committed decks next to their .v sources)"
+                           % HOLDOUT_DIR)
+
+    report = run_benchmark(cells, out_dir, exact_budget_s=exact_budget_s,
+                           grid_budget_s=grid_budget_s, flow_dir=flow_dir,
+                           **kwargs)
+    bands = band_closure(report["cells"])
+
+    dev_bands = None
+    dev_source = None
+    dev_records = _dev_records(dev_report, flow_dir)
+    if (dev_records is not None):
+        dev_bands = band_closure(dev_records)
+        dev_source = (dev_report if isinstance(dev_report, str)
+                      else ("injected" if dev_report is not None
+                            else DEV_REPORT_PATH))
+    verdict, worst = generalization_verdict(bands, dev_bands)
+
+    result = {"holdout": report, "bands": bands, "dev_bands": dev_bands,
+              "dev_source": dev_source, "verdict": verdict,
+              "worst_band": list(worst) if worst else None,
+              "parameters": {"size_bands": [
+                  [n, lo, hi] for n, lo, hi in SIZE_BANDS],
+                  "tolerance": GENERALIZATION_TOLERANCE,
+                  "holdout_dir": HOLDOUT_DIR}}
+    os.makedirs(out_dir, exist_ok=True)
+    with open(os.path.join(out_dir, "generalization.json"), "w") as fh:
+        json.dump(result, fh, indent=2, sort_keys=True)
+    with open(os.path.join(out_dir, "generalization.md"), "w") as fh:
+        fh.write(_render_generalization_markdown(result))
+    return result
+
+
+def _dev_records(dev_report, flow_dir):
+    """Development-set cell records from a report (dict/path), or None.
+
+    Accepts a report dict, a {"cells": [...]} mapping or a JSON path;
+    the default (dev_report=None) reads DEV_REPORT_PATH when present.
+    Anything unreadable degrades to None -- the generalization report
+    then says "dev rates unknown" instead of inventing a comparison.
+    """
+    data = dev_report
+    if (data is None):
+        path = os.path.join(flow_dir, DEV_REPORT_PATH)
+        if (not os.path.exists(path)):
+            return None
+        data = path
+    if (isinstance(data, str)):
+        try:
+            with open(data, "r") as fh:
+                data = json.load(fh)
+        except (OSError, ValueError):
+            return None
+    if (isinstance(data, dict)):
+        records = data.get("cells")
+        if (isinstance(records, list) and records
+                and all(isinstance(r, dict) for r in records)):
+            return records
+    return None
+
+
+def _render_generalization_markdown(result):
+    """The hold-out report: per-cell table, per-band comparison, verdict."""
+    report = result["holdout"]
+    bands = result["bands"]
+    dev_bands = result["dev_bands"]
+    quality = report["summary"].get("quality") or {}
+    lines = [
+        "# Generalization: the hold-out evaluation",
+        "",
+        "%d committed hold-out cells (%s/*.sp, synthesized from fresh "
+        "Verilog the ladder has never seen; no ASTRAN baselines exist). "
+        "Closure = the Python ladder alone; every failure keeps its "
+        "structural diagnosis." % (report["summary"]["cells"], HOLDOUT_DIR),
+        "",
+        "**Verdict**: %s." % result["verdict"],
+        "",
+        "| band | T range | cells | closed | rate | dev rate | delta |",
+        "|---|---|---|---|---|---|---|",
+    ]
+    for name, lo, hi in SIZE_BANDS:
+        b = bands.get(name) or {}
+        d = (dev_bands or {}).get(name) or {}
+        dev_txt = ("%.0f%%" % (d["rate"] * 100)) if d.get("rate") is not \
+            None else "unknown"
+        if (b.get("rate") is not None and d.get("rate") is not None):
+            delta = "%+.0f pp" % ((b["rate"] - d["rate"]) * 100)
+        else:
+            delta = "-"
+        trange = "%d-%s" % (lo, "inf" if hi is None else hi)
+        rate = ("%.0f%%" % (b["rate"] * 100)) if b.get("rate") is not \
+            None else "-"
+        lines.append("| %s | %s | %d | %d | %s | %s | %s |"
+                     % (name, trange, b.get("cells", 0),
+                        b.get("closed", 0), rate, dev_txt, delta))
+    q_pin = quality.get("pin_access") or {}
+    q_run = quality.get("runtime_s") or {}
+    mix = quality.get("engine_mix") or {}
+    lines += [
+        "",
+        "**Quality panel** (closed cells): engine mix %s; median pin "
+        "access %s (n=%d); runtime p50 %s s / p90 %s s / max %s s (n=%d). "
+        "Width ratios vs ASTRAN: n/a on hold-out by design (no "
+        "baselines exist for these cells)." % (
+            ", ".join("%s x%d" % kv for kv in sorted(mix.items())) or "none",
+            ("%.3f" % q_pin["median"]) if q_pin.get("median") is not None
+            else "n/a", q_pin.get("n") or 0,
+            _fmt_um(q_run.get("p50")) if q_run.get("p50") is not None
+            else "-", _fmt_um(q_run.get("p90")) if q_run.get("p90")
+            is not None else "-",
+            _fmt_um(q_run.get("max")) if q_run.get("max") is not None
+            else "-", q_run.get("n") or 0),
+        "",
+        "| cell | T | band | engine | closure | verify | sanity | um | "
+        "pin | run s |",
+        "|---|---|---|---|---|---|---|---|---|---|",
+    ]
+    for r in sorted(report["cells"], key=lambda r: (r["T"], r["name"])):
+        quality = r.get("quality") or {}
+        pin = (quality.get("pin_access") or {}).get("score")
+        run_s = (quality.get("runtime_s") or {}).get("total")
+        closed = r["status"] in ("ok", "cached")
+        verdicts = r.get("verdicts") or {}
+
+        def _flag(v):
+            if (v.get("ok") is True):
+                return "ok"
+            if (v.get("ok") is False):
+                return "FAIL"
+            return "n/a" if v.get("ok") is None else "-"
+
+        lines.append(
+            "| %s | %d | %s | %s | %s | %s | %s | %s | %s | %s |"
+            % (r["name"], r["T"], size_band(r["T"]) or "-",
+               r.get("engine") or "-",
+               "closed" if closed else "OPEN (%s)" % r["status"],
+               _flag(verdicts.get("verify", {})),
+               _flag(verdicts.get("sanity", {})),
+               _fmt_um(r.get("python_um")),
+               ("%.2f" % pin) if isinstance(pin, (int, float)) else "-",
+               ("%.0f" % run_s) if isinstance(run_s, (int, float))
+               else "-"))
+    if (dev_bands is None):
+        lines += ["", "_Development-set rates unavailable (%s not found); "
+                  "the comparison band is empty -- regenerate the 49-cell "
+                  "report first._" % DEV_REPORT_PATH]
+    lines += ["", "## Honest failure diagnoses", ""]
+    for r in sorted(report["cells"], key=lambda r: (r["T"], r["name"])):
+        if (r["status"] in ("ok", "cached")):
+            continue
+        note = (r.get("note") or "")[:300]
+        lines.append("- **%s** (T=%d, %s): %s"
+                     % (r["name"], r["T"], size_band(r["T"]) or "-",
+                        note or r["status"]))
     return "\n".join(lines) + "\n"
