@@ -241,6 +241,10 @@ _ROW_OF_TRACK = {0: (False, 0), 2: (False, 1), 4: (True, 0), 6: (True, 1)}
 
 _M1, _M2, _PJ, _G, _HUB, _PIN = "M1", "M2", "PJ", "G", "HUB", "PIN"
 
+#: default for the per-net precomputed _allow image (a net with no denied
+#: poly-jump point): one shared empty frozenset, never mutated
+_EMPTY_FROZEN = frozenset()
+
 
 def track_positions(height_um=2.47, grid_um=0.19):
     """(trackY, barY): y-centres of the routing tracks and the bar domain.
@@ -400,6 +404,94 @@ class _RouteGrid(object):
         self.attempts_used = 0
         self.conflict_trace = []    # (attempt, conflicts, conflicted names)
         self._build()
+        # reverse tree-membership index (performance only; see
+        # _index_add/_index_discard): {node id: {net index}} -- the exact
+        # reverse of {net: net.tree} over self.nets + self.power, kept in
+        # lockstep with every tree mutation so the foreign-tree membership
+        # tests in _complete_junctions/_claimable are O(1) instead of a
+        # full scan of every other net's tree per net per attempt.  Trees
+        # are duplicate-free lists (every append is guarded by a seen-set:
+        # _bfs_route's visited, _complete_junctions' mine, _solidify's
+        # have), so add/discard pairs stay balanced; the trees themselves
+        # remain the only truth -- the index never feeds a decision the
+        # trees contradict, so behaviour is byte-identical.
+        self._rev = {}
+        for net in self.nets + self.power:
+            for nid in net.tree:
+                self._index_add(nid, net.index)
+        # static power-tree sets for _post_pass (built lazily on first
+        # use; power trees never change after _build)
+        self._power_tree_sets = None
+        self._net_by_idx = {net.index: net for net in self.nets}
+        self._prepare_hot()
+
+    def _prepare_hot(self):
+        """Precomputed lookup structures for the negotiation's hot loops.
+
+        Pure images of build-time state -- nodes and arcs are never
+        created or rewired after _build -- so every table read below is
+        exactly the dict lookup it replaces and the solver's decisions
+        (arc order = the A* tie-break, pushed heap tuples, bump
+        multisets) stay byte-for-byte the pre-tuning ones:
+
+        - _m1_tab/_m2_tab: [track][col] -> node id (the full (t, c)
+          domain is materialized by _build);
+        - _pj_tab: {row track: [col] -> node id} (same);
+        - _adj: node id -> tuple of (neighbour, arc cost, arc index) in
+          the node's own arc order -- the BFS arc loop with the neighbour
+          side pre-resolved;
+        - _pj_denied: net name -> frozenset of PJ node ids _allow rejects
+          for it (poly-span blocks and field/gate legality are static
+          per (net, point));
+        - _name_by_index: net index -> name (the _net_name linear scan,
+          cached).
+        """
+        width = self.width_cols
+        idmap = self._id
+        self._m1_tab = [[idmap[(_M1, t, c)] for c in range(width)]
+                        for t in range(N_TRACKS)]
+        self._m2_tab = [[idmap[(_M2, t, c)] for c in range(width)]
+                        for t in range(N_TRACKS)]
+        self._pj_tab = {t: [idmap[(_PJ, t, c)] for c in range(width)]
+                        for t in sorted(ROW_TRACKS)}
+        adj = [None] * len(self.graph)
+        arcs = self.arcs
+        for nid, node in enumerate(self.graph):
+            row = []
+            for ai in node.arcs:
+                arc = arcs[ai]
+                row.append((arc.n2 if arc.n1 == nid else arc.n1,
+                            arc.cost, ai))
+            adj[nid] = tuple(row)
+        self._adj = adj
+        # _allow's per-net verdict for every poly-jump point, precomputed:
+        # denied(net, pj) <=> (spanning and spanning != {net}) or
+        # (not field and not (net has a gate at the column)).  The
+        # ``(t, c) not in _poly_span`` arm of _allow is dead -- the PJ
+        # node domain IS _poly_span's domain -- and the assert pins it.
+        assert len(self._poly_span) == len(ROW_TRACKS) * width
+        gate_at = set()
+        for gname, cols in self.gate_nets_at.items():
+            for c in cols:
+                gate_at.add((gname, c))
+        denied = {}
+        for (t, c), spanning in self._poly_span.items():
+            pid = idmap[(_PJ, t, c)]
+            field_ok = c in self.field[t]
+            for net in self.nets:
+                if ((spanning and spanning != frozenset((net.name,)))
+                        or (not field_ok and (net.name, c) not in gate_at)):
+                    s = denied.get(net.name)
+                    if (s is None):
+                        denied[net.name] = {pid}
+                    else:
+                        s.add(pid)
+        for net in self.nets:
+            denied.setdefault(net.name, ())
+        self._pj_denied = {name: frozenset(s)
+                           for name, s in denied.items()}
+        self._name_by_index = {net.index: net.name
+                               for net in self.nets + self.power}
 
     # ---------------- graph construction ----------------
 
@@ -438,10 +530,10 @@ class _RouteGrid(object):
             net.nodes.append(nid)
 
     def _net_name(self, index):
-        for net in self.nets + self.power:
-            if (net.index == index):
-                return net.name
-        return "?%d" % index
+        # the linear scan over nets+power is cached in _name_by_index
+        # (identical outputs: indexes are unique across both registries)
+        name = self._name_by_index.get(index)
+        return name if (name is not None) else "?%d" % index
 
     def _build(self):
         netlist, placement, width = (self.netlist, self.placement,
@@ -824,29 +916,29 @@ class _RouteGrid(object):
         mine = set(net.tree)
         # foreign tree membership: a point can be free (net == -1, e.g. the
         # owner ripped up) while still living in another net's tree from
-        # its last route -- the share is with that tree either way
-        foreign_tree = {}
-        for other in self.nets + self.power:
-            if (other is net):
-                continue
-            for nid in other.tree:
-                foreign_tree[nid] = other.index
+        # its last route -- the share is with that tree either way.  The
+        # reverse index (self._rev, maintained at every tree mutation)
+        # answers the same membership in O(1): _foreign_member(nid,
+        # net.index) is exactly the old foreign_tree's ``nid in ...`` over
+        # a fresh scan of every other net's tree.
         adds = []
         crossed_g = set()
+        m1_tab, m2_tab = self._m1_tab, self._m2_tab
+        pj_tab = self._pj_tab
+        width = self.width_cols
         for nid in net.tree:
             kind = self.graph[nid].kind
             if (kind[0] != _G):
                 continue
             c, gname = kind[1], kind[2]
             for t in self.gate_tracks.get((gname, c), ()):
-                if (self._m1(t, c) in mine):
-                    adds.append((self._m1(t, c + 1), self._m1(t, c)))
+                if (m1_tab[t][c] in mine):
+                    adds.append((m1_tab[t][c + 1], m1_tab[t][c]))
                     crossed_g.add(nid)
                     break
                 if (t in ROW_TRACKS
-                        and self._node((_PJ, t, c)) in mine):
-                    adds.append((self._node((_PJ, t, c + 1)),
-                                 self._node((_PJ, t, c))))
+                        and pj_tab[t][c] in mine):
+                    adds.append((pj_tab[t][c + 1], pj_tab[t][c]))
                     crossed_g.add(nid)
                     break
         if (self.slot):
@@ -857,70 +949,121 @@ class _RouteGrid(object):
                 if (kind[0] != _G):
                     continue
                 fallback = self._gate_crossing_fallback(
-                    net, kind[2], kind[1], mine, foreign_tree)
+                    net, kind[2], kind[1], mine)
                 if (fallback is not None):
                     adds.extend(fallback)
-        for t in range(N_TRACKS):
-            for c in range(self.width_cols):
-                m1c, m2c = self._m1(t, c), self._node((_M2, t, c))
-                if (m1c not in mine or m2c not in mine):
-                    continue
-                if (c > 0 and self._m1(t, c - 1) in mine
-                        and c + 1 < self.width_cols):
-                    adds.append((self._node((_M2, t, c + 1)), m1c))
-                elif (c > 0 and self._node((_M2, t, c - 1)) in mine
-                      and c + 1 < self.width_cols):
-                    adds.append((self._m1(t, c + 1), m2c))
-                elif (c + 1 < self.width_cols and self._m1(t, c + 1) in mine
-                      and c > 0):
-                    adds.append((self._node((_M2, t, c - 1)), m1c))
-                elif (c + 1 < self.width_cols
-                      and self._node((_M2, t, c + 1)) in mine and c > 0):
-                    adds.append((self._m1(t, c - 1), m2c))
+        # via completion (tree-collected M2 points, sorted -- the exact
+        # (t, c) order the full-grid scan enumerated, which fixes which
+        # triggering pair credits a doubly-demanded endpoint first; the
+        # id tables replace the tuple-dict lookups)
+        pts = []
+        for nid in net.tree:
+            kind = self.graph[nid].kind
+            if (kind[0] == _M2):
+                pts.append((kind[1], kind[2]))
+        for t, c in sorted(pts):
+            m1c, m2c = m1_tab[t][c], m2_tab[t][c]
+            if (m1c not in mine):
+                continue
+            if (c > 0 and m1_tab[t][c - 1] in mine
+                    and c + 1 < width):
+                adds.append((m2_tab[t][c + 1], m1c))
+            elif (c > 0 and m2_tab[t][c - 1] in mine
+                  and c + 1 < width):
+                adds.append((m1_tab[t][c + 1], m2c))
+            elif (c + 1 < width and m1_tab[t][c + 1] in mine
+                  and c > 0):
+                adds.append((m2_tab[t][c - 1], m1c))
+            elif (c + 1 < width
+                  and m2_tab[t][c + 1] in mine and c > 0):
+                adds.append((m1_tab[t][c - 1], m2c))
         bumps = []
         for nid, trigger in adds:
             if (nid in mine):
                 continue
             mine.add(nid)
             net.tree.append(nid)
+            self._index_add(nid, net.index)
             onet = self.graph[nid].net
-            if (onet not in (-1, net.index) or nid in foreign_tree):
+            if (onet not in (-1, net.index)
+                    or self._foreign_member(nid, net.index)):
                 bumps.append(trigger)
         return bumps
 
-    def _gate_crossing_fallback(self, net, gname, c, mine, foreign_tree):
+    def _gate_crossing_fallback(self, net, gname, c, mine):
         """Crossing endpoints for one un-crossed tree gate (slot model).
 
         Returns [(new_node, trigger_node), ...] or None.  Poly jump
         first, M1 second; the smallest qualifying track wins.  Both
         endpoints must be claimable by ``net`` (unowned or already its
-        own, and not living in another net's tree).
+        own, and not living in another net's tree -- _claimable, served
+        from the reverse index).
         """
         for t in self.gate_tracks.get((gname, c), ()):
             if (t in ROW_TRACKS and c + 1 < self.width_cols
                     and (c + 1) in self.field[t]
                     and self._poly_span[(t, c)] <= frozenset((net.name,))
-                    and self._claimable(self._node((_PJ, t, c)), net,
-                                        mine, foreign_tree)
+                    and self._claimable(self._node((_PJ, t, c)), net, mine)
                     and self._claimable(self._node((_PJ, t, c + 1)), net,
-                                        mine, foreign_tree)):
+                                        mine)):
                 g = self._node((_G, c, gname))
                 return [(self._node((_PJ, t, c + 1)), g),
                         (self._node((_PJ, t, c)), g)]
         for t in self.gate_tracks.get((gname, c), ()):
             if (c + 1 < self.width_cols
-                    and self._claimable(self._m1(t, c), net, mine,
-                                        foreign_tree)
-                    and self._claimable(self._m1(t, c + 1), net, mine,
-                                        foreign_tree)):
+                    and self._claimable(self._m1(t, c), net, mine)
+                    and self._claimable(self._m1(t, c + 1), net, mine)):
                 g = self._node((_G, c, gname))
                 return [(self._m1(t, c), g), (self._m1(t, c + 1), g)]
         return None
 
-    def _claimable(self, nid, net, mine, foreign_tree):
-        """Whether ``net`` may take ``nid`` without a permanent conflict."""
+    def _index_add(self, nid, nidx):
+        """Record nid as a member of net nidx's tree (see __init__)."""
+        members = self._rev.get(nid)
+        if (members is None):
+            self._rev[nid] = {nidx}
+        else:
+            members.add(nidx)
+
+    def _index_discard(self, nid, nidx):
+        """Drop nid from net nidx's tree membership (see __init__)."""
+        members = self._rev.get(nid)
+        if (members is not None):
+            members.discard(nidx)
+            if (not members):
+                del self._rev[nid]
+
+    def _index_rebuild(self):
+        """Recompute the reverse tree-membership index from the trees."""
+        rev = {}
+        for net in self.nets + self.power:
+            nidx = net.index
+            for nid in net.tree:
+                members = rev.get(nid)
+                if (members is None):
+                    rev[nid] = {nidx}
+                else:
+                    members.add(nidx)
+        self._rev = rev
+
+    def _foreign_member(self, nid, nidx):
+        """Whether some OTHER net's tree contains nid (the old
+        foreign_tree membership test, served from the reverse index)."""
+        members = self._rev.get(nid)
+        return (members is not None
+                and (len(members) > 1 or nidx not in members))
+
+    def _claimable(self, nid, net, mine):
+        """Whether ``net`` may take ``nid`` without a permanent conflict.
+
+        Unowned-or-own point that lives in no other net's tree (the
+        reverse-index form of the old foreign_tree membership test)."""
         node = self.graph[nid]
-        return (node.net in (-1, net.index) and nid not in foreign_tree)
+        if (node.net not in (-1, net.index)):
+            return False
+        members = self._rev.get(nid)
+        return (members is None
+                or (len(members) == 1 and net.index in members))
 
     def _bfs_route(self, net, tree, label, attempt, max_cost=0,
                    definitive=True, strict=False):
@@ -929,51 +1072,74 @@ class _RouteGrid(object):
         Multi-source A* from the current tree to the closest not-yet-tree
         terminal.  Deterministic priority queue: (cost, node id, insertion
         counter).  Returns the path cost or -1 when no path exists.
+
+        Performance: this is the negotiation's inner loop (one search per
+        terminal per re-routed net per attempt), so the relaxation runs on
+        the precomputed neighbour tuples (self._adj), the inlined
+        GraphRouter::calcCost and the precomputed _allow image
+        (self._pj_denied) -- all pure build-time data, so the pushed
+        tuples, and with them the pop order and the resulting paths, are
+        exactly the pre-tuning ones.
         """
         graph = self.graph
+        adj = self._adj
         target = net.index
+        denied = self._pj_denied.get(net.name, _EMPTY_FROZEN)
+        attempt1 = attempt == 1
+        # local bindings for the ~1e8-iteration inner loop: pure accessor
+        # aliases, no behavioural change (the heap discipline -- seed
+        # heapify, then append + heappop -- is kept EXACTLY; it is not a
+        # min-first queue, and the whole solver's byte-identity rides on
+        # its precise pop sequence)
+        heappop = heapq.heappop
         trace = {}                          # node -> (father, arc)
         visited = set(tree)
         heap = []
+        push = heap.append
         seq = 0
         for nd in tree:
-            heap.append((0, nd, seq, -1, -1))
+            push((0, nd, seq, -1, -1))
             seq += 1
         heapq.heapify(heap)
         found = -1
         found_cost = 0
         while heap:
-            cost, node, _seq, father, arc_id = heapq.heappop(heap)
+            cost, node, _seq, father, arc_id = heappop(heap)
+            gnode = graph[node]
             if (father != -1 and node in visited):
                 # stale duplicate: the C++ loop condition still tests it
-                if (graph[node].net == target):
+                if (gnode.net == target):
                     found, found_cost = node, cost
                     break
                 continue
             if (father != -1):
                 visited.add(node)
                 trace[node] = (father, arc_id)
-                if (graph[node].net == target):
+                if (gnode.net == target):
                     found, found_cost = node, cost
                     break
-            for arc_idx in graph[node].arcs:
-                arc = self.arcs[arc_idx]
-                other = arc.n2 if arc.n1 == node else arc.n1
+            for other, acost, arc_idx in adj[node]:
                 if (other in visited):
                     continue
                 onode = graph[other]
-                if (onode.source and onode.net != target):
+                onet = onode.net
+                if (onode.source and onet != target):
                     continue                # foreign terminal: always blocked
-                if (strict and onode.net not in (-1, target)):
+                if (strict and onet != -1 and onet != target):
                     continue                # bfsRoute2: overlap-free
-                if (arc.lock_net not in (-1, target)):
-                    continue
-                if (not self._allow(net, other, node)):
-                    continue
-                ncost = self._calc_cost(arc, other, attempt) + cost
+                # arc.lock_net is never assigned anywhere (graphrouter.h
+                # t_arc, unused here), so the C++ lock filter is a
+                # constant pass-through -- no branch needed
+                if (other in denied):
+                    continue                # the _allow rule, precomputed
+                if (attempt1):
+                    ncost = cost + acost + onode.history
+                else:
+                    ncost = (cost + acost
+                             + onode.history * (onode.nr_nets + 1))
                 if (max_cost and ncost > max_cost):
                     continue
-                heap.append((ncost, other, seq, node, arc_idx))
+                push((ncost, other, seq, node, arc_idx))
                 seq += 1
         if (found == -1):
             return -1
@@ -986,6 +1152,11 @@ class _RouteGrid(object):
                 break
             father, arc_idx = entry
             tree.append(node)
+            if (tree is net.tree):
+                # a definitive grow appends to the net's own tree: the
+                # reverse index must follow (_prim passes a LOCAL tree and
+                # is excluded by the identity test)
+                self._index_add(node, target)
             if (definitive):
                 self.arcs[arc_idx].label = label
                 if (strict):
@@ -1038,11 +1209,13 @@ class _RouteGrid(object):
                 fill.extend(range(n_side[0], n_side[-1] + 1))
             elif (p_side):
                 fill.extend(range(p_side[0], p_side[-1] + 1))
+            m1_tab = self._m1_tab
             for t in fill:
-                nid = self._m1(t, c)
+                nid = m1_tab[t][c]
                 if (nid not in have):
                     have.add(nid)
                     net.tree.append(nid)
+                    self._index_add(nid, net.index)
 
     def _m2_bridges_slots(self, tracks, net):
         """Whether the net's M2 nodes at one column form a contiguous run
@@ -1121,6 +1294,7 @@ class _RouteGrid(object):
             net.nodes, net.tree, net.conflict = state
         for arc, label in zip(self.arcs, labels):
             arc.label = label
+        self._index_rebuild()
 
     def _optimize_sweeps(self):
         """GraphRouter::optimize x STEINER_SWEEPS (autocell2.cpp:472).
@@ -1151,10 +1325,12 @@ class _RouteGrid(object):
                         node.nr_nets -= 1
                         if (not node.source):
                             node.net = -1
+                        self._index_discard(nid, net.index)
                     net.tree = []
                     if (len(net.nodes) > 2):
                         nr_steiners += self._add_steiner(net, self._label)
                     net.tree = [net.nodes[0]]
+                    self._index_add(net.nodes[0], net.index)
                     ok = 0
                     for _ in range(len(net.nodes) - 1):
                         ok = self._bfs_route(net, net.tree, self._label,
@@ -1194,12 +1370,24 @@ class _RouteGrid(object):
         tree_set = {}
         for net in self.nets:
             tree_set[net.index] = set(net.tree)
-        # power stripes participate in node conflicts (immovable occupancy)
-        for net in self.power:
-            tree_set[net.index] = set(net.tree)
+        # power stripes participate in node conflicts (immovable
+        # occupancy); their trees are static after _build, so the sets
+        # are built once and reused (identical content; every consumer
+        # below is membership-only or order-independent -- rule (a)
+        # iterates the sorted index keys)
+        if (self._power_tree_sets is None):
+            self._power_tree_sets = {net.index: frozenset(net.tree)
+                                     for net in self.power}
+        tree_set.update(self._power_tree_sets)
 
         def bump(nid):
             bumps.append(nid)
+
+        # the precomputed id tables serve every rule below (pure images
+        # of _build; same node ids the _m1/_node lookups returned)
+        width = self.width_cols
+        m1_tab, m2_tab = self._m1_tab, self._m2_tab
+        pj_tab = self._pj_tab
 
         # (a) node conflicts (graphrouter.cpp:145-154)
         owner_nets = {}
@@ -1224,7 +1412,7 @@ class _RouteGrid(object):
             lo_t, hi_t = ((0, BOUNDARY_T) if slot == 0
                           else (BOUNDARY_T, N_TRACKS - 1))
             for t in range(lo_t, hi_t + 1):
-                bump(self._m1(t, c))
+                bump(m1_tab[t][c])
 
         # (c) every tree gate node needs a crossing segment (t, c):
         # points (t, c) and (t, c+1) of the gate net, on M1 or poly
@@ -1237,12 +1425,13 @@ class _RouteGrid(object):
                 c, gname = kind[1], kind[2]
                 ok = False
                 for t in self.gate_tracks.get((gname, c), ()):
-                    if (self._m1(t, c) in mine and self._m1(t, c + 1) in mine):
+                    if (m1_tab[t][c] in mine
+                            and m1_tab[t][c + 1] in mine):
                         ok = True
                         break
                     if (t in ROW_TRACKS
-                            and self._node((_PJ, t, c)) in mine
-                            and self._node((_PJ, t, c + 1)) in mine):
+                            and pj_tab[t][c] in mine
+                            and pj_tab[t][c + 1] in mine):
                         ok = True
                         break
                 if (not ok):
@@ -1251,11 +1440,11 @@ class _RouteGrid(object):
                     # bump the merge points the net actually used at the
                     # gate column so the negotiation moves the crossing
                     for t in self.gate_tracks.get((gname, c), ()):
-                        if (self._m1(t, c) in mine):
-                            bump(self._m1(t, c))
+                        if (m1_tab[t][c] in mine):
+                            bump(m1_tab[t][c])
                         if (t in ROW_TRACKS
-                                and self._node((_PJ, t, c)) in mine):
-                            bump(self._node((_PJ, t, c)))
+                                and pj_tab[t][c] in mine):
+                            bump(pj_tab[t][c])
                     # a gate-only net's tree holds no crossing points at
                     # all (its only terminal is the gate node), so the
                     # bumps above price nothing; without pricing the
@@ -1275,9 +1464,9 @@ class _RouteGrid(object):
                         for cc in (c, c + 1):
                             if (not (0 <= cc < self.width_cols)):
                                 continue
-                            cands = [self._m1(t, cc)]
+                            cands = [m1_tab[t][cc]]
                             if (t in ROW_TRACKS):
-                                cands.append(self._node((_PJ, t, cc)))
+                                cands.append(pj_tab[t][cc])
                             for nid in cands:
                                 blockers = [u for u in
                                             owner_nets.get(nid, ())
@@ -1296,103 +1485,136 @@ class _RouteGrid(object):
         # via a vertical neighbour or an M2 segment endpoint).  A pair
         # with a dead side is dead metal: violation, bumped on both
         # endpoints so the negotiation extends or drops it.
+        # Performance: the candidate (t, c) pairs are collected from the
+        # net's TREE (a pair needs both points in the tree) and walked in
+        # sorted (t, c) order -- the identical enumeration the full-grid
+        # scan produced -- with the precomputed id tables replacing the
+        # tuple-dict lookups; the violation set is unchanged.
         for net in self.nets:
             mine = tree_set[net.index]
             node_m1 = set(nid for nid in net.nodes
                           if self.graph[nid].kind[0] == _M1)
-            for t in range(N_TRACKS):
-                for c in range(self.width_cols):
-                    m1c, m2c = self._m1(t, c), self._node((_M2, t, c))
-                    if (m1c not in mine or m2c not in mine):
-                        continue
-                    if (c > 0 and c < self.width_cols - 1
-                            and ((self._m1(t, c - 1) in mine
-                                  and self._node((_M2, t, c + 1)) in mine)
-                                 or (self._node((_M2, t, c - 1)) in mine
-                                     and self._m1(t, c + 1) in mine))):
-                        continue            # both-side segment via
-                    if (not self.metal2_verticals):
-                        # phase 1: the pre-freedom rule -- an M1|M2 pair
-                        # must be a both-side segment via
-                        conflicts += 1
-                        conflicted.add(net.index)
-                        bump(m2c)
-                        continue
-                    m1_real = (
-                        (c > 0 and self._m1(t, c - 1) in mine)
-                        or (c + 1 < self.width_cols
-                            and self._m1(t, c + 1) in mine)
-                        or (t > 0 and self._m1(t - 1, c) in mine)
-                        or (t + 1 < N_TRACKS
-                            and self._m1(t + 1, c) in mine)
-                        or m1c in node_m1)
-                    m2_real = (
-                        (c > 0 and self._node((_M2, t, c - 1)) in mine)
-                        or (c + 1 < self.width_cols
-                            and self._node((_M2, t, c + 1)) in mine)
-                        or (t > 0 and self._node((_M2, t - 1, c)) in mine)
-                        or (t + 1 < N_TRACKS
-                            and self._node((_M2, t + 1, c)) in mine))
-                    if (m1_real and m2_real):
-                        continue            # node via: both sides real
+            pairs = []
+            for nid in net.tree:
+                kind = self.graph[nid].kind
+                if (kind[0] == _M2):
+                    pairs.append((kind[1], kind[2]))
+            for t, c in sorted(pairs):
+                m2c = m2_tab[t][c]
+                m1c = m1_tab[t][c]
+                if (m1c not in mine):
+                    continue
+                if (c > 0 and c < width - 1
+                        and ((m1_tab[t][c - 1] in mine
+                              and m2_tab[t][c + 1] in mine)
+                             or (m2_tab[t][c - 1] in mine
+                                 and m1_tab[t][c + 1] in mine))):
+                    continue            # both-side segment via
+                if (not self.metal2_verticals):
+                    # phase 1: the pre-freedom rule -- an M1|M2 pair
+                    # must be a both-side segment via
                     conflicts += 1
                     conflicted.add(net.index)
-                    bump(m1c)
                     bump(m2c)
+                    continue
+                m1_real = (
+                    (c > 0 and m1_tab[t][c - 1] in mine)
+                    or (c + 1 < width and m1_tab[t][c + 1] in mine)
+                    or (t > 0 and m1_tab[t - 1][c] in mine)
+                    or (t + 1 < N_TRACKS and m1_tab[t + 1][c] in mine)
+                    or m1c in node_m1)
+                m2_real = (
+                    (c > 0 and m2_tab[t][c - 1] in mine)
+                    or (c + 1 < width and m2_tab[t][c + 1] in mine)
+                    or (t > 0 and m2_tab[t - 1][c] in mine)
+                    or (t + 1 < N_TRACKS and m2_tab[t + 1][c] in mine))
+                if (m1_real and m2_real):
+                    continue            # node via: both sides real
+                conflicts += 1
+                conflicted.add(net.index)
+                bump(m1c)
+                bump(m2c)
 
-        # (e) poly jump pairs: right end over field oxide
+        # (e) poly jump pairs: right end over field oxide (tree-collected
+        # PJ points, sorted -- the identical enumeration; see (d))
+        field = self.field
         for net in self.nets:
             mine = tree_set[net.index]
-            for t in sorted(ROW_TRACKS):
-                for c in range(self.width_cols - 1):
-                    if (self._node((_PJ, t, c)) in mine
-                            and self._node((_PJ, t, c + 1)) in mine
-                            and c + 1 not in self.field[t]):
-                        conflicts += 1
-                        conflicted.add(net.index)
-                        bump(self._node((_PJ, t, c)))
-                        bump(self._node((_PJ, t, c + 1)))
+            pts = []
+            for nid in net.tree:
+                kind = self.graph[nid].kind
+                if (kind[0] == _PJ):
+                    pts.append((kind[1], kind[2]))
+            for t, c in sorted(pts):
+                right = pj_tab[t][c + 1] if (c + 1 < width) else None
+                if (right is not None and right in mine
+                        and c + 1 not in field[t]):
+                    conflicts += 1
+                    conflicted.add(net.index)
+                    bump(pj_tab[t][c])
+                    bump(right)
 
-        # (f) no M1|M2 double-layer segment (one hseg slot per (t, c))
+        # (f) no M1|M2 double-layer segment (one hseg slot per (t, c));
+        # tree-collected M2 points, sorted -- the identical enumeration
         for net in self.nets:
             mine = tree_set[net.index]
-            for t in range(N_TRACKS):
-                for c in range(self.width_cols - 1):
-                    if (all(self._node(k) in mine for k in
-                            ((_M1, t, c), (_M1, t, c + 1),
-                             (_M2, t, c), (_M2, t, c + 1)))):
-                        conflicts += 1
-                        conflicted.add(net.index)
-                        bump(self._node((_M2, t, c)))
+            pts = []
+            for nid in net.tree:
+                kind = self.graph[nid].kind
+                if (kind[0] == _M2):
+                    pts.append((kind[1], kind[2]))
+            for t, c in sorted(pts):
+                if (c + 1 < width
+                        and m1_tab[t][c] in mine
+                        and m1_tab[t][c + 1] in mine
+                        and m2_tab[t][c + 1] in mine):
+                    conflicts += 1
+                    conflicted.add(net.index)
+                    bump(m2_tab[t][c])
 
         # (g) one hseg slot per (t, c): the vocabulary cannot express an
         # M1 segment and a poly/M2 segment of *different* nets in the same
         # slot (same-net double layers are (f); same-layer sharing shows
-        # up as point conflicts)
+        # up as point conflicts).  The layer of a net's (t, c) slot keeps
+        # the original if/elif priority (M1, then PJ, then M2) via the
+        # set differences below, so each net appends at most one entry
+        # per slot and the per-slot user lists are exactly the scan's.
         slots = {}
         for net in self.nets:
             mine = tree_set[net.index]
-            for t in range(N_TRACKS):
-                for c in range(self.width_cols - 1):
-                    if (self._m1(t, c) in mine
-                            and self._m1(t, c + 1) in mine):
-                        lay = "M1"
-                    elif (t in ROW_TRACKS
-                          and self._node((_PJ, t, c)) in mine
-                          and self._node((_PJ, t, c + 1)) in mine):
-                        lay = "PJ"
-                    elif (self._node((_M2, t, c)) in mine
-                          and self._node((_M2, t, c + 1)) in mine):
-                        lay = "M2"
-                    else:
-                        continue
-                    slots.setdefault((t, c), []).append((net.index, lay))
+            m1s = set()
+            pjs = set()
+            m2s = set()
+            for nid in net.tree:
+                kind = self.graph[nid].kind
+                tag = kind[0]
+                if (tag == _M1):
+                    tc = (kind[1], kind[2])
+                    if (tc[1] + 1 < width
+                            and m1_tab[tc[0]][tc[1] + 1] in mine):
+                        m1s.add(tc)
+                elif (tag == _PJ):
+                    tc = (kind[1], kind[2])
+                    if (tc[1] + 1 < width
+                            and pj_tab[tc[0]][tc[1] + 1] in mine):
+                        pjs.add(tc)
+                elif (tag == _M2):
+                    tc = (kind[1], kind[2])
+                    if (tc[1] + 1 < width
+                            and m2_tab[tc[0]][tc[1] + 1] in mine):
+                        m2s.add(tc)
+            for tc in m1s:
+                slots.setdefault(tc, []).append((net.index, "M1"))
+            for tc in pjs - m1s:
+                slots.setdefault(tc, []).append((net.index, "PJ"))
+            for tc in m2s - m1s - pjs:
+                slots.setdefault(tc, []).append((net.index, "M2"))
         for (t, c), users in sorted(slots.items()):
             if (len(users) > 1
                     and len(set(lay for _n, lay in users)) > 1):
                 conflicts += 1
                 conflicted.update(n for n, _lay in users)
-                bump(self._m1(t, c))
+                bump(m1_tab[t][c])
 
         # (h) the pin-hub network is a single stub, never a connector: the
         # BFS has no hub or pin geometry, so a tree path hopping
@@ -1463,10 +1685,9 @@ class _RouteGrid(object):
         return conflicts, conflicted, bumps
 
     def _net_by_index(self, index):
-        for net in self.nets:
-            if (net.index == index):
-                return net
-        return None
+        # cached net lookup (the linear scan over self.nets, indexed --
+        # identical result; only signal nets are ever requested here)
+        return self._net_by_idx.get(index)
 
     def route(self, max_attempts=MAX_ATTEMPTS):
         """GraphRouter::routeNets port (graphrouter.cpp:92-184).
@@ -1487,6 +1708,7 @@ class _RouteGrid(object):
                          if self.graph[nid].source == 1]
             net.tree = []
             net.conflict = False
+        self._index_rebuild()
         for arc in self.arcs:
             arc.label = -1
 
@@ -1508,7 +1730,9 @@ class _RouteGrid(object):
                         node.nr_nets -= 1
                         if (not node.source and node.net == net.index):
                             node.net = -1
+                        self._index_discard(nid, net.index)
                     net.tree = [net.nodes[0]]
+                    self._index_add(net.nodes[0], net.index)
                     # grow to all terminals (graphrouter.cpp:128-134)
                     ok = 0
                     for _ in range(len(net.nodes) - 1):
@@ -1630,7 +1854,7 @@ class _RouteGrid(object):
                 if (not run):
                     continue
                 if (len(run) < 2 and not any(
-                        self._m1(t, c) in access[nidx] for t in run)):
+                        self._m1_tab[t][c] in access[nidx] for t in run)):
                     continue
                 name = self._net_name(nidx)
                 lo = 0 if name in GND_NAMES else run[0] + 1
@@ -1809,16 +2033,28 @@ class _RouteGrid(object):
                     # or hard-fail territory): report, don't cut-test
                     walled.append((net.name, self._term_label(t1)))
                     continue
+                # the corridor cut candidates, once per t1 (cage1's set
+                # order); each banned-cage is a pure function of
+                # (net, t1, nid), so it is computed once and shared by
+                # every t2 -- the same fixpoint the per-t2 recomputation
+                # produced, O(corridor) instead of O(terms x corridor)
+                corridor = []
+                for nid in cage1:
+                    kind = self.graph[nid].kind
+                    if (kind[0] == _M1 and kind[1] == BOUNDARY_T):
+                        corridor.append(nid)
+                banned_cache = {}
                 for t2 in terms:
                     if (t2 <= t1 or t2 not in cage1):
                         continue
-                    for nid in cage1:
-                        kind = self.graph[nid].kind
-                        if (kind[0] != _M1 or kind[1] != BOUNDARY_T):
-                            continue
-                        cage2 = self._cage(net.index, t1,
-                                           banned=frozenset((nid,)))
+                    for nid in corridor:
+                        cage2 = banned_cache.get(nid)
+                        if (cage2 is None):
+                            cage2 = self._cage(net.index, t1,
+                                               banned=frozenset((nid,)))
+                            banned_cache[nid] = cage2
                         if (t2 not in cage2):
+                            kind = self.graph[nid].kind
                             net_demands.setdefault(
                                 (kind[1], kind[2]),
                                 (net.name, self._term_label(t1)))
@@ -1861,39 +2097,62 @@ class _RouteGrid(object):
         via = {}
         m2v = {}
         m2via = {}
+        m1_tab, m2_tab = self._m1_tab, self._m2_tab
         for net in self.nets:               # sorted-name order
             mine = set(net.tree)
-            for t in range(N_TRACKS):
-                for c in range(width - 1):
-                    if (self._m1(t, c) in mine
-                            and self._m1(t, c + 1) in mine):
-                        hseg[(t, c)] = net.name
-                    elif (self._node((_M2, t, c)) in mine
-                          and self._node((_M2, t, c + 1)) in mine):
-                        hseg[(t, c)] = net.name
-                        m2[(t, c)] = True
-                    elif (t in ROW_TRACKS
-                          and self._node((_PJ, t, c)) in mine
-                          and self._node((_PJ, t, c + 1)) in mine):
-                        hseg[(t, c)] = net.name
-                        pj[(t, c)] = True
+            # the (t, c) candidates are collected from the tree -- every
+            # emitted key needs both points in the tree, so one pass over
+            # it replaces the full grid scans.  The per-slot layer keeps
+            # the scan's if/elif priority (M1, then M2, then poly) via
+            # the own/m2own skips, and all emitted dicts have disjoint
+            # keys, so the result is identical to the scan's.
+            m1s = set()
+            pjs = set()
+            m2s = set()
+            for nid in net.tree:
+                kind = self.graph[nid].kind
+                if (kind[0] == _M1):
+                    m1s.add((kind[1], kind[2]))
+                elif (kind[0] == _PJ):
+                    pjs.add((kind[1], kind[2]))
+                elif (kind[0] == _M2):
+                    m2s.add((kind[1], kind[2]))
+            own = set()
+            for tc in sorted(m1s):
+                t, c = tc
+                if (c + 1 < width and (t, c + 1) in m1s):
+                    hseg[tc] = net.name
+                    own.add(tc)
+            m2own = set()
+            for tc in sorted(m2s):
+                t, c = tc
+                if ((c + 1 < width and (t, c + 1) in m2s)
+                        and tc not in own):
+                    hseg[tc] = net.name
+                    m2[tc] = True
+                    m2own.add(tc)
+            for tc in sorted(pjs):
+                t, c = tc
+                if ((c + 1 < width and (t, c + 1) in pjs)
+                        and tc not in own and tc not in m2own):
+                    hseg[tc] = net.name
+                    pj[tc] = True
             # M1<->M2 junctions: the both-side segment pairs emit the
             # old via form; every other real pair (both sides own
             # drawable metal at the point -- the post-pass's node-via
-            # rule) emits a node via
-            for t in range(N_TRACKS):
-                for c in range(width):
-                    m1c, m2c = self._m1(t, c), self._node((_M2, t, c))
-                    if (m1c not in mine or m2c not in mine):
-                        continue
-                    if (c > 0 and c < width - 1
-                            and ((self._m1(t, c - 1) in mine
-                                  and self._node((_M2, t, c + 1)) in mine)
-                                 or (self._node((_M2, t, c - 1)) in mine
-                                     and self._m1(t, c + 1) in mine))):
-                        via[(t, c)] = True
-                    else:
-                        m2via[(t, c)] = True
+            # rule) emits a node via (tree-collected M2 points; the
+            # via/m2via keys are disjoint, order-independent)
+            for t, c in sorted(m2s):
+                if (m1_tab[t][c] not in mine):
+                    continue
+                if (c > 0 and c < width - 1
+                        and ((m1_tab[t][c - 1] in mine
+                              and m2_tab[t][c + 1] in mine)
+                             or (m2_tab[t][c - 1] in mine
+                                 and m1_tab[t][c + 1] in mine))):
+                    via[(t, c)] = True
+                else:
+                    m2via[(t, c)] = True
             # metal2 vertical spans: maximal contiguous M2 runs per
             # column (a run of one track is a segment endpoint or a
             # dead point -- never a span)
