@@ -53,12 +53,17 @@ def _strip_y(is_p, w_dev, height_um=HEIGHT_UM):
     return y1 - w_dev, y1
 
 
-def _gate_entries_by_col(ordering_p, ordering_n, leg_widths):
+def _gate_entries_by_col(ordering_p, ordering_n, leg_widths, x_offsets=None):
     """Column -> {row: (gate_net, device)}: the poly-stripe pass's map,
     shared by the stripe drawing, the gate-contact tracks and the
-    gate-only pin labels."""
-    gates = {P_ROW: row_gate_columns(ordering_p, leg_widths),
-             N_ROW: row_gate_columns(ordering_n, leg_widths)}
+    gate-only pin labels.  ``x_offsets`` shifts each row's gate columns
+    the way geometry.place_row shifted the placement (AUDIT 5.61)."""
+    if x_offsets is None:
+        x_offsets = (0, 0)
+    gates = {P_ROW: row_gate_columns(ordering_p, leg_widths,
+                                     x_offset=x_offsets[0]),
+             N_ROW: row_gate_columns(ordering_n, leg_widths,
+                                     x_offset=x_offsets[1])}
     by_col = {}
     for row, items in gates.items():
         for c, net, dev in items:
@@ -68,17 +73,25 @@ def _gate_entries_by_col(ordering_p, ordering_n, leg_widths):
 
 def cell_gds(netlist, placement, width_cols, ordering_p, ordering_n,
              leg_widths, route=None, cell_name="SYNTH", grid_um=GRID_UM,
-             height_um=HEIGHT_UM):
+             height_um=HEIGHT_UM, x_offsets=None):
     """Build a gdstk Library for one slot-model cell.
 
     ``placement`` maps Device -> PlacedTransistor (slot IR); the two
     orderings are the orientation-aware block sequences the placement
-    was built from.  Returns (library, pin_labels); pin_labels is
-    [(x, y, net)] (signal labels only when a route is supplied).
+    was built from.  ``x_offsets`` optionally supplies the per-row
+    x-offsets ``(p, n)`` geometry.place_row applied (AUDIT 5.61) -- the
+    three block walks below shift their origin by the same integers, so
+    strips, contacts and gate crossings draw where the placement put
+    them; None keeps both rows at column 0, the historical behaviour.
+    Returns (library, pin_labels); pin_labels is [(x, y, net)] (signal
+    labels only when a route is supplied).
     """
     if not ordering_p or not ordering_n:
         raise ValueError("both rows need at least one diffusion block")
+    if x_offsets is None:
+        x_offsets = (0, 0)
     orderings = {P_ROW: list(ordering_p), N_ROW: list(ordering_n)}
+    offs = {P_ROW: x_offsets[0], N_ROW: x_offsets[1]}
     w_um = width_um(width_cols, grid_um)
     edge_x = lambda e: ESCAPE_L_UM + e * grid_um          # noqa: E731
     trackY, barY = track_geometry(height_um, grid_um)
@@ -88,6 +101,30 @@ def cell_gds(netlist, placement, width_cols, ordering_p, ordering_n,
     def rect(x0, y0, x1, y1, layer):
         cell.add(gdstk.rectangle((x0, y0), (x1, y1), layer=layer))
 
+    def row_walk(row_ordering, off):
+        """[(member, c0, c1, first_edge, last_edge)] for one row: the
+        same blocks/breaks/member-run walk place_row performs, started
+        at the row's x-offset.  Edge columns come from the placement
+        itself, so the walk and the IR cannot disagree."""
+        out = []
+        col = off
+        prev_right = None
+        first_edge = last_edge = None
+        for block in row_ordering:
+            if prev_right is not None \
+                    and block.members[0].left_net != prev_right:
+                col += BREAK_GAP_COLS
+            for member in block.members:
+                p = placement[member.device]
+                c0, c1 = p.start_col, p.end_col
+                if first_edge is None:
+                    first_edge = c0
+                last_edge = c1
+                out.append((member, c0, c1))
+                col = c1
+            prev_right = block.members[-1].right_net
+        return out, first_edge, last_edge
+
     # --- outline + wells (ASTRAN's 0.235 overhang) ---
     rect(0.0, 0.0, w_um, height_um, LAYER["prBoundary"])
     ovh = 0.235
@@ -95,24 +132,8 @@ def cell_gds(netlist, placement, width_cols, ordering_p, ordering_n,
     rect(-ovh, -ovh, w_um + ovh, MID_UM, LAYER["pwell"])
 
     # --- diffusion strips: one per member, y-extent = W (the model) ---
-    for row_ordering in (ordering_p, ordering_n):
-        col = 0
-        prev_right = None
-        first_edge = last_edge = None
-        spans = []
-        for block in row_ordering:
-            if prev_right is not None \
-                    and block.members[0].left_net != prev_right:
-                col += BREAK_GAP_COLS
-            for member in block.members:
-                p = placement[member.device]
-                w = p.legs * p.leg_width_cols
-                spans.append((member, col, col + w))
-                if first_edge is None:
-                    first_edge = col
-                last_edge = col + w
-                col += w
-            prev_right = block.members[-1].right_net
+    for row in (P_ROW, N_ROW):
+        spans, first_edge, last_edge = row_walk(orderings[row], offs[row])
         for member, c0, c1 in spans:
             y0, y1 = _strip_y(member.device.is_p, member.device.width_um,
                               height_um)
@@ -121,7 +142,8 @@ def cell_gds(netlist, placement, width_cols, ordering_p, ordering_n,
             rect(x0, y0, x1, y1, LAYER["active"])
 
     # --- poly stripes at the gate slots, merged where P/N gates align ---
-    by_col = _gate_entries_by_col(ordering_p, ordering_n, leg_widths)
+    by_col = _gate_entries_by_col(ordering_p, ordering_n, leg_widths,
+                                  x_offsets=x_offsets)
     for c in sorted(by_col):
         entries = by_col[c]
         xc = edge_x(c) + grid_um / 2.0
@@ -151,23 +173,19 @@ def cell_gds(netlist, placement, width_cols, ordering_p, ordering_n,
                          layer=LAYER["metal1"]))
 
     # --- diffusion contacts + power stubs ---
-    contactable = (contact_nets(ordering_p, netlist, leg_widths)
-                   | contact_nets(ordering_n, netlist, leg_widths))
+    contactable = (contact_nets(ordering_p, netlist, leg_widths,
+                                x_offset=x_offsets[0])
+                   | contact_nets(ordering_n, netlist, leg_widths,
+                                  x_offset=x_offsets[1]))
     drawn = set()
-    for row_ordering in (ordering_p, ordering_n):
-        col = 0
-        prev_right = None
-        for block in row_ordering:
-            if prev_right is not None \
-                    and block.members[0].left_net != prev_right:
-                col += BREAK_GAP_COLS
+    for row in (P_ROW, N_ROW):
+        for block in orderings[row]:
             for member in block.members:
                 p = placement[member.device]
-                w = p.legs * p.leg_width_cols
                 y0, y1 = _strip_y(member.device.is_p,
                                   member.device.width_um, height_um)
-                for net, e in ((member.left_net, col),
-                               (member.right_net, col + w)):
+                for net, e in ((member.left_net, p.start_col),
+                               (member.right_net, p.end_col)):
                     if net not in contactable:
                         continue
                     xc = edge_x(e)
@@ -194,8 +212,6 @@ def cell_gds(netlist, placement, width_cols, ordering_p, ordering_n,
                                 rect(xc - M1_W / 2, 0.0,
                                      xc + M1_W / 2, y + CONTACT_S / 2,
                                      LAYER["metal1"])
-                col += w
-            prev_right = block.members[-1].right_net
 
     # --- routing layers when a route is supplied (best effort) ---
     pin_labels = []
@@ -315,16 +331,18 @@ def _draw_route(cell, route, edge_x, trackY, barY, grid_um, height_um,
                                           grid_um, height_um, trackY)
     drawn = set()
     for row_ordering in (ordering_p, ordering_n):
-        col = 0
-        prev_right = None
         for block in row_ordering:
-            if prev_right is not None \
-                    and block.members[0].left_net != prev_right:
-                col += BREAK_GAP_COLS
             for member in block.members:
                 p = placement[member.device]
+                # the SAME centre-column formula gate_access_points /
+                # route_grid / verify use (start + j*legw + legw//2):
+                # the legacy walk's ``col + j*legw`` agreed with it only
+                # while every leg was one column wide -- a k>1 terminal
+                # region puts the gate at the run's centre, not its left
+                # edge (AUDIT 5.61's k>1 rendering audit)
                 for j in range(p.legs):
-                    c = col + j * p.leg_width_cols
+                    c = p.start_col + j * p.leg_width_cols \
+                        + p.leg_width_cols // 2
                     xc = edge_x(c) + grid_um / 2.0
                     y0, y1 = _strip_y(member.device.is_p,
                                       member.device.width_um, height_um)
@@ -345,8 +363,6 @@ def _draw_route(cell, route, edge_x, trackY, barY, grid_um, height_um,
                              xc + CONTACT_S / 2, trackY[t] + CONTACT_S / 2,
                              LAYER["contact"])
                         break
-                col += p.legs * p.leg_width_cols
-            prev_right = block.members[-1].right_net
 
     # pin labels on each signal net's first diffusion access column
     sig, _pow = slot_diffusion_access(netlist, placement,
@@ -411,14 +427,18 @@ def _draw_route(cell, route, edge_x, trackY, barY, grid_um, height_um,
 
 
 def write_cell_gds(path, netlist, placement, width_cols, ordering_p,
-                   ordering_n, leg_widths, route=None, **kw):
+                   ordering_n, leg_widths, route=None, x_offsets=None,
+                   **kw):
     """Write one slot-model cell to ``path``; returns pin_labels.
 
-    The GDS timestamp is pinned (invariant 9: identical inputs give
-    byte-identical GDS files, cross-process).
+    ``x_offsets`` is geometry.place_row's per-row x-offset pair
+    (AUDIT 5.61); None keeps both rows at column 0.  The GDS timestamp
+    is pinned (invariant 9: identical inputs give byte-identical GDS
+    files, cross-process).
     """
     import datetime
     lib, pins = cell_gds(netlist, placement, width_cols, ordering_p,
-                         ordering_n, leg_widths, route=route, **kw)
+                         ordering_n, leg_widths, route=route,
+                         x_offsets=x_offsets, **kw)
     lib.write_gds(path, timestamp=datetime.datetime(1970, 1, 1))
     return pins

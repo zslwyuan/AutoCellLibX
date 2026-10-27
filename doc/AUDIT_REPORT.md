@@ -1921,3 +1921,66 @@ sanity 指标、层计数、place/route/window 运行时拆分）+ 汇总质量�
 **诚实总评：引擎的真实通用能力 = 小 cell 100% + 中大档 0%（hold-out
 口径 4/21=19%）**。中档的收编钥匙与 W1 的判决汇合：几何变量化（多
 列区域+行偏移）+ 泛化驱动的词汇扩展。882 绿。
+
+## §5.62 几何变量轮：区域宽度与行偏移全线落地，ASTRAN 排布代入实测几何后依然全判死——墙在词汇而非几何（2026-10-27）
+
+agent geometry-variables 的判决轮（任务前提：§5.60 判死的原因是"多列
+端子区 + 行独立偏移"两个几何自由度缺失——本轮把二者变成变量，然后在
+ASTRAN 自有版图上跑捕捉漏斗）。
+
+**(1) 变量落地（加法、默认字节恒等）**：`place_row(x_offset=)` /
+`layout_cell(x_offsets=)` 把每行起点变成纯数据（不变量：同行内共享/
+断条/邻接关系不变，只有行间对齐与宽度移动）；区域宽度走既有
+`leg_widths` 字段——成员 `(1, k)` 即 k 列端子区（栅在 run 中心列
+`start+k//2`，端子在 run 两侧边缘，与 fold 腿完全同构）。审计修复三处
+假设 k=1 的代码：`die_view.is_slot_placement` 增 blocks 提示（k>1 与
+exact-engine 折叠器件 IR 同形，只有 bigcell 链提供的 block 视图能区分
+——exact 引擎 rung 传 None 保持历史路径）；`gds_cells` 三处 col=0 步行
+全部改为 placement 派生 + x_offsets 线程；`gds_cells` 栅接触绘图公式
+`col+j*legw` 修正为共享中心公式 `+legw//2`（k>1 时栅接触画在错误 x）。
+**还发现 `geometry.row_gate_columns` 同病**（发射 `col+j*legw` 而其余
+全部消费者用中心公式）——k>1 时 poly 条与栅接触错位半列，已修（k=1
+字节恒等）。census（`gate_cage_penalty`/`crossing_cage_penalty`/
+`_cage_row_view`）加 x_offsets 参数（默认 0，字节恒等）。
+
+**(2) 投影的两难（本轮的方法学发现）**：朴素逐行槽位取整**拆散
+ASTRAN 的同网 P/N 栅对**（ASTRAN 把它们画在一根 poly 上，实测间距
+≤0.05µm；整数列网格只能"同列"或"整列分开"）——拆开的栅对正是
+"静态围死栅"形状（NAND2X1 单边加宽实验：拆对 INFEASIBLE，对齐变体
+OPTIMAL，全词汇 CP-SAT 证明）。而先钉栅又不够：**栅位公式
+`start+k//2` 永远不偏向右侧**（l≤r），ASTRAN LP 压缩随意把栅放偏右
+（multiplier/COMPLEX0 连续偏右整整一列）——任何固定栅列分配都不可表
+达。最终投影是一个小 CP-SAT 模型（`derive_geometry`，单 worker）：
+同网栅硬合并成共享列；跨行异网栅对（ASTRAN 实测在同一 x 交错，y 域不
+交不短路）给"可共享"布尔；成员不变量 `r∈{l,l+1}` 免除法；名义列按
+**实测栅间距**累积（走廊骨架保真）；行内 slot 目标取**区域中心**
+（区域是单一扩散节点，访问列在区内哪里是路由中立的——实测接触均值
+偏一侧反而触发 l≤r 级联）。名义 0.5 列距的近对齐行偏移取整到 0
+（幻影偏移会错开 P/N 栅）。表内 15 项全部重新导出：**14/15 宽度比
+0.946–1.279 落带**（multiplier/COMPLEX0 1.553——其栅偏右不可表达，
+l≤r 级联是诚实的表达力代价）。
+
+**(3) 捕捉漏斗判决：空清单，且证据比 §5.60 强一档**。15 个排布按
+"实测几何（区域宽度+行偏移）→ census → 生产路由器（blocks 视图）→
+rung3.5 窗口 → 精确全词汇（M2+span+跳线）"重跑：**15/15 依然
+CP-SAT INFEASIBLE**（0.5–14s 证明，零超时；census 最好 (0,2)——
+MUX2X1 的 census 近乎干净仍判死）。行偏移确认生效（NOR3X1 N 行
++2 列=实测 2.16）。**事后核心（assumption-core + 全族丢弃实验）**：
+原始充分核心横跨约 23 个约束族的几乎全部（58–209 项）；对
+MUX2X1/NOR3X1/XOR2X1 逐族整体丢弃（含整族 acc/pwr/gate），**无一
+族翻转 FEASIBLE**——不可满足性是整个词汇的合取，不是某条规则。结合
+§5.54 两级墙：几何轴已被测量关闭，ASTRAN 用 ~13 层 3D 网格布通的
+版图在 7 轨 M1/poly/M2 模型里就是不可布的。**第二走廊轨（8 轨/10
+层，route_grid 文档中预留的扩展点）是下一个杠杆**。
+
+**(4) 落库资产与测试**：EXTRACTED_TABLE 15 项携带实测
+`p_widths`/`n_widths`/`x_offsets`（provenance 测试从 .gds 逐字节重
+导，含跨进程 hashseed 确定性）；SEED_TABLE 仍空（所有权规则：无闭合
+不进表）；seed 携带自身几何入 select_orderings（seed_ctx 与 fold_ctx
+同构，胜者报告 `seed_leg_widths`/`seed_x_offsets`）；engine/benchmark
+的接线 diff 交付于 `_stage3_check/_geo_engine_wiring.patch`（捕捉出现
+前休眠）。12 新测试（`test_bigcell_geometry_vars.py`：偏移算术、k>1
+槽位推导、blocks 提示、GDS 渲染、栅对拆分围死钉）+ gds_seeds 测试全
+套升级（几何 provenance、宽度公式、墙测试带几何跑、hashseed 含投影）。
+§5.60 接受案最终形态：**六杠杆穷举 + 几何自由度实测代入 + 词汇级合取
+核心——21 cell ASTRAN 回退的终态证据链闭合**。

@@ -87,7 +87,10 @@ def test_extracted_table_covers_every_extractable_fallback_cell():
 
 @pytest.mark.parametrize("key", sorted(EXTRACTED_TABLE))
 def test_extraction_reproduces_the_committed_table(flow_dir, key):
-    """The migration record re-derives from the .gds byte-exactly."""
+    """The migration record re-derives from the .gds byte-exactly --
+    arrangement AND geometry: the measured terminal-region widths and
+    row x-offsets come out of the same gate-anchored projection
+    (derive_geometry) that produced them."""
     entry = EXTRACTED_TABLE[key]
     nl = _load_cell(entry["source"], flow_dir)
     assert netlist_digest(nl) == key[1]
@@ -99,6 +102,11 @@ def test_extraction_reproduces_the_committed_table(flow_dir, key):
     assert m["n_strips"] == entry["n_strips"]
     assert m["p_trans"] == len(entry["p"])
     assert m["n_trans"] == len(entry["n"])
+    from bigcell_engine.gds_seeds import derive_geometry
+    geo = derive_geometry(ext)
+    assert geo["p_widths"] == entry["p_widths"]
+    assert geo["n_widths"] == entry["n_widths"]
+    assert geo["x_offsets"] == entry["x_offsets"]
 
 
 def test_extractions_are_device_total(flow_dir):
@@ -129,12 +137,17 @@ def test_extractions_are_device_total(flow_dir):
 def test_seed_projects_to_astrians_breaks(flow_dir, key):
     """place_row reproduces ASTRAN's diffusion strips: the seed's rows
     break exactly where the extracted strips separate (strips - 1 breaks
-    per row, and only there -- no phantom breaks pad the width)."""
+    per row, and only there -- no phantom breaks pad the width), and
+    the WIDTH carries the measured region widths + row x-offsets
+    (AUDIT 5.61: the row end is offset + sum of member runs + breaks)."""
     entry = EXTRACTED_TABLE[key]
     nl = _load_cell(entry["source"], flow_dir)
     nl3, lws = fold_devices(nl)
     ordering_p, ordering_n = seed_orderings(nl3, entry)
-    placements, width = layout_cell(ordering_p, ordering_n, lws)
+    from bigcell_engine.gds_seeds import seed_geometry
+    lws, offs = seed_geometry(entry, lws)
+    placements, width = layout_cell(ordering_p, ordering_n, lws,
+                                    x_offsets=offs)
     for ordering, seq, strips, row in ((ordering_p, entry["p"],
                                         entry["p_strips"], 0),
                                        (ordering_n, entry["n"],
@@ -145,9 +158,12 @@ def test_seed_projects_to_astrians_breaks(flow_dir, key):
                                                    strips)
         placed = [p for p in placements.values() if p.row == row]
         assert len(placed) == len(seq)
-    width_expected = max(len(entry["p"]) + entry["p_strips"] - 1,
-                        len(entry["n"]) + entry["n_strips"] - 1)
-    assert width == width_expected
+    row_end = {}
+    for row, widths in ((0, entry["p_widths"]), (1, entry["n_widths"])):
+        row_end[row] = (offs[row] + sum(widths)
+                        + (entry["p_strips"] if row == 0
+                           else entry["n_strips"]) - 1)
+    assert width == max(row_end.values())
 
 
 def test_nor3x1_extraction_is_the_doubled_ladder_run(flow_dir):
@@ -214,9 +230,17 @@ def test_candidate_from_gds_is_the_research_entry_point(flow_dir):
         nl, os.path.join(flow_dir, entry["source"]))
     assert [tuple(t) for t in got["p"]] == list(entry["p"])
     assert [tuple(t) for t in got["n"]] == list(entry["n"])
+    assert got["p_widths"] == entry["p_widths"]
+    assert got["n_widths"] == entry["n_widths"]
+    assert got["x_offsets"] == entry["x_offsets"]
     nl3, lws = fold_devices(nl)
-    _placements, width = layout_cell(op, on, lws)
-    assert width == len(entry["p"])      # one strip per row, no breaks
+    from bigcell_engine.gds_seeds import seed_geometry
+    lws, offs = seed_geometry(got, lws)
+    _placements, width = layout_cell(op, on, lws, x_offsets=offs)
+    # one strip per row: the width is the max row end (offset + runs
+    # + breaks)
+    assert width == max(offs[0] + sum(got["p_widths"]),
+                        offs[1] + sum(got["n_widths"]))
 
 
 # --------------------------------------------------------------------------
@@ -265,9 +289,14 @@ def test_closure_table_entry_wins_the_selection(flow_dir, monkeypatch):
     assert report["selected"] == 0
     assert report["feasible"] and report["cage"] == 0
     # the seed was tried first (pool priority 0) and the selection
-    # returned exactly the extracted arrangement
+    # returned exactly the extracted arrangement -- WITH its measured
+    # geometry (the region widths ride the trial's leg map, the row
+    # x-offsets ride the placement: AUDIT 5.61's seed_ctx wiring)
     ordering_p, ordering_n = seed_orderings(nl3, entry)
-    first, _w = layout_cell(ordering_p, ordering_n, lws)
+    from bigcell_engine.gds_seeds import seed_geometry
+    geo_lws, geo_offs = seed_geometry(entry, lws)
+    first, _w = layout_cell(ordering_p, ordering_n, geo_lws,
+                            x_offsets=geo_offs)
     assert {d.name: (p.row, p.start_col) for d, p in first.items()} == \
         {d.name: (p.row, p.start_col) for d, p in calls[0].items()}
     assert [(m.device.name, m.left_net, m.right_net) for b in sel_p
@@ -308,11 +337,22 @@ def test_selection_pool_is_unchanged_without_a_seed(flow_dir):
 # --------------------------------------------------------------------------
 
 def _seed_placement(flow_dir, name):
-    entry = EXTRACTED_TABLE[_entry_for(name)]
+    """The seed arrangement's placement, WITH its measured geometry
+    (AUDIT 5.61): the region widths ride the leg map, the row
+    x-offsets ride the placement -- the honest wall test runs the
+    exact model against ASTRAN's own columns, not the default grid.
+    ``name`` is a cell name or a full (name, digest) key -- the key
+    disambiguates same-named cells (max/COMPLEX0 vs multiplier/
+    COMPLEX0)."""
+    entry = EXTRACTED_TABLE[name if isinstance(name, tuple)
+                            else _entry_for(name)]
     nl = _load_cell(entry["source"], flow_dir)
     nl3, lws = fold_devices(nl)
     ordering_p, ordering_n = seed_orderings(nl3, entry)
-    placements, width = layout_cell(ordering_p, ordering_n, lws)
+    from bigcell_engine.gds_seeds import seed_geometry
+    lws, offs = seed_geometry(entry, lws)
+    placements, width = layout_cell(ordering_p, ordering_n, lws,
+                                    x_offsets=offs)
     return nl3, placements, width, list(ordering_p) + list(ordering_n)
 
 
@@ -331,22 +371,27 @@ def _assert_exact_infeasible(flow_dir, name, time_limit_s):
 
 
 def test_nor3x1_seed_is_exact_infeasible(flow_dir):
-    """ASTRAN's own NOR3X1 arrangement, projected into the slot model,
-    is unroutable in the FULL exact vocabulary (CP-SAT proof, ~1 s).
-    A future vocabulary extension that makes this FEASIBLE/OPTIMAL has
-    opened a capture: flip this test, move the entry into SEED_TABLE
-    and pin the closure (AUDIT 5.60)."""
+    """ASTRAN's own NOR3X1 arrangement, projected with its MEASURED
+    geometry (gate-anchored region widths + the 2-column N-row
+    offset), is STILL unroutable in the FULL exact vocabulary (CP-SAT
+    proof, ~1 s).  The geometry round landed the two freedoms AUDIT
+    5.60 measured and the wall held: the 7-track M1/poly/M2 model
+    cannot wire what ASTRAN wired on ~13 levels.  A future vocabulary
+    extension that makes this FEASIBLE/OPTIMAL has opened a capture:
+    flip this test, move the entry into SEED_TABLE and pin the
+    closure (AUDIT 5.60/5.61)."""
     _assert_exact_infeasible(flow_dir, "NOR3X1", 60.0)
 
 
 @pytest.mark.slow
 def test_every_extracted_seed_is_exact_infeasible(flow_dir):
-    """The full 15-cell proof sweep (AUDIT 5.60): every extracted
-    arrangement, projected into the slot model, is CP-SAT INFEASIBLE
-    with metal2 + m2_spans + jump_m2 (2-12 s per proof, zero timeouts).
-    The capture list is empty; this is its evidence."""
+    """The full 15-cell proof sweep (AUDIT 5.61): every extracted
+    arrangement, projected with its measured region widths + row
+    x-offsets through the gate-anchored projection, is CP-SAT
+    INFEASIBLE with metal2 + m2_spans + jump_m2.  The capture list is
+    empty WITH the geometry variables applied; this is its evidence."""
     for key in sorted(EXTRACTED_TABLE):
-        _assert_exact_infeasible(flow_dir, key[0], 120.0)
+        _assert_exact_infeasible(flow_dir, key, 120.0)
 
 
 # --------------------------------------------------------------------------
@@ -354,9 +399,11 @@ def test_every_extracted_seed_is_exact_infeasible(flow_dir):
 # --------------------------------------------------------------------------
 
 def test_extraction_is_hashseed_independent(flow_dir, tmp_path):
-    """Cross-process PYTHONHASHSEED 0/1: the extraction, the digest and
-    the candidate construction are byte-identical -- the runtime
-    consumers (a future closure's regression test) inherit this."""
+    """Cross-process PYTHONHASHSEED 0/1: the extraction, the digest, the
+    candidate construction AND the gate-anchored geometry projection
+    (derive_geometry's small CP-SAT model, single worker) are
+    byte-identical -- the runtime consumers (a future closure's
+    regression test) inherit this."""
     entry = EXTRACTED_TABLE[_entry_for("XNOR2X1")]
     nl = _load_cell(entry["source"], flow_dir)
     deck = tmp_path / "xnor2x1.sp"
@@ -380,6 +427,9 @@ entry, op, on = candidate_from_gds(nl, %r)
 print(netlist_digest(nl))
 print(entry['p'])
 print(entry['n'])
+print(entry['p_widths'])
+print(entry['n_widths'])
+print(entry['x_offsets'])
 print([(b.kind, [(m.device.name, m.left_net, m.right_net)
                  for m in b.members]) for b in op])
 print([(b.kind, [(m.device.name, m.left_net, m.right_net)

@@ -30,33 +30,44 @@ diffusion breaks exactly (breaks land where ASTRAN's strips separate --
 measured: every strip boundary faces differing nets, place_row's
 BREAK_GAP_COLS rule fires there and only there).
 
-THE HONEST VERDICT (2026-10-27, full evidence in AUDIT 5.60): every one
-of the 15 extractable arrangements, projected into the slot model, is
-CP-SAT-proven INFEASIBLE in the engine's FULL exact vocabulary
-(solve_routing(metal2=True, m2_spans=True, jump_m2=True), 2-12 s per
-proof, zero timeouts).  Six of the 21 have no ASTRAN layout to extract at
-all (ASTRAN's own run never finished: CLKBUF2, CLKBUF3, DFFSR, FAX1,
-HAX1, LATCH -- no Cell Size line, no .gds).  The wall is NOT the search:
-it is the two geometry features ASTRAN's layouts use that the slot model
-cannot express, both measured per cell in AUDIT 5.60:
+THE HONEST VERDICT (2026-10-27, updated by the geometry-variables
+round, AUDIT 5.61): every one of the 15 extractable arrangements is
+STILL CP-SAT-proven INFEASIBLE in the engine's FULL exact vocabulary
+(solve_routing(metal2=True, m2_spans=True, jump_m2=True)) -- now with
+the two measured geometry freedoms APPLIED.  This round landed them:
 
-- **multi-column terminal regions**: ASTRAN's LP compaction pushes gates
-  apart to make routing corridor space inside continuous diffusion
-  (measured gate gaps up to 4.3 pitches where the model has one); the
-  slot model gives every member exactly one column;
-- **independent row x-offsets**: ASTRAN's rows start at different x
-  (NOR3X1's N chain sits centred under the P row, 2.2 columns right);
-  place_row pins every row at column 0.
+- **region widths**: a member's terminal-region width rides the leg
+  map (``(1, k)`` -- a k-column region, the corridor ASTRAN's LP
+  compaction opens between gates);
+- **row x-offsets**: each row's leading slot is a variable
+  (geometry.place_row's ``x_offset``);
 
-So the runtime closure table (:data:`SEED_TABLE`) is EMPTY today: per the
-ownership rule, an arrangement is committed there only when it CLOSES
-(route or exact solve verified clean), and then the closure reproduces
-from the table alone -- the .gds was the migration source, the table is
-the runtime input, deterministically (hashlib digest keys, no hash() use,
-AGENTS.md invariant 9).  :data:`EXTRACTED_TABLE` keeps all 15 extracted
-arrangements as the migration record and the ready-made target set for
-the vocabulary extensions AUDIT 5.57-5.60 point at; the provenance tests
-re-derive it from the .gds files byte-exactly.
+and re-derived every table entry through a GATE-ANCHORED projection
+(:func:`derive_geometry`): same-net P/N gates share one poly column
+(ASTRAN's merge), cross-row foreign gate pairs may share (disjoint
+y), the member invariant ``gate = edge + k//2`` holds by construction,
+and the nominal columns accumulate the measured gate gaps.  The
+widths come out at 0.95-1.28x ASTRAN on 14 of 15 cells (multiplier/
+COMPLEX0 pays 1.55x -- its gates sit right-of-centre in their runs,
+which ``k//2`` cannot express, and the l<=r cascade widens the row).
+The wall is therefore neither the search nor the arrangement's
+geometry: ASTRAN routed these cells on a ~13-level 3D grid the 7-track
+M1/poly/M2 model does not have (the third form of the 5.54-5.60 wall
+ladder, now with the geometry axis closed by measurement).  Six of
+the 21 have no ASTRAN layout at all (ASTRAN's own run never finished:
+CLKBUF2, CLKBUF3, DFFSR, FAX1, HAX1, LATCH -- no Cell Size line, no
+.gds).
+
+So the runtime closure table (:data:`SEED_TABLE`) is STILL EMPTY: per
+the ownership rule, an arrangement is committed there only when it
+CLOSES (route or exact solve verified clean), and then the closure
+reproduces from the table alone -- the .gds was the migration source,
+the table is the runtime input, deterministically (hashlib digest
+keys, no hash() use, AGENTS.md invariant 9).  :data:`EXTRACTED_TABLE`
+keeps all 15 extracted arrangements -- now WITH their measured region
+widths and row offsets -- as the migration record and the ready-made
+target set for the vocabulary extension the cores point at; the
+provenance tests re-derive it from the .gds files byte-exactly.
 
 Public API:
 
@@ -70,6 +81,7 @@ Public API:
 """
 
 import hashlib
+import math
 
 from smt_engine.netlist import BlockMember, DiffusionBlock
 
@@ -114,6 +126,9 @@ EXTRACTED_TABLE = {
     ('CLKBUF1', '8cf4a81927d7'): {
         "source": 'original_astran_cells/CLKBUF1.gds',
         "astran_um": 1.9,
+        "p_widths": (1, 1, 1, 1, 1, 1, 2, 1),
+        "n_widths": (1, 1, 1, 1, 1, 1, 1, 2),
+        "x_offsets": (0, 0),
         "p_strips": 1, "n_strips": 1,
         "verdict": "exact-infeasible",
         "p": (
@@ -128,6 +143,9 @@ EXTRACTED_TABLE = {
     ('DFFNEGX1', '2dbd20aa37c7'): {
         "source": 'original_astran_cells/DFFNEGX1.gds',
         "astran_um": 3.23,
+        "p_widths": (1, 1, 1, 2, 1, 1, 2, 2, 1, 4, 1),
+        "n_widths": (1, 1, 2, 1, 1, 2, 1, 1, 4, 1, 2),
+        "x_offsets": (0, 0),
         "p_strips": 2, "n_strips": 2,
         "verdict": "exact-infeasible",
         "p": (
@@ -144,6 +162,9 @@ EXTRACTED_TABLE = {
     ('DFFPOSX1', 'd7bbc86b33f8'): {
         "source": 'original_astran_cells/DFFPOSX1.gds',
         "astran_um": 3.42,
+        "p_widths": (1, 3, 2, 1, 1, 1, 1, 1, 2, 1, 4),
+        "n_widths": (1, 2, 1, 2, 1, 1, 1, 1, 1, 4, 1),
+        "x_offsets": (0, 1),
         "p_strips": 2, "n_strips": 2,
         "verdict": "exact-infeasible",
         "p": (
@@ -160,6 +181,9 @@ EXTRACTED_TABLE = {
     ('MUX2X1', '6028a7b039e2'): {
         "source": 'original_astran_cells/MUX2X1.gds',
         "astran_um": 1.33,
+        "p_widths": (1, 1, 1, 2, 1),
+        "n_widths": (1, 1, 1, 2, 1),
+        "x_offsets": (0, 0),
         "p_strips": 1, "n_strips": 1,
         "verdict": "exact-infeasible",
         "p": (
@@ -174,6 +198,9 @@ EXTRACTED_TABLE = {
     ('NOR3X1', 'b9558e1535cd'): {
         "source": 'original_astran_cells/NOR3X1.gds',
         "astran_um": 1.33,
+        "p_widths": (1, 1, 1, 1, 1, 1),
+        "n_widths": (1, 1, 1),
+        "x_offsets": (0, 2),
         "p_strips": 1, "n_strips": 1,
         "verdict": "exact-infeasible",
         "p": (
@@ -187,6 +214,9 @@ EXTRACTED_TABLE = {
     ('XNOR2X1', '5045c6d64101'): {
         "source": 'original_astran_cells/XNOR2X1.gds',
         "astran_um": 1.52,
+        "p_widths": (1, 1, 2, 1, 1, 1),
+        "n_widths": (1, 1, 1, 2, 1, 1),
+        "x_offsets": (0, 0),
         "p_strips": 1, "n_strips": 1,
         "verdict": "exact-infeasible",
         "p": (
@@ -201,6 +231,9 @@ EXTRACTED_TABLE = {
     ('XOR2X1', '638f68c918e4'): {
         "source": 'original_astran_cells/XOR2X1.gds',
         "astran_um": 1.9,
+        "p_widths": (1, 1, 1, 4, 1, 1),
+        "n_widths": (1, 1, 2, 1, 3, 2),
+        "x_offsets": (0, 0),
         "p_strips": 1, "n_strips": 1,
         "verdict": "exact-infeasible",
         "p": (
@@ -215,6 +248,9 @@ EXTRACTED_TABLE = {
     ('COMPLEX0', 'e6b547710f5e'): {
         "source": 'outputs/max/COMPLEX0.gds',
         "astran_um": 1.71,
+        "p_widths": (1, 1, 1, 2, 1, 1),
+        "n_widths": (1, 1, 2, 1, 1, 1),
+        "x_offsets": (0, 0),
         "p_strips": 1, "n_strips": 1,
         "verdict": "exact-infeasible",
         "p": (
@@ -229,6 +265,9 @@ EXTRACTED_TABLE = {
     ('COMPLEX0', '13d6093208c8'): {
         "source": 'outputs/multiplier/COMPLEX0.gds',
         "astran_um": 5.51,
+        "p_widths": (4, 1, 5, 2, 1, 4, 1, 8, 1, 14, 1),
+        "n_widths": (1, 5, 2, 3, 2, 1, 6, 1, 10, 1, 1),
+        "x_offsets": (0, 0),
         "p_strips": 2, "n_strips": 3,
         "verdict": "exact-infeasible",
         "p": (
@@ -245,6 +284,9 @@ EXTRACTED_TABLE = {
     ('COMPLEX1', 'aa4c72582c5b'): {
         "source": 'outputs/adder/COMPLEX1.gds',
         "astran_um": 3.61,
+        "p_widths": (1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+        "n_widths": (1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+        "x_offsets": (0, 0),
         "p_strips": 3, "n_strips": 3,
         "verdict": "exact-infeasible",
         "p": (
@@ -263,6 +305,9 @@ EXTRACTED_TABLE = {
     ('COMPLEX10', '0c7877ba445b'): {
         "source": 'outputs/adder/COMPLEX10.gds',
         "astran_um": 4.37,
+        "p_widths": (1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+        "n_widths": (1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+        "x_offsets": (0, 0),
         "p_strips": 4, "n_strips": 4,
         "verdict": "exact-infeasible",
         "p": (
@@ -283,6 +328,9 @@ EXTRACTED_TABLE = {
     ('COMPLEX11', '419776c896b9'): {
         "source": 'outputs/adder/COMPLEX11.gds',
         "astran_um": 3.8,
+        "p_widths": (1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+        "n_widths": (1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+        "x_offsets": (0, 0),
         "p_strips": 3, "n_strips": 4,
         "verdict": "exact-infeasible",
         "p": (
@@ -301,6 +349,9 @@ EXTRACTED_TABLE = {
     ('COMPLEX20', '3b6bc5270d1d'): {
         "source": 'outputs/max/COMPLEX20.gds',
         "astran_um": 2.85,
+        "p_widths": (1, 1, 2, 1, 1, 2, 2, 1, 1),
+        "n_widths": (1, 2, 1, 1, 2, 2, 1, 1, 1),
+        "x_offsets": (0, 0),
         "p_strips": 3, "n_strips": 3,
         "verdict": "exact-infeasible",
         "p": (
@@ -317,6 +368,9 @@ EXTRACTED_TABLE = {
     ('COMPLEX7', 'd674408ae52e'): {
         "source": 'outputs/multiplier/COMPLEX7.gds',
         "astran_um": 4.18,
+        "p_widths": (1, 2, 1, 1, 1, 2, 1, 3, 2, 1, 1, 1, 2, 1),
+        "n_widths": (1, 1, 1, 2, 1, 1, 1, 2, 1, 1, 4, 1, 1, 1),
+        "x_offsets": (0, 1),
         "p_strips": 3, "n_strips": 3,
         "verdict": "exact-infeasible",
         "p": (
@@ -335,6 +389,9 @@ EXTRACTED_TABLE = {
     ('COMPLEX9', 'f7639553a301'): {
         "source": 'outputs/adder/COMPLEX9.gds',
         "astran_um": 3.42,
+        "p_widths": (1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+        "n_widths": (1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+        "x_offsets": (0, 0),
         "p_strips": 3, "n_strips": 3,
         "verdict": "exact-infeasible",
         "p": (
@@ -402,22 +459,53 @@ def _entry_covers(entry, netlist):
     return len(names) == len(set(names)) and set(names) == want
 
 
+def seed_geometry(entry, leg_widths=None):
+    """(leg_widths, x_offsets): one table entry's slot-model geometry.
+
+    ``leg_widths`` is the base fold map the seed RIDES ON (the chain's
+    ``fold_devices`` output); every measured terminal-region width
+    (``p_widths``/``n_widths``, AUDIT 5.61) overrides its member's run
+    -- the extraction speaks one member per gate, so the run is
+    ``(1, k)``: one leg of k columns, W stays vertical in the strip
+    height.  ``x_offsets`` is the entry's per-row x-offset pair
+    (``(0, 0)`` for legacy entries that predate the geometry).  Pure
+    and deterministic; the placement built with
+    ``layout_cell(op, on, leg_widths, x_offsets)`` reproduces ASTRAN's
+    region widths and row alignment from the TABLE alone.
+    """
+    out = dict(leg_widths) if leg_widths is not None else {}
+    for row, wkey in (("p", "p_widths"), ("n", "n_widths")):
+        widths = entry.get(wkey)
+        if not widths:
+            continue
+        for (name, _lnet, _rnet), k in zip(entry[row], widths):
+            out[name] = (1, int(k))
+    offsets = entry.get("x_offsets", (0, 0))
+    return out, tuple(offsets)
+
+
 def seed_candidates(netlist, table=None):
-    """The seed candidate class: [(kind, ordering_p, ordering_n)].
+    """The seed candidate class: [(kind, ordering_p, ordering_n,
+    (leg_widths, x_offsets))].
 
     Lazy and cheap: one digest lookup; empty for every netlist not in
     the closure table (all of them today), so the engine's speculate
     pool is untouched for every closing cell.  A table cell whose fold
     decision changed the netlist (device names no longer covered) is
     honestly skipped -- the seed speaks the arrangement of the exact
-    netlist it was extracted from.
+    netlist it was extracted from.  The fourth tuple element is the
+    entry's GEOMETRY (AUDIT 5.61): the leg map carrying the measured
+    terminal-region widths and the per-row x-offsets, so the trial and
+    the runtime closure reproduce ASTRAN's own column layout, not the
+    default one-column grid.
     """
     table = SEED_TABLE if table is None else table
     entry = _table_entry(table, netlist)
     if entry is None or not _entry_covers(entry, netlist):
         return []
     ordering_p, ordering_n = seed_orderings(netlist, entry)
-    return [(SEED_KIND, ordering_p, ordering_n)]
+    geometry = seed_geometry(entry, None)
+    return [(SEED_KIND, ordering_p, ordering_n, geometry)]
 
 
 # --------------------------------------------------------------------------
@@ -597,6 +685,13 @@ def extract_arrangement(netlist, gds_path):
             s = r["strip"]
             if r["lo"] - _EPS <= cx <= r["hi"] + _EPS \
                     and s["ylo"] - _EPS <= cy <= s["yhi"] + _EPS:
+                # the region's DIFFUSION contact (a terminal slot's M1
+                # access): its x is the measured slot position the
+                # geometry derivation (AUDIT 5.61) quantises onto the
+                # column grid -- a stacked pair shares one x, a wide
+                # corridor region can carry several (their mean is the
+                # slot; the model gives one terminal edge per region)
+                r.setdefault("cont_x", []).append(cx)
                 for mi in ms:
                     uf.union(mi, r["node"])
                 break
@@ -746,8 +841,38 @@ def extract_arrangement(netlist, gds_path):
         if opts is not None and len(opts) > 1:
             raise ExtractError(
                 "net identity unresolved for an ambiguous component")
+    # the measured geometry key (AUDIT 5.61): per row, per strip (sorted
+    # by x), left to right -- the TERMINAL SLOT x of every region (the
+    # mean of its diffusion contacts; the region's midpoint where ASTRAN
+    # left the junction uncontacted) and every member's gate (x, net).
+    # RAW GDS units (divide by UNITS_PER_UM for um -- the extractor
+    # keeps the file's frame).  The gates ride in the member order of
+    # ext["p"]/ext["n"] so the geometry derivation can cluster same-net
+    # P/N gates into SHARED poly columns -- the merge ASTRAN's
+    # mismatchesGate cost preserves and independent per-row rounding
+    # would destroy (a 1-column split of a merged pair cages the gate
+    # contact: the crossing loses the merged stripe's corridor track).
+    slots_raw = {}
+    gates_raw = {}
+    devmap = {d.name: d for d in netlist.devices}
+    for row_idx, row in ((0, "p"), (1, "n")):
+        row_strips = [s for s in strips if s["row"] == row_idx]
+        slots_raw[row] = [
+            [_region_slot_x(r) for r in s["regions"]] for s in row_strips]
+        per_strip = []
+        k = 0
+        for s in row_strips:
+            sg = []
+            for g in s["gates"]:
+                name = result[row_idx][k][0]
+                sg.append((g["x"], devmap[name].gate))
+                k += 1
+            per_strip.append(sg)
+        gates_raw[row] = per_strip
     return {
         "p": result[0], "n": result[1],
+        "slots_raw": slots_raw,
+        "gates_raw": gates_raw,
         "metrics": {
             "p_trans": sum(len(s["gates"]) for s in strips
                            if s["row"] == 0),
@@ -760,17 +885,296 @@ def extract_arrangement(netlist, gds_path):
     }
 
 
+def _region_slot_x(region):
+    """The measured slot x of one terminal region: the mean of its
+    diffusion contacts' x (deduped -- a stacked pair shares x), or the
+    region's midpoint where no contact sits (ASTRAN's uncontacted
+    internal junctions: the slot still occupies the pitch)."""
+    cxs = sorted(set(round(x, 4) for x in region.get("cont_x", ())))
+    if cxs:
+        return sum(cxs) / len(cxs)
+    return (region["lo"] + region["hi"]) / 2.0
+
+
+def _quantize_cols(dx_um, grid_um=0.19):
+    """Column count for a die-x distance: nearest integer, at least one
+    column (a member never spans less than its slot triple).  Half-way
+    distances round UP (deterministic, no banker's rounding)."""
+    n = int(math.floor(dx_um / grid_um + 0.5))
+    return n if n >= 1 else 1
+
+
+def _round_cols(dx_um, grid_um=0.19):
+    """Nearest column count for a die-x distance, ZERO allowed (the row
+    x-offset quantiser: an offset legitimately rounds to 0 -- a
+    near-aligned row must not gain a phantom column shift, which would
+    misalign P/N gates ASTRAN drew on one poly stripe)."""
+    return max(0, int(math.floor(dx_um / grid_um + 0.5)))
+
+
+#: gates closer than this (um) are column candidates: same-net gates
+#: MUST share the poly column (ASTRAN's straight merged stripe -- the
+#: mismatchesGate cost; measured P/N pairs sit within ~0.05 um), and a
+#: cross-row FOREIGN pair within the distance MAY share it (ASTRAN
+#: interleaves foreign P/N stripes at the same x -- their y-ranges are
+#: disjoint, no short; measured 0.02 um apart on MUX2X1), the merge
+#: being a projection decision, not a law: a right-biased P gate and a
+#: left-biased N gate 0.02 um apart (XOR2X1's 1.145/1.165 pair) want
+#: columns two apart, and forcing them together costs the l <= r
+#: cascade in width.
+GATE_MERGE_UM = 0.095
+
+
+def _gate_groups(ext, merge_um=GATE_MERGE_UM):
+    """The hard gate groups + optional cross-row links of one extraction.
+
+    Returns ``(groups, links)``: ``groups`` is ``[{"net", "x", "x_last",
+    "x_sum", "n", "gates": [(row, member_index, strip)]}]`` in x order,
+    where a group is a maximal chain of CONSECUTIVE same-net gates
+    within ``merge_um`` (the hard merge); ``links`` is
+    ``[(group_index_a, group_index_b)]`` for adjacent groups whose
+    x-distance is within ``merge_um`` and whose gates are all in
+    different rows (the optional cross-row column share).  Same-row
+    foreign gates never link (their stripes would overlap and short).
+    Deterministic: sorted scan, no hash().
+    """
+    allg = []
+    for row in ("p", "n"):
+        mi = 0
+        for si, strip_gates in enumerate(ext["gates_raw"][row]):
+            for gx, net in strip_gates:
+                allg.append((gx / UNITS_PER_UM, net, row, mi, si))
+                mi += 1
+    allg.sort(key=lambda g: (g[0], g[1], g[2], g[3]))
+    groups = []
+    for x, net, row, mi, si in allg:
+        g = groups[-1] if groups else None
+        if (g is not None and g["net"] == net
+                and x - g["x_last"] <= merge_um):
+            g["x_last"] = x
+            g["x_sum"] += x
+            g["n"] += 1
+            g["gates"].append((row, mi, si))
+        else:
+            groups.append({"net": net, "x_last": x, "x_sum": x,
+                           "n": 1, "gates": [(row, mi, si)]})
+    for g in groups:
+        g["x"] = g["x_sum"] / g["n"]
+    links = []
+    for a, b in zip(range(len(groups)), range(1, len(groups))):
+        ga, gb = groups[a], groups[b]
+        if (gb["x"] - ga["x"] > merge_um):
+            continue
+        if (any(rrow == crow
+                for (rrow, _mi, _si) in ga["gates"]
+                for (crow, _mj, _sj) in gb["gates"])):
+            continue        # same row: foreign stripes would short
+        links.append((a, b))
+    return groups, links
+
+
+def derive_geometry(ext, grid_um=0.19):
+    """Quantise an extraction into slot-model geometry, GATE-ANCHORED.
+
+    Returns ``{"p_widths": (k, ...), "n_widths": (k, ...),
+    "x_offsets": (p_off, n_off)}`` -- per-member terminal-region widths
+    in columns (aligned with ext["p"]/ext["n"]'s die order) and the
+    per-row x-offsets, normalised so the cell's leftmost slot is
+    column 0.
+
+    Why a solver and not a per-row rounding (this round's first cut,
+    which this replaces): independent per-row quantisation splits
+    ASTRAN's merged same-net P/N gate pairs onto adjacent columns --
+    a full column apart where ASTRAN has ONE straight poly stripe --
+    and the split pair is exactly the statically-caged-gate shape (the
+    crossing loses the merged stripe's corridor track; measured on
+    NAND2X1 with one widened member: INFEASIBLE, the aligned variant
+    OPTIMAL).  And even anchoring the gates is not enough: the slot
+    model places a member's gate at ``edge + k//2`` -- the gate is
+    never right of its run's centre -- while ASTRAN's LP-compacted
+    gates sit wherever the corridor space was needed (multiplier/
+    COMPLEX0's P row has consecutive gates right-of-centre by a full
+    pitch).  The projection is therefore one small CP-SAT model
+    (single worker, invariant 9):
+
+    - one column variable per gate GROUP (:func:`_gate_groups` -- the
+      same-net merges are hard; a cross-row foreign pair within
+      GATE_MERGE_UM gets an optional-share BOOLEAN: sharing is legal
+      (disjoint y) and saves a column, but the two gates' slot splits
+      may want them apart), ordered by x, pushed two apart across a
+      row's strip boundaries (the trailing slot, the break column and
+      the leading slot must fit between the gate columns);
+    - one slot variable per member boundary, per row, with the member
+      invariant ``gate = left_edge + k//2`` expressed without division
+      as ``r in {l, l+1}`` (``k = l + r``: the run's left half is
+      ``floor(k/2)``, never longer than the right half -- the model's
+      own gate formula, so what comes out is placeable by
+      construction);
+    - the interior slot's target is its REGION's column centre (a
+      region is one diffusion node -- WHERE the one access column sits
+      inside it is routing-neutral, and ASTRAN's lopsided contact
+      means would force the l <= r cascade), the leading/trailing
+      slots target their measured distance from the flanking gate;
+    - the strips of one row chain through exactly place_row's one
+      break column (next leading slot == previous trailing slot + 1);
+    - the objective is the measured deviation: |gate column - nominal|
+      over every group (nominal columns accumulate the MEASURED gate
+      gaps, so the corridor skeleton survives quantisation) plus
+      |slot column - target| over every member boundary, in a frame
+      anchored at the first group, shifted at the end so the leftmost
+      slot is column 0.
+
+    Pure function of ``ext``; deterministic.
+    """
+    from ortools.sat.python import cp_model
+
+    groups, links = _gate_groups(ext)
+    if not groups:
+        raise ExtractError("no gates to anchor the geometry")
+    # nominal columns accumulate the measured gate gaps -- ZERO across a
+    # link candidate (ASTRAN interleaved those gates at the same x on
+    # purpose; a +1 nominal would price the honest merge as deviation)
+    linked_idx = {(a, b) for a, b in links}
+    gcol_target = [1]
+    for a, g in zip(range(len(groups)), groups[1:]):
+        if ((a, a + 1) in linked_idx):
+            gcol_target.append(gcol_target[-1])
+            continue
+        gap = g["x"] - groups[a]["x"]
+        gcol_target.append(gcol_target[-1]
+                           + max(1, int(math.floor(gap / grid_um
+                                                   + 0.5))))
+    grp_of = {}               # (row, member_index) -> group index
+    for gi, g in enumerate(groups):
+        for (row, mi, _si) in g["gates"]:
+            grp_of[(row, mi)] = gi
+    linked = {frozenset((a, b)) for a, b in links}
+
+    model = cp_model.CpModel()
+    devs = []                 # the objective's deviation terms
+
+    def dev(var, target, tag):
+        d = model.NewIntVar(0, 1 << 16, "dev_%s" % tag)
+        model.Add(d >= var - target)
+        model.Add(d >= target - var)
+        devs.append(d)
+        return d
+
+    hi = max(gcol_target) + 2 * len(groups) + 8
+    gvar = [model.NewIntVar(1, hi, "g%d" % gi)
+            for gi in range(len(groups))]
+    for gi, tgt in enumerate(gcol_target):
+        dev(gvar[gi], tgt, "g%d" % gi)
+    # ordering + the optional cross-row shares + break separation
+    link_var = {}
+    for a, b in zip(range(len(groups)), range(1, len(groups))):
+        if (frozenset((a, b)) in linked):
+            lb = model.NewBoolVar("link_%d_%d" % (a, b))
+            link_var[(a, b)] = lb
+            model.Add(gvar[b] == gvar[a]).OnlyEnforceIf(lb)
+            model.Add(gvar[b] >= gvar[a] + 1).OnlyEnforceIf(lb.Not())
+        else:
+            model.Add(gvar[b] >= gvar[a] + 1)
+        for (rrow, _mi, rsi) in groups[a]["gates"]:
+            for (crow, _cmi, csi) in groups[b]["gates"]:
+                if (rrow == crow and csi != rsi):
+                    model.Add(gvar[b] >= gvar[a] + 2)
+
+    e_lead = {}               # (row, strip) -> leading slot variable
+    e_var = {}                # (row, member) -> trailing slot variable
+    for row in ("p", "n"):
+        row_strips = list(zip(ext["gates_raw"][row],
+                              ext["slots_raw"][row]))
+        mi = 0
+        for si, (strip_gates, strip_slots) in enumerate(row_strips):
+            m = len(strip_gates)
+            slots = [x / UNITS_PER_UM for x in strip_slots]
+            gate_xs = [x / UNITS_PER_UM for x, _net in strip_gates]
+            lead = model.NewIntVar(0, hi, "lead_%s_%d" % (row, si))
+            e_lead[(row, si)] = lead
+            if (si > 0):
+                model.Add(lead == e_var[(row, mi - 1)] + 1)
+            l_t = max(0, _round_cols(gate_xs[0] - slots[0], grid_um))
+            dev(lead, gcol_target[grp_of[(row, mi)]] - l_t,
+                "lead_%s_%d" % (row, si))
+            prev = lead
+            for j in range(m):
+                gi = grp_of[(row, mi)]
+                l = model.NewIntVar(0, hi, "l_%s_%d" % (row, mi))
+                r = model.NewIntVar(1, hi, "r_%s_%d" % (row, mi))
+                model.Add(l == gvar[gi] - prev)
+                model.Add(r >= l)
+                model.Add(r <= l + 1)
+                e = model.NewIntVar(0, hi, "e_%s_%d" % (row, mi))
+                model.Add(e == prev + l + r)
+                e_var[(row, mi)] = e
+                # the interior slot's target: its REGION's column
+                # centre (routing-neutral WHERE the access sits inside
+                # the region; a lopsided measured mean forces the
+                # l <= r cascade).  The trailing slot (no next gate)
+                # targets its measured distance from the gate.
+                d_next = ((gcol_target[grp_of[(row, mi + 1)]]
+                           - gcol_target[gi])
+                          if (row, mi + 1) in grp_of else None)
+                r_t = (max(1, (d_next + 1) // 2) if d_next is not None
+                       else max(1, _round_cols(slots[j + 1] - gate_xs[j],
+                                               grid_um)))
+                dev(e, gcol_target[gi] + r_t, "e_%s_%d" % (row, mi))
+                # the slot stays left of the NEXT gate of the row: the
+                # next member's l >= 0, and across a strip boundary the
+                # trailing slot + the break column + the leading slot
+                # all fit before the next strip's first gate
+                if (j + 1 < m):
+                    model.Add(e <= gvar[grp_of[(row, mi + 1)]])
+                elif (si + 1 < len(row_strips)):
+                    model.Add(e <= gvar[grp_of[(row, mi + 1)]] - 1)
+                prev = e
+                mi += 1
+    model.Minimize(sum(devs))
+    solver = cp_model.CpSolver()
+    solver.parameters.num_search_workers = 1
+    solver.parameters.max_time_in_seconds = 30.0
+    status = solver.Solve(model)
+    if (status not in (cp_model.OPTIMAL, cp_model.FEASIBLE)):
+        raise ExtractError("no slot geometry fits the merged gate columns")
+
+    widths = {}
+    leads = {}
+    for row in ("p", "n"):
+        row_strips = list(zip(ext["gates_raw"][row],
+                              ext["slots_raw"][row]))
+        ks = []
+        mi = 0
+        for si, (strip_gates, _slots) in enumerate(row_strips):
+            prev = solver.Value(e_lead[(row, si)])
+            for j in range(len(strip_gates)):
+                ks.append(solver.Value(e_var[(row, mi)]) - prev)
+                prev = solver.Value(e_var[(row, mi)])
+                mi += 1
+        widths[row] = tuple(ks)
+        leads[row] = solver.Value(e_lead[(row, 0)])
+    shift = min(leads.values())
+    offsets = tuple(leads[row] - shift for row in ("p", "n"))
+    return {"p_widths": widths["p"], "n_widths": widths["n"],
+            "x_offsets": offsets}
+
+
 def candidate_from_gds(netlist, gds_path):
     """The one-call research path: extract + build the seed orderings.
 
     Returns (entry, ordering_p, ordering_n) where ``entry`` is the plain
-    data shape of EXTRACTED_TABLE (``p``/``n``/``metrics``); raises
-    :class:`ExtractError` on coverage failure.  What the next session's
-    funnel runs after a vocabulary extension.
+    data shape of EXTRACTED_TABLE (``p``/``n``/``p_widths``/
+    ``n_widths``/``x_offsets``/``metrics``); raises :class:`ExtractError`
+    on coverage failure.  What the funnel runs after a vocabulary
+    extension.
     """
     ext = extract_arrangement(netlist, gds_path)
+    geo = derive_geometry(ext)
     entry = {"p": [tuple(t) for t in ext["p"]],
              "n": [tuple(t) for t in ext["n"]],
+             "p_widths": geo["p_widths"],
+             "n_widths": geo["n_widths"],
+             "x_offsets": geo["x_offsets"],
              "metrics": ext["metrics"]}
     ordering_p, ordering_n = seed_orderings(netlist, entry)
     return entry, ordering_p, ordering_n

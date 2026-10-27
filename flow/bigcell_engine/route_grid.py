@@ -368,9 +368,13 @@ class _RouteGrid(object):
         self.placement = placement
         # the orientation-aware block view the placement was built from
         # (bigcell_engine.engine meta["blocks"]), forwarded to die_view's
-        # tree-arrangement fallback; None keeps the pure reconstruction
+        # tree-arrangement fallback AND to the slot-geometry test: only
+        # the bigcell slot chain supplies blocks, so a region-width
+        # placement (leg_width_cols > 1, AUDIT 5.61) routes on the SLOT
+        # grid while the exact engine's folded devices (blocks=None)
+        # keep the historical walk
         self.blocks = blocks
-        self.slot = die_view.is_slot_placement(placement)
+        self.slot = die_view.is_slot_placement(placement, blocks)
         if self.slot:
             # slot geometry (doc/BIGCELL_SLOT_GEOMETRY.md section 8): the
             # grid runs on the EDGE axis -- member columns 0..W-1 plus the

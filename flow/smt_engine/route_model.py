@@ -1628,9 +1628,9 @@ def verify_style_access_points(netlist, placement, blocks=None):
     verify's requirement set, not _access_points' base walk.
     """
     from . import die_view
-    if (die_view.is_slot_placement(placement)):
+    if (die_view.is_slot_placement(placement, blocks)):
         sig_diff, power_diff = die_view.die_slot_access_points(
-            netlist, placement)
+            netlist, placement, blocks=blocks)
     elif (blocks is not None):
         sig_diff, power_diff = diffusion_access_points(
             netlist, placement, blocks)

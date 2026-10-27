@@ -91,7 +91,7 @@ class DieBlockView(object):
         return self.block.kind
 
 
-def is_slot_placement(placement):
+def is_slot_placement(placement, blocks=None):
     """Whether ``placement`` speaks the slot geometry model.
 
     The slot chain (geometry.fold_devices / default_leg_widths) emits
@@ -100,9 +100,36 @@ def is_slot_placement(placement):
     exact engine's device-width model emits ``leg_width_cols >= 2`` for
     any electrical width above one grid pitch.  The empty placement is
     not slot-model (nothing to route).
+
+    ``blocks`` (the orientation-aware block view the placement was
+    built from -- bigcell_engine.engine meta["blocks"], the block list
+    route_cell/verify_cell receive) resolves the one case the fields
+    alone cannot: a REGION-WIDTH slot placement (AUDIT 5.61 -- a
+    ``(1, k)`` member is a k-column terminal region, the geometry
+    freedom ASTRAN's LP compaction uses) has the same IR shape as an
+    exact-engine folded device, and the two need OPPOSITE access
+    derivations (slot: terminals on the run's edge columns; exact: the
+    inset walk).  Only the bigcell slot chain supplies ``blocks`` (the
+    exact-engine rungs pass None), so a total block view covering the
+    placement's devices is the slot-chain signature: with it a k>1
+    placement is slot-model, without it the historical all-ones test
+    decides.  Every existing caller (None, or a slot chain whose
+    members are all one column) keeps its exact historical answer.
     """
-    return bool(placement) and all(
-        p.leg_width_cols == 1 for p in placement.values())
+    if not placement:
+        return False
+    if all(p.leg_width_cols == 1 for p in placement.values()):
+        return True
+    if blocks is None:
+        return False
+    placed_names = {getattr(d, "name", None) for d in placement}
+    seen = set()
+    for blk in blocks:
+        for member in blk.members:
+            if member.device.name not in placed_names:
+                return False       # a foreign view -- not this placement's
+            seen.add(member.device.name)
+    return seen == placed_names
 
 
 def die_orientation(netlist, placement, break_cols=DEFAULT_BREAK_COLS,

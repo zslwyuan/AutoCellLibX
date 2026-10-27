@@ -243,7 +243,7 @@ def verify_cell(netlist, placement, route, grid_um=0.19, height_um=2.47,
     # a non-slot placement instead only re-orients the historical inset
     # walk (diffusion_access_points' blocks parameter); no ``blocks`` at
     # all keeps the byte-identical base behaviour.
-    if slot_model or die_view.is_slot_placement(placement):
+    if slot_model or die_view.is_slot_placement(placement, blocks_arg):
         sig_diff, power_diff = die_view.die_slot_access_points(
             netlist, placement, blocks=blocks_arg)
     elif blocks_arg is not None:

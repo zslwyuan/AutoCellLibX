@@ -448,15 +448,18 @@ def _device_cross_tracks(dev):
     return got
 
 
-def _cage_row_view(entries, is_p, exposed):
+def _cage_row_view(entries, is_p, exposed, x_offset=0):
     """One row's cage view (edges, counts, gates, forced, active, width).
 
     ``entries`` is the row's oriented _Entry sequence (the same objects
     _SAState.rows holds).  Walked exactly like _row_picture /
     geometry.place_row: one break column where the facing end nets
-    differ.  ``gates`` maps (gate net, column) -> the union of the
-    carrying devices' crossing tracks (route_grid._gate_maps' per-device
-    strip math).  ``forced`` maps column -> {track: set(nets)} for the
+    differ, ``x_offset`` shifting the origin the way place_row does
+    (AUDIT 5.61 -- a seed arrangement's row offsets must reach the
+    census, or the two rows' columns misalign by exactly the offset).
+    ``gates`` maps (gate net, column) -> the union of the carrying
+    devices' crossing tracks (route_grid._gate_maps' per-device strip
+    math).  ``forced`` maps column -> {track: set(nets)} for the
     build-time metal THIS row pins: a power access covers its
     half-domain up to the device's rail track (GND: tracks 0..rail in
     the N slot, VCC: rail..6 in the P slot) and a contactable signal
@@ -470,7 +473,7 @@ def _cage_row_view(entries, is_p, exposed):
     rail = CAGE_RAIL_TRACK[P_ROW + 2 if is_p else N_ROW]
     forced = {}
     active = set()
-    col = 0
+    col = x_offset
     prev_right = None
     for entry in entries:
         if prev_right is not None \
@@ -605,7 +608,7 @@ def _cage_from_views(vp, vn, exposed, critical=None):
 
 
 def gate_cage_penalty(ordering_p, ordering_n, netlist, leg_widths=None,
-                      critical_nets=None):
+                      critical_nets=None, x_offsets=None):
     """Static gate-cage census over one ordering pair (AUDIT 5.46).
 
     Returns ``(caged_gates, blocked_columns)``: how many gate contacts
@@ -825,7 +828,7 @@ def _crossing_from_views(vp, vn, exposed, critical=None):
 
 
 def crossing_cage_penalty(ordering_p, ordering_n, netlist, leg_widths=None,
-                          critical_nets=None):
+                          critical_nets=None, x_offsets=None):
     """Static crossing-contest census over one ordering pair (AUDIT
     5.49's placement-axis lever).
 
@@ -887,18 +890,24 @@ def crossing_cage_penalty(ordering_p, ordering_n, netlist, leg_widths=None,
     ``netlist`` is the (folded) CellNetlist the orderings decompose (it
     supplies the exposed-net set); ``leg_widths`` the fold map
     (device name -> (legs, leg_width_cols)), defaulting to the slot
-    model's (1, 1).  Pure and deterministic (invariant 9)."""
+    model's (1, 1); ``x_offsets`` the optional per-row x-offset pair
+    (AUDIT 5.61, threaded into both row views exactly like
+    gate_cage_penalty's).  Pure and deterministic (invariant 9)."""
     if leg_widths is None:
         devices = [m.device for row in (ordering_p, ordering_n)
                    for b in row for m in b.members]
         leg_widths = {dev.name: (1, 1) for dev in devices}
+    if x_offsets is None:
+        x_offsets = (0, 0)
     exposed = exposed_net_set(netlist) if netlist is not None else None
     if exposed is None:
         return 0, ()
     vp = _cage_row_view([_entry(b, False, leg_widths)
-                         for b in ordering_p], True, exposed)
+                         for b in ordering_p], True, exposed,
+                        x_offsets[0])
     vn = _cage_row_view([_entry(b, False, leg_widths)
-                         for b in ordering_n], False, exposed)
+                         for b in ordering_n], False, exposed,
+                        x_offsets[1])
     contested, columns, contested_crit = _crossing_from_views(
         vp, vn, exposed,
         frozenset(critical_nets) if critical_nets is not None else None)
@@ -2878,8 +2887,17 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
     # arrangement for a table cell joins as the FIRST pool entry -- lazy
     # (one digest lookup), empty for every netlist outside the closure
     # table, so every existing chain keeps its exact pool byte-for-byte.
+    # AUDIT 5.61: a seed carries its own GEOMETRY -- the measured
+    # terminal-region widths ride the leg map and the per-row x-offsets
+    # ride the placement, both stashed per-kind exactly the way the
+    # fold-variant context is, so the seed's trial layout reproduces
+    # ASTRAN's columns instead of the default one-column grid.
     from bigcell_engine.gds_seeds import seed_candidates
-    for kind, op_s, on_s in seed_candidates(netlist):
+    seed_ctx = {}
+    for cand in seed_candidates(netlist):
+        kind, op_s, on_s = cand[0], cand[1], cand[2]
+        if len(cand) > 3 and cand[3] is not None:
+            seed_ctx[kind] = cand[3]         # (leg_widths, x_offsets)
         if any(ordering_signature(op, on) == ordering_signature(op_s, on_s)
                for _k, op, on in pool):
             continue
@@ -2892,6 +2910,20 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
     # leg_widths_f) -- the fold decision each candidate's ordering
     # decomposes and routes against (populated by phase 6)
     fold_ctx = {}
+
+    def _seed_fields(kind):
+        """JSON-safe provenance fields for a GDS-seed winner ({} for
+        every other kind): the region-width leg map and the row
+        x-offsets, plain data -- the runtime closure reproduces the
+        winning placement via layout_cell(op, on, leg_widths,
+        x_offsets) with exactly these values."""
+        ctx = seed_ctx.get(kind)
+        if ctx is None:
+            return {}
+        lws, offs = ctx
+        return {"seed_leg_widths": {n: list(v) for n, v
+                                    in sorted(lws.items())},
+                "seed_x_offsets": list(offs)}
 
     def _fold_fields(kind):
         """JSON-safe provenance fields for a fold-variant winner ({}
@@ -2909,25 +2941,32 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
                                    if base.get(n) != l},
                 "fold_signature": list(fold_signature(lws_f))}
 
-    def _census_entry(op, on, t_netlist=None, t_lws=None):
+    def _census_entry(op, on, t_netlist=None, t_lws=None,
+                      t_x_offsets=None):
         """The census fields for one candidate: the raw counts exactly
         as the public penalties compute them, plus -- on a core-guided
         chain -- the critical-net attribution and core score (one view
         build serves both censuses).  ``t_netlist``/``t_lws`` override
-        the chain's netlist/leg map (a fold-variant candidate trials
-        against its OWN fold decision)."""
+        the chain's netlist/leg map and ``t_x_offsets`` the row
+        x-offsets (a fold-variant candidate trials against its OWN fold
+        decision, a GDS-seed candidate against its OWN geometry --
+        AUDIT 5.61)."""
         t_netlist = netlist if t_netlist is None else t_netlist
         t_lws = leg_widths if t_lws is None else t_lws
         if crit is None:
             return {"cage": gate_cage_penalty(op, on, t_netlist,
-                                              t_lws)[0],
+                                              t_lws,
+                                              x_offsets=t_x_offsets)[0],
                     "crossing": crossing_cage_penalty(op, on, t_netlist,
-                                                      t_lws)[0]}
+                                                      t_lws,
+                                                      x_offsets=t_x_offsets
+                                                      )[0]}
         exposed = frozenset(exposed_net_set(t_netlist))
+        offs = t_x_offsets if t_x_offsets is not None else (0, 0)
         vp = _cage_row_view([_entry(b, False, t_lws)
-                             for b in op], True, exposed)
+                             for b in op], True, exposed, offs[0])
         vn = _cage_row_view([_entry(b, False, t_lws)
-                             for b in on], False, exposed)
+                             for b in on], False, exposed, offs[1])
         cage, _ccols, cage_crit = _cage_from_views(vp, vn, exposed, crit)
         crossing, _xcols, crossing_crit = _crossing_from_views(
             vp, vn, exposed, crit)
@@ -2946,7 +2985,19 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
         ctx = fold_ctx.get(kind)
         t_netlist = netlist if ctx is None else ctx[0]
         t_lws = leg_widths if ctx is None else ctx[1]
-        placements, width = layout_cell(op, on, t_lws)
+        # a GDS-seed candidate trials against its OWN geometry (AUDIT
+        # 5.61): the measured region widths overlay the leg map and the
+        # row x-offsets shift the placement -- ASTRAN's own columns,
+        # not the default one-column grid
+        t_x_offsets = None
+        sctx = seed_ctx.get(kind)
+        if sctx is not None:
+            merged = dict(t_lws)
+            merged.update(sctx[0])
+            t_lws = merged
+            t_x_offsets = sctx[1]
+        placements, width = layout_cell(op, on, t_lws,
+                                        x_offsets=t_x_offsets)
         # the candidate's OWN die view: the orientation-aware block view
         # the production route would consume for exactly this placement
         # (engine meta["blocks"] is list(ordering_p) + list(ordering_n)
@@ -2979,7 +3030,8 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
                  "feasible": conflicts == 0,
                  "attempts": getattr(result, "attempts_used", None),
                  "note": note}
-        entry.update(_census_entry(op, on, t_netlist, t_lws))
+        entry.update(_census_entry(op, on, t_netlist, t_lws,
+                                    t_x_offsets))
         entries.append(entry)
         return entry
 
@@ -3004,6 +3056,7 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
                     "candidate_count": len(pool), "candidates": entries,
                 }
                 won.update(_fold_fields(entry["kind"]))
+                won.update(_seed_fields(entry["kind"]))
                 if crit is not None:
                     won["cage_crit"] = entry["cage_crit"]
                     won["crossing_crit"] = entry["crossing_crit"]
@@ -3044,6 +3097,7 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
             "candidate_count": len(pool), "candidates": entries,
         }
         out.update(_fold_fields(entry["kind"]))
+        out.update(_seed_fields(entry["kind"]))
         if crit is not None:
             out["cage_crit"] = entry["cage_crit"]
             out["crossing_crit"] = entry["crossing_crit"]
