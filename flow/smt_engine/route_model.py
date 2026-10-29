@@ -121,7 +121,7 @@ class RouteResult(object):
     def __init__(self, status_name, col_owner_n, col_owner_p, lo_n, hi_n,
                  lo_p, hi_p, hseg, pj, m2, via, reachB_n, reachB_p,
                  width_cols, hseg_count, vseg_count, pj_count, m2_count,
-                 via_count, m2v=None, m2via=None):
+                 via_count, m2v=None, m2via=None, extra_stripes=None):
         self.status_name = status_name
         self.col_owner_n = col_owner_n      # N-half stripe per column
         self.col_owner_p = col_owner_p      # P-half stripe per column
@@ -155,6 +155,18 @@ class RouteResult(object):
         # lifts onto M2 exactly through this form.
         self.m2v = dict(m2v) if m2v else {}
         self.m2via = dict(m2via) if m2via else {}
+        # --- multi-interval half-column stripes (additive, default empty) --
+        # The 9-bar representation carries ONE interval per half-column
+        # (col_owner_n/p + lo/hi); the C++ draws vertical metal per
+        # (column, track) node with LP spacing instead (no stripe concept
+        # at the routing level -- graphrouter.h:33-44).  extra_stripes
+        # carries the ADDITIONAL intervals: a flat tuple of
+        # (col, net, lo, hi, "N"|"P") in bar-domain indices, each
+        # separated from every other interval in the same half-column by
+        # at least one free track (the quantized S1M1M1).  stripes(c)
+        # appends them, so every consumer written against the accessor
+        # (verify's checks, the GDS renderers) sees them unchanged.
+        self.extra_stripes = tuple(extra_stripes) if extra_stripes else ()
 
     @property
     def ok(self):
@@ -173,6 +185,9 @@ class RouteResult(object):
         if (self.col_owner_p[c] is not None):
             out.append((self.col_owner_p[c], self.lo_p[c], self.hi_p[c],
                         "P"))
+        for (ec, enet, elo, ehi, eslot) in self.extra_stripes:
+            if (ec == c):
+                out.append((enet, elo, ehi, eslot))
         return out
 
 

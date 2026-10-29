@@ -1171,6 +1171,37 @@ class _ElementRouter(object):
         hi_p = [self.bar_levels - 1] * (W + 1)
         reachB_n = [False] * (W + 1)
         reachB_p = [False] * (W + 1)
+        # multi-interval half-column stripes: the 9-bar representation
+        # carries ONE interval per half (owner + lo/hi); the C++ has no
+        # stripe concept at the routing level (graphrouter.h:33-44 -- a
+        # flat node graph, per-node ownership, LP-enforced S1M1M1
+        # spacing at draw time).  extra_stripes carries the ADDITIONAL
+        # intervals, each >=1 free track from every other interval in
+        # the same half-column (the quantized S1M1M1).
+        extra_stripes = []
+
+        def _half_intervals(c, is_n):
+            out = []
+            if is_n and owner_n[c] is not None:
+                out.append((lo_n[c], hi_n[c]))
+            if not is_n and owner_p[c] is not None:
+                out.append((lo_p[c], hi_p[c]))
+            out.extend((elo, ehi) for (ec, _en, elo, ehi, es)
+                       in extra_stripes if ec == c and es == is_n)
+            return out
+
+        def _try_extra(c, net, slo, shi, is_n, side):
+            """A second (or later) interval in a half-column: spaced
+            >=1 free track from every existing interval (the C++'s
+            S1M1M1 quantized), or an honest fail."""
+            for (plo, phi) in _half_intervals(c, is_n):
+                if not (shi + 2 <= plo or phi + 2 <= slo):
+                    for t in side:
+                        self._collisions.add(m1_tab[t][c])
+                    return False
+            extra_stripes.append(
+                (c, net.name, slo, shi, "N" if is_n else "P"))
+            return True
 
         def emit_seg(t, c, net, poly=False, m2=False):
             """Claim the hseg slot (t, c).  Returns 'ok', 'skip' (a
@@ -1324,15 +1355,19 @@ class _ElementRouter(object):
                             shi = side[-1] + 1
                             prev = owner_n[c]
                             if prev is not None and prev != net.name:
-                                for t in side:
-                                    self._collisions.add(m1_tab[t][c])
-                                for tt in range(lo_n[c] - 1, hi_n[c]):
-                                    self._collisions.add(m1_tab[tt][c])
-                                return self._fail(
-                                    "vocabulary: two N-half stripes at "
-                                    "column %d (%s, %s)"
-                                    % (c, prev, net.name))
-                            if prev == net.name:
+                                # the C++ has no single-stripe rule --
+                                # a second net's interval is legal when
+                                # spaced >=1 free track (S1M1M1)
+                                if not _try_extra(c, net, slo, shi,
+                                                  True, side):
+                                    return self._fail(
+                                        "vocabulary: %s's extra N stripe "
+                                        "at column %d violates the M1-M1 "
+                                        "spacing against the existing "
+                                        "interval" % (net.name, c))
+                                reachB_n[c] = reachB_n[c] or (
+                                    shi == self.boundary_t + 1)
+                            elif prev == net.name:
                                 # the net's own second run at this
                                 # column MERGES into the one interval
                                 # (the vocabulary's single stripe per
@@ -1367,15 +1402,16 @@ class _ElementRouter(object):
                                 if net.name in VCC_NAMES else side[-1] + 1
                             prev = owner_p[c]
                             if prev is not None and prev != net.name:
-                                for t in side:
-                                    self._collisions.add(m1_tab[t][c])
-                                for tt in range(lo_p[c] - 1, hi_p[c]):
-                                    self._collisions.add(m1_tab[tt][c])
-                                return self._fail(
-                                    "vocabulary: two P-half stripes at "
-                                    "column %d (%s, %s)"
-                                    % (c, prev, net.name))
-                            if prev == net.name:
+                                if not _try_extra(c, net, slo, shi,
+                                                  False, side):
+                                    return self._fail(
+                                        "vocabulary: %s's extra P stripe "
+                                        "at column %d violates the M1-M1 "
+                                        "spacing against the existing "
+                                        "interval" % (net.name, c))
+                                reachB_p[c] = reachB_p[c] or (
+                                    slo == self.boundary_t + 1)
+                            elif prev == net.name:
                                 for t in range(min(lo_p[c], slo),
                                                max(hi_p[c], shi) + 1):
                                     if (t, c) in m1pts:
@@ -1423,34 +1459,34 @@ class _ElementRouter(object):
                             shi = side[-1] + 1
                             prev = owner_n[c]
                             if prev is not None and prev != net.name:
-                                for t in side:
-                                    self._collisions.add(m1_tab[t][c])
-                                for tt in range(lo_n[c] - 1, hi_n[c]):
-                                    self._collisions.add(m1_tab[tt][c])
-                                return self._fail(
-                                    "vocabulary: two N-half stripes at "
-                                    "column %d (%s, %s)"
-                                    % (c, prev, net.name))
-                            owner_n[c], lo_n[c], hi_n[c] = \
-                                net.name, slo, shi
-                            reachB_n[c] = shi == self.boundary_t + 1
+                                if not _try_extra(c, net, slo, shi,
+                                                  True, side):
+                                    return self._fail(
+                                        "vocabulary: %s's extra N stripe "
+                                        "at column %d violates the M1-M1 "
+                                        "spacing" % (net.name, c))
+                            else:
+                                owner_n[c], lo_n[c], hi_n[c] = \
+                                    net.name, slo, shi
+                            reachB_n[c] = (reachB_n[c]
+                                           or shi == self.boundary_t + 1)
                         else:
                             slo = side[0] + 1
                             shi = self.bar_levels - 1 \
                                 if net.name in VCC_NAMES else side[-1] + 1
                             prev = owner_p[c]
                             if prev is not None and prev != net.name:
-                                for t in side:
-                                    self._collisions.add(m1_tab[t][c])
-                                for tt in range(lo_p[c] - 1, hi_p[c]):
-                                    self._collisions.add(m1_tab[tt][c])
-                                return self._fail(
-                                    "vocabulary: two P-half stripes at "
-                                    "column %d (%s, %s)"
-                                    % (c, prev, net.name))
-                            owner_p[c], lo_p[c], hi_p[c] = \
-                                net.name, slo, shi
-                            reachB_p[c] = slo == self.boundary_t + 1
+                                if not _try_extra(c, net, slo, shi,
+                                                  False, side):
+                                    return self._fail(
+                                        "vocabulary: %s's extra P stripe "
+                                        "at column %d violates the M1-M1 "
+                                        "spacing" % (net.name, c))
+                            else:
+                                owner_p[c], lo_p[c], hi_p[c] = \
+                                    net.name, slo, shi
+                            reachB_p[c] = (reachB_p[c]
+                                           or slo == self.boundary_t + 1)
                 continue
             # 3. the M1 horizontal segments (the used wires)
             own_slots = set()
@@ -1913,12 +1949,13 @@ class _ElementRouter(object):
                     via[(t, vcol)] = True
 
         vseg = sum(1 for o in owner_n if o is not None) \
-            + sum(1 for o in owner_p if o is not None)
+            + sum(1 for o in owner_p if o is not None) \
+            + len(extra_stripes)
         result = RouteResult(
             "FEASIBLE", owner_n, owner_p, lo_n, hi_n, lo_p, hi_p,
             hseg, pj, m2flag, via, reachB_n, reachB_p, W + 1,
             len(hseg), vseg, len(pj), len(m2flag), len(via),
-            m2v=m2v, m2via=m2via)
+            m2v=m2v, m2via=m2via, extra_stripes=tuple(extra_stripes))
         result.route_cost = (
             sum(1 for k in hseg if not m2flag.get(k) and not pj.get(k))
             * H_MET_COST
