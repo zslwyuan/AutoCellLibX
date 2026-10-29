@@ -1561,6 +1561,25 @@ class _ElementRouter(object):
                 for t1, t2 in runs:
                     if t2 > t1:
                         m2v[(c, t1, t2)] = net.name
+                        # the span's endpoint landing on the net's OWN
+                        # bar coverage is a physical via (the M2 ends on
+                        # the stripe -- the same node-via form the
+                        # power-walled access uses); the BFS and the
+                        # GDS via-square rendering both need the flag
+                        for te in (t1, t2):
+                            if (te + 1 <= 0):
+                                continue
+                            on_bar = (
+                                (owner_n[c] == net.name
+                                 and lo_n[c] <= te + 1 <= hi_n[c])
+                                or (owner_p[c] == net.name
+                                    and lo_p[c] <= te + 1 <= hi_p[c])
+                                or any(ec == c and en == net.name
+                                       and elo <= te + 1 <= ehi
+                                       for (ec, en, elo, ehi, _es)
+                                       in extra_stripes))
+                            if on_bar:
+                                m2via[(te, c)] = True
             for t, c in sorted(via_pts):
                 if (t, c) not in m1pts:
                     continue         # the M1 side was dropped; verify
