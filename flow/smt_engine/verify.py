@@ -100,7 +100,7 @@ def _field_map(netlist, placement, width_cols, dom=None, height_um=2.47):
     per track -- a strip blocks only the tracks its y-range covers
     (ASTRAN's per-column pol-node existence, autocell2.cpp:41/:50)."""
     if dom is None:
-        dom = track_domain_local("bar9", height_um)
+        dom = track_domain_local("bar9", height_um, 0.19)
     if dom.strip_anchored:
         return route_model_field_map(netlist, placement, width_cols, dom,
                                       height_um)

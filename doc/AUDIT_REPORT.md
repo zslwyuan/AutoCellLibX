@@ -2122,3 +2122,20 @@ router_port 四处"两 N/P 半列条带"拒绝替换为真实规则（同半列�
 （VCC 条带合并冲突、栅不可穿越、路径失败）。
 
 9 + 98 邻近测试绿，零回归。
+
+## §5.66 BFS 连通调试定案：verify 是对的——是 port 的悬空栅穿越（2026-10-30）
+
+逐节点调试 MUX2X1 的 S 网络（三个栅列 1/2/5）：
+- gate1/gate2 经 (10,1)/(10,2)/(10,3)+(7,2)/(7,3) 在列 3 的双半列条
+  带上正确连通（N [8,9] 与 P [9,11] 经 track 8 共享节点）；
+- **gate5 的穿越段是 poly jump (6,5)**：G5↔PJ(6,5)↔PJ(6,6)——S 在
+  track 6 上无其他 M1 段延续，poly 穿越是悬空的（poly 只经栅接触连
+  M1，不碰 M1 竖条）。**verify 的拒绝是正确的**——router_port 的
+  solidify 的 gate-join 修复（L-join）没有把该穿越接到树的其余部
+  分。修 port 不修 verify。
+- 顺带修一个潜伏 bug：verify._field_map 的默认路径漏了 grid_um 实参
+  （真实调用传了 dom 所以从未触发）。
+
+**下一项（精确定义）**：router_port 的 gate-join 修复需保证每条 poly
+穿越有同轨 M1 延续或改发 L-join（水平线 + 竖条带）；修后 MUX2X1 +
+COMPLEX11 端到端闭合入表。
