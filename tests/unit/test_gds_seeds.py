@@ -208,11 +208,25 @@ def test_complexc_ids_stay_disambiguated(flow_dir):
     assert seed_candidates(nl) == []
 
 
-def test_seed_candidates_empty_while_no_closure_exists(flow_dir):
-    """The closure table is the honest empty capture list: every netlist
-    -- table cells included -- gets no production candidate until an
-    arrangement actually closes (AUDIT 5.60)."""
-    assert SEED_TABLE == {}
+def test_seed_table_carries_exactly_the_captures(flow_dir):
+    """The closure table carries exactly the CAPTURED arrangements
+    (AUDIT 5.63: CLKBUF1 + max/COMPLEX0, both astran13) -- an entry
+    lands here only when the arrangement closes, and then the closure
+    reproduces from the table alone."""
+    assert set(SEED_TABLE) == {
+        ("CLKBUF1", "8cf4a81927d7"),
+        ("COMPLEX0", _max_complex0_digest()),
+    }
+    for entry in SEED_TABLE.values():
+        assert entry["tracks"] == "astran13"
+
+
+def _max_complex0_digest():
+    from bigcell_engine.gds_seeds import EXTRACTED_TABLE
+    for (name, digest), e in EXTRACTED_TABLE.items():
+        if name == "COMPLEX0" and "max" in e["source"]:
+            return digest
+    raise AssertionError("max/COMPLEX0 not in EXTRACTED_TABLE")
     for key, entry in sorted(EXTRACTED_TABLE.items()):
         nl = _load_cell(entry["source"], flow_dir)
         assert seed_candidates(nl) == []

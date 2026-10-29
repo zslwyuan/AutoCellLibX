@@ -56,7 +56,7 @@ def _netlist(sp):
 @pytest.fixture(scope="module")
 def nand2_slot():
     from bigcell_engine.engine import _heuristic_placement
-    nl3, pl, w, lws, blocks, _orderings = _heuristic_placement(
+    nl3, pl, w, lws, blocks, _orderings, _tr = _heuristic_placement(
         _netlist(NAND2))
     return nl3, pl, w, lws, blocks
 
@@ -69,7 +69,7 @@ def complex0_slot(flow_dir):
     from bigcell_engine.engine import _heuristic_placement
     sp = open(os.path.join(str(flow_dir), "outputs", "ctrl",
                            "COMPLEX0.sp")).read()
-    nl3, pl, w, lws, blocks, _orderings = _heuristic_placement(_netlist(sp))
+    nl3, pl, w, lws, blocks, _orderings, _tr = _heuristic_placement(_netlist(sp))
     return nl3, pl, w, lws, blocks
 
 
@@ -86,10 +86,11 @@ def _failed_shell(width, note):
 
 
 def _failing_router(note):
-    # blocks=None: the engine's rung-3 call forwards the
-    # orientation-aware view (route3 == verify's view contract)
+    # blocks=None / tracks="bar9": the engine's rung-3 call forwards the
+    # orientation-aware view and the route's track domain (route3 ==
+    # verify's view contract)
     def router(netlist, placement, width_cols, leg_widths,
-               blocks=None):
+               blocks=None, tracks="bar9"):
         width = max(width_cols,
                     max(p.end_col for p in placement.values())) + 1
         return _failed_shell(width, note)
@@ -219,7 +220,7 @@ def _signature(sp):
     """Whole-pipeline merged-route signature (netlist parse -> slot
     placement -> whole-cell window solve -> route_signature)."""
     from bigcell_engine.engine import _heuristic_placement
-    nl3, pl, w, _lws, blocks, _orderings = _heuristic_placement(
+    nl3, pl, w, _lws, blocks, _orderings, _tr = _heuristic_placement(
         _netlist(sp))
     route_width = w + 1
     fix = solve_window_routing(nl3, pl, route_width, (0, route_width),

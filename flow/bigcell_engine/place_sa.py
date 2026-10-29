@@ -2721,6 +2721,26 @@ def _router_accepts_blocks(router):
     return False
 
 
+def _router_accepts_kw(router, name):
+    """Whether ``router`` accepts an optional ``name`` keyword -- the
+    same courtesy :func:`_router_accepts_blocks` extends to the seed's
+    track domain (``tracks``): the real route_cell declares it; the
+    injected test fakes keep their exact call.  Probed per use (the
+    call sites are cold -- seed candidates only)."""
+    try:
+        params = inspect.signature(router).parameters.values()
+    except (TypeError, ValueError):    # no introspectable signature
+        return False
+    for p in params:
+        if p.kind == inspect.Parameter.VAR_KEYWORD:
+            return True
+        if p.name == name and p.kind in (
+                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                inspect.Parameter.KEYWORD_ONLY):
+            return True
+    return False
+
+
 def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
                      candidate_count=DEFAULT_CANDIDATES,
                      trial_attempts=DEFAULT_TRIAL_ATTEMPTS,
@@ -2913,17 +2933,19 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
 
     def _seed_fields(kind):
         """JSON-safe provenance fields for a GDS-seed winner ({} for
-        every other kind): the region-width leg map and the row
-        x-offsets, plain data -- the runtime closure reproduces the
-        winning placement via layout_cell(op, on, leg_widths,
-        x_offsets) with exactly these values."""
+        every other kind): the region-width leg map, the row x-offsets
+        and the track domain the closure solved on, plain data -- the
+        runtime closure reproduces the winning placement via
+        layout_cell(op, on, leg_widths, x_offsets) and routes/verifies
+        on exactly this domain."""
         ctx = seed_ctx.get(kind)
         if ctx is None:
             return {}
-        lws, offs = ctx
+        lws, offs, dom = ctx
         return {"seed_leg_widths": {n: list(v) for n, v
                                     in sorted(lws.items())},
-                "seed_x_offsets": list(offs)}
+                "seed_x_offsets": list(offs),
+                "seed_tracks": dom}
 
     def _fold_fields(kind):
         """JSON-safe provenance fields for a fold-variant winner ({}
@@ -2991,11 +3013,14 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
         # not the default one-column grid
         t_x_offsets = None
         sctx = seed_ctx.get(kind)
+        t_tracks = None
         if sctx is not None:
             merged = dict(t_lws)
             merged.update(sctx[0])
             t_lws = merged
             t_x_offsets = sctx[1]
+            if len(sctx) > 2 and sctx[2] != "bar9":
+                t_tracks = sctx[2]
         placements, width = layout_cell(op, on, t_lws,
                                         x_offsets=t_x_offsets)
         # the candidate's OWN die view: the orientation-aware block view
@@ -3008,14 +3033,21 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
         # non-tree candidates keep their byte-identical blocks-less
         # trial.  No wall-clock, no hash() (invariant 9).
         blocks_view = list(op) + list(on)
+        # a seed on a non-bar9 domain trials on that domain -- but only
+        # when the injected router accepts the kwarg (the established
+        # _router_accepts_blocks courtesy: test fakes keep their 4-arg
+        # contract)
+        kw = {}
+        if (t_tracks is not None and _router_accepts_kw(router, "tracks")):
+            kw["tracks"] = t_tracks
         try:
             if blocks_aware:
                 result = router(t_netlist, placements, width, t_lws,
                                 max_attempts=trial_attempts,
-                                blocks=blocks_view)
+                                blocks=blocks_view, **kw)
             else:
                 result = router(t_netlist, placements, width, t_lws,
-                                max_attempts=trial_attempts)
+                                max_attempts=trial_attempts, **kw)
         except Exception as exc:                   # noqa: BLE001
             result = None
             note = "trial router raised %s: %s" % (

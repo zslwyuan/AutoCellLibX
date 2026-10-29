@@ -446,7 +446,7 @@ def _full_chain(flow_dir, *rel):
 def _full_chain_text(text):
     nl = CellNetlist(parse_spice_subckt(text))
     from bigcell_engine.engine import _heuristic_placement
-    nl3, pl, w, lws, blocks, _ord = _heuristic_placement(nl)
+    nl3, pl, w, lws, blocks, _ord, _seed_tr = _heuristic_placement(nl)
     r = route_cell(nl3, pl, w, lws)
     return nl3, pl, w, lws, blocks, r
 

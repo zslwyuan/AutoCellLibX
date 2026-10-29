@@ -757,6 +757,11 @@ def run_benchmark(cells, out_dir, exact_budget_s=60.0, grid_budget_s=120.0,
         layout_nl = meta.get("cell_netlist") or cell.netlist
         layout_blocks = meta.get("blocks")
         vkw = {"blocks": layout_blocks} if layout_blocks is not None else {}
+        # the seed capture's track domain (AUDIT 5.63): verify must speak
+        # the vertical vocabulary the route was solved on
+        se_dom = meta.get("slot_emit", {}).get("tracks")
+        if (se_dom is not None and se_dom != "bar9"):
+            vkw["tracks"] = se_dom
 
         os.makedirs(os.path.dirname(gds_path), exist_ok=True)
         if (meta.get("slot_emit") is not None):
@@ -766,7 +771,7 @@ def run_benchmark(cells, out_dir, exact_budget_s=60.0, grid_budget_s=120.0,
             gds_cells.write_cell_gds(
                 gds_path, layout_nl, placement, se["width_cols"],
                 se["ordering_p"], se["ordering_n"], se["leg_widths"],
-                route=route)
+                route=route, tracks=se.get("tracks", "bar9"))
         else:
             gds_writer(gds_path, layout_nl, placement, route)
         try:

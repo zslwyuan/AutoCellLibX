@@ -417,8 +417,56 @@ EXTRACTED_TABLE = {
 #: extracted arrangements are all exact-infeasible in the current
 #: vocabulary (AUDIT 5.60), so committing them as production candidates
 #: would only burn trials; the honest capture list is empty.
+# The runtime CLOSURE table (AUDIT 5.63): an entry lands here only
+# when the extracted arrangement CLOSES on its own domain -- then
+# the closure reproduces from this table alone, no .gds, no
+# ASTRAN.  Both captures run on the astran13 track domain (the
+# 9-bar model proved them impossible; ASTRAN's own track layout
+# unlocks them, AUDIT 5.62-5.63).
 SEED_TABLE = {
 }
+
+# populated entries (plain data, generated from the extractions):
+SEED_TABLE[('CLKBUF1', '8cf4a81927d7')] = {'source': 'original_astran_cells/CLKBUF1.gds',
+ 'astran_um': 1.9,
+ 'p': (('M0', 'VCC', 'a_9_6#'),
+       ('M1', 'a_9_6#', 'VCC'),
+       ('M2', 'VCC', 'a_25_6#'),
+       ('M3', 'a_25_6#', 'VCC'),
+       ('M4', 'VCC', 'a_41_6#'),
+       ('M5', 'a_41_6#', 'VCC'),
+       ('M6', 'VCC', 'Y'),
+       ('M7', 'Y', 'VCC')),
+ 'n': (('M8', 'GND', 'a_9_6#'),
+       ('M9', 'a_9_6#', 'GND'),
+       ('M10', 'GND', 'a_25_6#'),
+       ('M11', 'a_25_6#', 'GND'),
+       ('M12', 'GND', 'a_41_6#'),
+       ('M13', 'a_41_6#', 'GND'),
+       ('M14', 'GND', 'Y'),
+       ('M15', 'Y', 'GND')),
+ 'p_widths': (1, 1, 1, 1, 1, 1, 2, 1),
+ 'n_widths': (1, 1, 1, 1, 1, 1, 1, 2),
+ 'x_offsets': (0, 0),
+ 'tracks': 'astran13'}
+SEED_TABLE[('COMPLEX0', 'e6b547710f5e')] = {'source': 'outputs/max/COMPLEX0.gds',
+ 'astran_um': 1.71,
+ 'p': (('Mcl1#0', 'cl1#a_2_10#', 'VCC'),
+       ('Mcl1#1', 'VCC', 'cl1#a_17_50#'),
+       ('Mcl1#2', 'cl1#a_17_50#', 'cl1#Y'),
+       ('Mcl1#3', 'cl1#Y', 'cl1#a_30_54#'),
+       ('Mcl1#4', 'cl1#a_30_54#', 'VCC'),
+       ('Mcl0#0', 'VCC', 'cl0#Y')),
+ 'n': (('Mcl1#5', 'cl1#a_2_10#', 'GND'),
+       ('Mcl1#6', 'GND', 'cl1#a_17_10#'),
+       ('Mcl1#7', 'cl1#a_17_10#', 'cl1#Y'),
+       ('Mcl1#8', 'cl1#Y', 'cl1#a_30_10#'),
+       ('Mcl1#9', 'cl1#a_30_10#', 'GND'),
+       ('Mcl0#1', 'GND', 'cl0#Y')),
+ 'p_widths': (1, 1, 1, 2, 1, 1),
+ 'n_widths': (1, 1, 2, 1, 1, 1),
+ 'x_offsets': (0, 0),
+ 'tracks': 'astran13'}
 
 
 # --------------------------------------------------------------------------
@@ -486,18 +534,19 @@ def seed_geometry(entry, leg_widths=None):
 
 def seed_candidates(netlist, table=None):
     """The seed candidate class: [(kind, ordering_p, ordering_n,
-    (leg_widths, x_offsets))].
+    (leg_widths, x_offsets, tracks))].
 
     Lazy and cheap: one digest lookup; empty for every netlist not in
-    the closure table (all of them today), so the engine's speculate
-    pool is untouched for every closing cell.  A table cell whose fold
-    decision changed the netlist (device names no longer covered) is
-    honestly skipped -- the seed speaks the arrangement of the exact
-    netlist it was extracted from.  The fourth tuple element is the
-    entry's GEOMETRY (AUDIT 5.61): the leg map carrying the measured
-    terminal-region widths and the per-row x-offsets, so the trial and
-    the runtime closure reproduce ASTRAN's own column layout, not the
-    default one-column grid.
+    the closure table, so the engine's speculate pool is untouched for
+    every non-captured cell.  A table cell whose fold decision changed
+    the netlist (device names no longer covered) is honestly skipped --
+    the seed speaks the arrangement of the exact netlist it was
+    extracted from.  The fourth tuple element is the entry's GEOMETRY
+    (AUDIT 5.61-5.63): the leg map carrying the measured
+    terminal-region widths, the per-row x-offsets, and the TRACK DOMAIN
+    the closure solved on (astran13 for both captures; bar9 for any
+    legacy entry), so the trial, the runtime closure and the GDS
+    emission all speak the same vertical vocabulary.
     """
     table = SEED_TABLE if table is None else table
     entry = _table_entry(table, netlist)
@@ -505,7 +554,8 @@ def seed_candidates(netlist, table=None):
         return []
     ordering_p, ordering_n = seed_orderings(netlist, entry)
     geometry = seed_geometry(entry, None)
-    return [(SEED_KIND, ordering_p, ordering_n, geometry)]
+    tracks = entry.get("tracks", "bar9")
+    return [(SEED_KIND, ordering_p, ordering_n, geometry + (tracks,))]
 
 
 # --------------------------------------------------------------------------

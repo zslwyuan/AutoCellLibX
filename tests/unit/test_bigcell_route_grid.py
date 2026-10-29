@@ -711,7 +711,7 @@ def test_multiplier_repro_never_clashes_and_fails_honestly(flow_dir):
     from bigcell_engine.engine import _heuristic_placement
     path = os.path.join(flow_dir, "outputs", "multiplier", "COMPLEX0.sp")
     nl = CellNetlist(parse_spice_subckt(open(path).read()))
-    nl3, pl, w, lws, blocks, _orderings = _heuristic_placement(nl)
+    nl3, pl, w, lws, blocks, _orderings, _seed_tr = _heuristic_placement(nl)
     r = route_cell(nl3, pl, w, lws, max_attempts=3)
     note = getattr(r, "fail_note", None) or ""
     assert "terminal clash" not in note
@@ -767,9 +767,10 @@ LIB_NAND2X1_CELL = "NAND2X1"
 
 
 def _slot_state(sp):
-    """(netlist3, placement, width, leg_widths, blocks, orderings) via
-    rung 3 -- engine._heuristic_placement's 6-value contract (the
-    orderings tuple feeds the slot GDS emitter)."""
+    """(netlist3, placement, width, leg_widths, blocks, orderings,
+    tracks) via rung 3 -- engine._heuristic_placement's 7-value
+    contract (the orderings tuple feeds the slot GDS emitter; tracks
+    is the seed's track domain, bar9 for every non-captured cell)."""
     from bigcell_engine.engine import _heuristic_placement
     nl = CellNetlist(parse_spice_subckt(sp))
     return _heuristic_placement(nl)
@@ -810,7 +811,7 @@ def _lib_subckt(cell, flow_dir):
 @pytest.mark.parametrize("sp,label", [
     (INVX1_SP, "INVX1"), (INLINE_NAND2_SP, "NAND2")])
 def test_slot_cells_route_and_verify_clean(sp, label):
-    nl3, pl, w, lws, blocks, _orderings = _slot_state(sp)
+    nl3, pl, w, lws, blocks, _orderings, _st_tr = _slot_state(sp)
     r = route_cell(nl3, pl, w, lws)
     assert r.ok, (r.status_name, r.fail_note)
     rep = verify_cell(nl3, pl, r, blocks=blocks)
@@ -822,7 +823,7 @@ def test_slot_route_end_to_end_gds_and_sanity(tmp_path):
     verify clean -> gds_cells.write_cell_gds -> layout_sanity clean."""
     from layout_sanity import check_layout
     from bigcell_engine.gds_cells import write_cell_gds
-    nl3, pl, w, lws, blocks, _orderings = _slot_state(INVX1_SP)
+    nl3, pl, w, lws, blocks, _orderings, _st_tr = _slot_state(INVX1_SP)
     r = route_cell(nl3, pl, w, lws)
     assert r.ok, (r.status_name, r.fail_note)
     rep = verify_cell(nl3, pl, r, blocks=blocks)
@@ -838,7 +839,7 @@ def test_slot_route_end_to_end_gds_and_sanity(tmp_path):
 
 
 def test_slot_route_is_byte_stable_in_process():
-    nl3, pl, w, lws, _blocks, _orderings = _slot_state(INLINE_NAND2_SP)
+    nl3, pl, w, lws, _blocks, _orderings, _st_tr = _slot_state(INLINE_NAND2_SP)
     sigs = set()
     for _run in range(2):
         r = route_cell(nl3, pl, w, lws)
@@ -858,7 +859,7 @@ from bigcell_engine.route_grid import route_cell, route_signature
 SP = %r
 
 nl = CellNetlist(parse_spice_subckt(SP))
-nl3, pl, w, lws, _blocks, _orderings = _heuristic_placement(nl)
+nl3, pl, w, lws, _blocks, _orderings, _seed_tr = _heuristic_placement(nl)
 r = route_cell(nl3, pl, w, lws)
 assert r.ok, (r.status_name, r.fail_note)
 print(hashlib.sha256(route_signature(r).encode()).hexdigest())
@@ -889,7 +890,7 @@ def test_lib_nand2x1_slot_route_closes_after_speculate(flow_dir):
     now picks the mirrored flip-both orientation, which routes FEASIBLE
     and verifies clean: the plateau is broken by orientation choice,
     not by router tuning."""
-    nl3, pl, w, lws, blocks, _orderings = _slot_state(_lib_subckt(LIB_NAND2X1_CELL,
+    nl3, pl, w, lws, blocks, _orderings, _st_tr = _slot_state(_lib_subckt(LIB_NAND2X1_CELL,
                                                       flow_dir))
     r = route_cell(nl3, pl, w, lws)
     assert r.ok and r.status_name == "FEASIBLE"
@@ -941,7 +942,7 @@ def test_structural_diagnosis_clean_on_closures():
     conflict-free and their static diagnosis reports no corridor
     over-subscription and no caged terminals."""
     for sp in (INVX1_SP, INLINE_NAND2_SP):
-        nl3, pl, w, lws, _blocks, _orderings = _slot_state(sp)
+        nl3, pl, w, lws, _blocks, _orderings, _st_tr = _slot_state(sp)
         r = route_cell(nl3, pl, w, lws)
         assert r.ok, (r.status_name, r.fail_note)
         g = _RouteGrid(nl3, pl, w)
@@ -1016,7 +1017,7 @@ def test_m2_freedom_closes_and_verifies_with_spans_and_node_vias(
     carries the new vocabulary fields."""
     import os
 
-    nl3, pl, w, lws, _blocks, _orderings = _slot_state(
+    nl3, pl, w, lws, _blocks, _orderings, _st_tr = _slot_state(
         _lib_subckt("NAND2X1", flow_dir))
     r = route_cell(nl3, pl, w, lws)
     assert r.ok and r.status_name == "FEASIBLE", (r.status_name,
@@ -1054,7 +1055,7 @@ def test_m2_route_is_byte_stable_across_processes(flow_dir, tmp_path):
         "      + text.split('.subckt NAND2X1')[1].split('.ends')[0]\n"
         "      + '.ends')\n"
         "nl = CellNetlist(parse_spice_subckt(sp))\n"
-        "nl3, pl, w, lws, _b, _o = _heuristic_placement(nl)\n"
+        "nl3, pl, w, lws, _b, _o, _seed_tr = _heuristic_placement(nl)\n"
         "r = route_cell(nl3, pl, w, lws)\n"
         "assert r.ok, (r.status_name, r.fail_note)\n"
         "print(hashlib.sha256(route_signature(r).encode()).hexdigest())\n"
@@ -1225,7 +1226,7 @@ def test_closures_die_view_gate_stays_silent(flow_dir):
     from smt_engine import die_view as dv
 
     for sp in (INVX1_SP, INLINE_NAND2_SP):
-        nl3, pl, w, _lws, _blocks, _orderings = _slot_state(sp)
+        nl3, pl, w, _lws, _blocks, _orderings, _st_tr = _slot_state(sp)
         adjacency = dv._device_adjacency(nl3, pl)
         views = dv._reconstruct_views(nl3, pl)
         assert dv._map_satisfies_adjacency(
@@ -1233,7 +1234,7 @@ def test_closures_die_view_gate_stays_silent(flow_dir):
         assert _shape(dv.die_orientation(nl3, pl)) == _shape(views)
     # the library NAND2X1's speculate-selected orientation too
     import os
-    nl3, pl, w, _lws, _blocks, _orderings = _slot_state(
+    nl3, pl, w, _lws, _blocks, _orderings, _st_tr = _slot_state(
         _lib_subckt("NAND2X1", flow_dir))
     adjacency = dv._device_adjacency(nl3, pl)
     views = dv._reconstruct_views(nl3, pl)
@@ -1260,7 +1261,7 @@ def test_ctrl_complex0_m2_closure_fingerprint(flow_dir):
     path = os.path.join(flow_dir, "outputs", "ctrl", "COMPLEX0.sp")
     nl = CellNetlist(parse_spice_subckt(open(path).read()))
     from bigcell_engine.engine import _heuristic_placement
-    nl3, pl, w, lws, blocks, _orderings = _heuristic_placement(nl)
+    nl3, pl, w, lws, blocks, _orderings, _seed_tr = _heuristic_placement(nl)
     r = route_cell(nl3, pl, w, lws)
     assert r.ok and r.status_name == "FEASIBLE", (r.status_name,
                                                   r.fail_note)

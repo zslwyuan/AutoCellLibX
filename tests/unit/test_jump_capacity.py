@@ -131,7 +131,7 @@ def _complex0_hashes():
     nl = CellNetlist(parse_spice_subckt(
         open(os.path.join(_REPO_DIR, "flow", "outputs", "ctrl",
                           "COMPLEX0.sp")).read()))
-    nl3, pl, w, lws, blocks, orderings = _heuristic_placement(nl)
+    nl3, pl, w, lws, blocks, orderings, _seed_tr = _heuristic_placement(nl)
     acc = verify_style_access_points(nl3, pl, blocks)
 
     def build(**kw):

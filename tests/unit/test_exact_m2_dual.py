@@ -265,7 +265,7 @@ def test_window_merge_keeps_kept_spans_and_bans_their_points():
 @pytest.fixture(scope="module")
 def latch_slot():
     from bigcell_engine.engine import _heuristic_placement
-    nl3, pl, w, lws, blocks, _orderings = _heuristic_placement(
+    nl3, pl, w, lws, blocks, _orderings, _seed_tr = _heuristic_placement(
         _netlist(_lib_subckt("LATCH")))
     return nl3, pl, w, lws, blocks
 

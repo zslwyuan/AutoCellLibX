@@ -155,7 +155,8 @@ def _plateau_partial(netlist, placement, width_cols, blocks=None):
     return grid.build_result()
 
 
-def _window_fix_rung(meta, rung, netlist, placement, blocks, failed_route):
+def _window_fix_rung(meta, rung, netlist, placement, blocks, failed_route,
+                     tracks="bar9"):
     """One window-fix attempt: the exact engine on the conflicted region.
 
     Derives the window from the failed route's fail_note (parsed via
@@ -208,7 +209,7 @@ def _window_fix_rung(meta, rung, netlist, placement, blocks, failed_route):
     try:
         fix = route_model.solve_window_routing(
             netlist, placement, route_width, window, partial=partial,
-            blocks=blocks, m2_spans=True, jump_m2=True)
+            blocks=blocks, m2_spans=True, jump_m2=True, tracks=tracks)
     except Exception as exc:                       # noqa: BLE001
         _attempt(meta, rung, _ENG_WINDOW, False, status="ERROR",
                  stage="routing", window=list(window),
@@ -284,11 +285,27 @@ def _heuristic_placement(netlist):
     if sel.get("fold_overrides"):
         netlist3, leg_widths = fold_devices(
             netlist3, fold_overrides=sel["fold_overrides"])
+    # GDS-seed winner (place_sa's seed_ctx, AUDIT 5.61-5.63): the
+    # selected orderings decompose the EXTRACTED arrangement -- its
+    # measured terminal-region widths replace the leg map, its per-row
+    # x-offsets shift place_row, and its TRACK DOMAIN carries the
+    # closure's vertical vocabulary, so every consumer below (layout,
+    # router, verify, GDS emit) reproduces ASTRAN's own columns on
+    # ASTRAN's own grid
+    x_offsets = (0, 0)
+    tracks3 = "bar9"
+    if sel.get("seed_leg_widths"):
+        leg_widths = {n: tuple(v) for n, v
+                      in sel["seed_leg_widths"].items()}
+    if sel.get("seed_x_offsets"):
+        x_offsets = tuple(sel["seed_x_offsets"])
+    if sel.get("seed_tracks"):
+        tracks3 = sel["seed_tracks"]
     placements, width_cols = geometry.layout_cell(
-        ordering_p, ordering_n, leg_widths)
+        ordering_p, ordering_n, leg_widths, x_offsets=x_offsets)
     blocks_view = list(ordering_p) + list(ordering_n)
     return (netlist3, placements, width_cols, leg_widths, blocks_view,
-            (ordering_p, ordering_n))
+            (ordering_p, ordering_n), tracks3)
 
 
 class UnsupportedCell(Exception):
@@ -567,8 +584,8 @@ def synth_cell(netlist, exact_budget_s=60.0, grid_budget_s=120.0,
     # --- rung 3: heuristic placement chain + the grid router ------------
     t0 = time.time()
     try:
-        netlist3, placements3, width3, leg_widths3, blocks3, orderings3 = \
-            _heuristic_placement(netlist)
+        (netlist3, placements3, width3, leg_widths3, blocks3, orderings3,
+         tracks3) = _heuristic_placement(netlist)
     except Exception as exc:                       # noqa: BLE001
         _attempt(meta, 3, _ENG_FULL, False, status="ERROR", stage="placement",
                  note="%s: %s" % (type(exc).__name__, exc),
@@ -591,7 +608,8 @@ def synth_cell(netlist, exact_budget_s=60.0, grid_budget_s=120.0,
         # reconstruction explains, the route is byte-identical to the
         # blocks-less run.
         route3 = _default_grid_router()(netlist3, placements3, width3,
-                                        leg_widths3, blocks=blocks3)
+                                        leg_widths3, blocks=blocks3,
+                                        tracks=tracks3)
     except NotImplementedError as exc:
         _attempt(meta, 3, _ENG_FULL, False, status="UNAVAILABLE",
                  note=str(exc) or "router stub", seconds=time.time() - t0)
@@ -604,7 +622,7 @@ def synth_cell(netlist, exact_budget_s=60.0, grid_budget_s=120.0,
     if (route3 is not None and getattr(route3, "ok", True)):
         try:
             report3 = verify_cell(netlist3, placements3, route3,
-                                  blocks=blocks3)
+                                  blocks=blocks3, tracks=tracks3)
         except Exception as exc:                   # noqa: BLE001
             report3 = None
             vnote = "verify raised %s: %s" % (type(exc).__name__, exc)
@@ -629,7 +647,8 @@ def synth_cell(netlist, exact_budget_s=60.0, grid_budget_s=120.0,
                 meta["slot_emit"] = {"width_cols": width3,
                                      "ordering_p": orderings3[0],
                                      "ordering_n": orderings3[1],
-                                     "leg_widths": leg_widths3}
+                                     "leg_widths": leg_widths3,
+                                     "tracks": tracks3}
                 return placements3, route3, meta
         _attempt(meta, 3, _ENG_FULL, False,
                  status=getattr(route3, "status_name", "UNKNOWN"),
@@ -642,22 +661,73 @@ def synth_cell(netlist, exact_budget_s=60.0, grid_budget_s=120.0,
 
     # --- rung 3.5: the exact engine as a window fixer on the failed
     # rung-3 route's conflicted region (doc section 2.4, rung 1's
-    # narrowed role).  Fires only on a router FAILURE carrying the
-    # honest fail_note; a verify-dirty router success has no plateau
-    # payload and is left to the ladder's honest failure.
+    # narrowed role).  Three fire forms: (a) a bar9 router FAILURE
+    # carries the honest fail_note -- the conflicted-region window fix;
+    # (b) a NON-bar9 seed's router failure -- the window fixer's tie
+    # planner is bar9-specific, so the seed's own closure form fires
+    # instead: the whole-cell exact solve on the route's domain; (c) a
+    # verify-dirty router SUCCESS (the heuristic found a zero-conflict
+    # route the verifier rejects -- observed on astran13 seeds, AUDIT
+    # 5.63) -- the whole-cell exact solve as well.
+
+    def _direct_exact_solve():
+        """The whole-cell exact solve (forms b and c): the seed
+        captures' own closure form -- solve_routing with the full
+        vocabulary on the route's own domain, verify-gated."""
+        t0x = time.time()
+        try:
+            from smt_engine.route_model import (solve_routing,
+                                                verify_style_access_points)
+            acc = verify_style_access_points(netlist3, placements3,
+                                             blocks3)
+            ex = solve_routing(
+                netlist3, placements3, width3 + 1, metal2=True,
+                m2_spans=True, jump_m2=True, accesses=acc,
+                tracks=tracks3, time_limit_s=120.0)
+        except Exception as exc:                   # noqa: BLE001
+            _attempt(meta, 3.5, _ENG_FULL_WINDOW, False, status="ERROR",
+                     stage="routing",
+                     note="%s: %s" % (type(exc).__name__, exc),
+                     seconds=time.time() - t0x)
+            return None
+        okx = getattr(ex, "status_name", None) in ("OPTIMAL", "FEASIBLE")
+        _attempt(meta, 3.5, _ENG_FULL_WINDOW, okx,
+                 status=ex.status_name, stage="routing",
+                 window=[0, width3 + 1], seconds=time.time() - t0x)
+        if (not okx):
+            return None
+        try:
+            rep = verify_cell(netlist3, placements3, ex, blocks=blocks3,
+                              tracks=tracks3)
+        except Exception:                          # noqa: BLE001
+            return None
+        return ex if rep.ok() else None
+
     if (route3 is not None and not getattr(route3, "ok", True)):
-        fixed3 = _window_fix_rung(meta, 3.5, netlist3, placements3,
-                                  blocks3, route3)
-        if (fixed3 is not None and (best is None
-                                    or fixed3.width_cols
-                                    < best["width_cols"])):
+        if (tracks3 == "bar9"):
+            fixed3 = _window_fix_rung(meta, 3.5, netlist3, placements3,
+                                      blocks3, route3, tracks=tracks3)
+        else:
+            # form (b): the bar9-specific window fixer cannot plan ties
+            # on a non-bar9 domain; the direct exact solve replaces it
+            fixed3 = _direct_exact_solve()
+    elif (route3 is not None and report3 is not None
+          and not report3.ok()):
+        # form (c): the verify-dirty heuristic route
+        fixed3 = _direct_exact_solve()
+    else:
+        fixed3 = None
+    if (fixed3 is not None and (best is None
+                                or fixed3.width_cols
+                                < best["width_cols"])):
             meta["engine"] = _ENG_FULL_WINDOW
             meta["width_cols"] = fixed3.width_cols
             meta["width_um"] = fixed3.width_cols * GRID_UM
             meta["slot_emit"] = {"width_cols": width3,
                                  "ordering_p": orderings3[0],
                                  "ordering_n": orderings3[1],
-                                 "leg_widths": leg_widths3}
+                                 "leg_widths": leg_widths3,
+                                 "tracks": tracks3}
             return placements3, fixed3, meta
 
     if (best is not None):

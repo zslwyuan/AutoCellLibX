@@ -121,7 +121,7 @@ def test_assumptions_mode_registers_all_families():
         assert expect in names, names
     # the wider model carries the adjacency/via/poly global rules too
     nll = CellNetlist(parse_spice_subckt(_lib_subckt("LATCH")))
-    nl3l, pll, wl, _lws, blocksl, _orderings = _heuristic_placement(nll)
+    nl3l, pll, wl, _lws, blocksl, _orderings, _seed_tr = _heuristic_placement(nll)
     accl = verify_style_access_points(nl3l, pll, blocksl)
     rml = build_routing_model(nl3l, pll, width_cols=wl + 1,
                               accesses=accl, assumptions=True)

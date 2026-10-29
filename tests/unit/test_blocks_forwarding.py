@@ -211,7 +211,7 @@ def test_engine_rung3_forwards_blocks_and_rung2_keeps_contract(
     captured = {}
 
     def rung3_router(netlist, placement, width_cols, leg_widths,
-                     blocks=None):
+                     blocks=None, tracks="bar9"):
         captured["args"] = (netlist, placement, width_cols, leg_widths)
         captured["blocks"] = blocks
         width = max(width_cols,

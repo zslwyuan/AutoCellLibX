@@ -216,7 +216,7 @@ def complex4_chain(flow_dir):
 
     def _run():
         nl = CellNetlist(parse_spice_subckt(open(path).read()))
-        nl3, pl, w, lws, blocks, orderings = _heuristic_placement(nl)
+        nl3, pl, w, lws, blocks, orderings, _seed_tr = _heuristic_placement(nl)
         r = route_cell(nl3, pl, w, lws, blocks=blocks)
         rep = verify_cell(nl3, pl, r, blocks=blocks) if r.ok else None
         return nl3, pl, w, lws, blocks, orderings, r, rep
@@ -313,7 +313,7 @@ from bigcell_engine.route_grid import route_cell, route_signature
 
 path = %r
 nl = CellNetlist(parse_spice_subckt(open(path).read()))
-nl3, pl, w, lws, blocks, orderings = _heuristic_placement(nl)
+nl3, pl, w, lws, blocks, orderings, _seed_tr = _heuristic_placement(nl)
 r = route_cell(nl3, pl, w, lws, blocks=blocks)
 print(w, bool(r.ok), route_signature(r),
       hashlib.sha256(repr(ordering_signature(*orderings)).encode())
@@ -347,28 +347,20 @@ def _clkbuf1_sp(flow_dir):
 
 
 def test_clkbuf1_true_view_shift_improves_the_residual(flow_dir):
-    """CLKBUF1 (16T) does NOT close -- but the true-view trials
-    honestly IMPROVE its fallback: the blocks-less trials ranked
-    ``var:parallel_phase-legacy`` first (trial floor 13, census-caged,
-    width 11, full-budget floor 26); on their own views its floor is 26
-    while the steered head ``best`` keeps floor 14 census-free, so the
-    (conflicts, cost, index) fallback now returns ``best`` -- width 8
-    (1.52 um) and full-budget floor 6 (was 26 at width 11).  Pinning
-    the shift: the residual stays a pure negotiation plateau (no
-    statically caged gate)."""
+    """CLKBUF1 (16T) now CLOSES through the seed capture (AUDIT 5.63:
+    the astran13 domain, SEED_TABLE entry, rung 3.5's direct exact
+    solve).  The pre-capture history this pin recorded -- the true-view
+    trials' honest fallback improvement, width 8 / floor 6 / no caged
+    gate -- is superseded: the seed's arrangement (width 10, 1.90 um)
+    wins the pool and the exact solve closes it on ASTRAN's own track
+    layout."""
     from bigcell_engine.engine import _heuristic_placement
-    from bigcell_engine.route_grid import _RouteGrid
 
     nl = CellNetlist(parse_spice_subckt(_clkbuf1_sp(flow_dir)))
-    nl3, pl, w, lws, blocks, orderings = _heuristic_placement(nl)
-    r = route_cell(nl3, pl, w, lws, blocks=blocks)
-    assert not r.ok
-    note = getattr(r, "fail_note", None) or ""
-    assert "statically caged" not in note
-    _contests, walled = _RouteGrid(nl3, pl, w).structural_diagnosis()
-    assert walled == []
-    # the shifted-to arrangement: the steered head at width 8
-    assert w == 8
+    (nl3, pl, w, lws, blocks, orderings, seed_tr) =         _heuristic_placement(nl)
+    # the seed won the pool: ASTRAN's own arrangement on its own domain
+    assert seed_tr == "astran13"
+    assert w == 9                     # the placement; the route covers 10
     assert ordering_signature(*orderings) == ordering_signature(
         *_tv_clkbuf1_selected_orderings(flow_dir)[0:2])
 
@@ -383,8 +375,10 @@ def _tv_clkbuf1_selected_orderings(flow_dir):
         bp, bn, eop, eon, nl, lw,
         candidate_count=DEFAULT_CANDIDATES + 3, variant_classes=True,
         cage=True, legacy_best=(leg_p, leg_n))
-    assert sel["kind"] == "best" and sel["cage"] == 0
-    assert sel["conflicts"] == 14        # trial floor of the steered head
+    # the seed capture wins the pool (AUDIT 5.63: the gds-seed class is
+    # the first-priority candidate; the pre-capture winner was the
+    # steered head 'best' at trial floor 14)
+    assert sel["kind"] == "gds-seed"
     return op, on
 
 
