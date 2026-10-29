@@ -2103,3 +2103,22 @@ poly 合并相触——ASTRAN 连续 x 下中心到中心的线不触，我们�
 routeNets 夺回语义、CLKBUF1 捕获经端口闭合、失败宽度、进程内+
 跨进程（PYTHONHASHSEED 0/1）确定性。9 绿；engine/seeds/trueview
 74 绿。
+
+## §5.65b 多区间半列条带：词汇墙倒下，BFS 连通为下一步（2026-10-30）
+
+**诊断（三次 agent 启动被基础设施输出污染击落后由协调者完成）**：单条带每半列限制是**移植伪影**——C++ GraphRouter 是纯节点图（graphrouter.h:33-44，逐节点所有权），竖直金属逐（列，轨）绘制、间距由 LP 压缩的 S1M1M1 保证；无线条带概念。
+
+**修复（565df1e）**：RouteResult 增 extra_stripes（(col, net, lo, hi,
+"N"|"P") 元组，stripes(c) 访问器自动携带——verify/GDS 消费方零改动）；
+router_port 四处"两 N/P 半列条带"拒绝替换为真实规则（同半列不同网络
+间隔 ≥1 空轨，同网络仍合并）；vseg 计入。
+
+**神谕重跑（13 cell）**：**MUX2X1 与 adder/COMPLEX11 路由成功**
+（此前不可路由）——§5.65 具名的头号墙确实溶解。**但 verify 连通 BFS
+拒绝**（"net S/Y/cl0#Y not connected"）：MUX2X1 的 S 网络几何链看似
+完整（两半列条带共享 track 8、hseg 覆盖三个栅列），断连原因在 BFS
+的具体遍历规则（可能为栅穿越的 y-范围/spans 或段-条带到达规则），
+需逐节点调试——**精确定义的下一步**。其余 cell 的失败是其他具名墙
+（VCC 条带合并冲突、栅不可穿越、路径失败）。
+
+9 + 98 邻近测试绿，零回归。
