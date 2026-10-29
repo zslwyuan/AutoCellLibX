@@ -2010,3 +2010,26 @@ BFS 一直是对的**；求解器无关的左悬钉永续诚实。
 数；route_cell 已接受）为下一步；13 个未捕获的墙在astran13 上仍为
 证明级（其中或含更深的组合需求或投影残差——下一轮假设核提取定
 性）。
+
+## §5.64 SEED_TABLE 生产接线 + bench_int8：30/49（2026-10-30）
+
+**(1) 接线（af9f66a）**：捕获表带轨道域贯通全链——seed_candidates
+第四元组 (leg_widths, x_offsets, tracks)，试布走自己的域
+（_router_accepts_kw 探测保住注入式假路由器契约），胜者报告携带
+seed_tracks，引擎 rung3 路由/verify 透传，slot_emit/GDS 发射跟随；
+rung 3.5 增直接整窗精确求解（服务 bar9 窗口修复器覆盖不到的两种
+形式：非 bar9 域的路由器失败、verify-dirty 的启发式成功）。
+
+**(2) 生产复现**：CLKBUF1 21s/1.90µm、max/COMPLEX0 144s/1.52µm
+——纯 Python、仅凭表、零 ASTRAN。签名变更的 19+7 处机械损伤全修
+（6→7 解包×7 文件、假路由器 tracks 形参、残差钉翻为捕获钉）。
+
+**(3) bench_int8（完整质量面板）**：**30/49 闭合（61%）**，verify
+30/30，int7→int8 净增 2 零损失。同口径比（bigcell-full 系）
+中位 0.82/最大 1.00（n=14）；引脚可达性中位 0.459；运行时 p50
+63s/p90 497s；引擎分布：full×24、full+window×3、grid×1、
+exact×2。诚实轨迹：12%（起点）→25→27→28→**30**。
+
+**(4) 进行中**：ASTRAN 路由核心逐行移植（元素图+三层方向性代价
+M1 h=11/v=4、M2 h=4/v=11——我们模型缺的最可能自由度）对剩余 13
+cell 神谕验证；6 个无版图 cell 需完整 autoFlow 移植。
