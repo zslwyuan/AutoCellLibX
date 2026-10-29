@@ -606,10 +606,20 @@ def synth_cell(netlist, exact_budget_s=60.0, grid_budget_s=120.0,
         # from the SAME view (route_grid threads it into both phase
         # grids' die_view fallbacks); on every placement the pristine
         # reconstruction explains, the route is byte-identical to the
-        # blocks-less run.
-        route3 = _default_grid_router()(netlist3, placements3, width3,
-                                        leg_widths3, blocks=blocks3,
-                                        tracks=tracks3)
+        # blocks-less run.  astran13 seeds route through the PORTED
+        # ASTRAN router (router_port.route_cell_ported -- AutoCell's
+        # element graph + GraphRouter on ASTRAN's own track layout, the
+        # router that closed the .gds layouts these arrangements were
+        # extracted from); bar9 keeps route_grid byte-identical.
+        if tracks3 == "astran13":
+            from .router_port import route_cell_ported
+            route3 = route_cell_ported(netlist3, placements3, width3,
+                                       leg_widths3, blocks=blocks3,
+                                       tracks=tracks3)
+        else:
+            route3 = _default_grid_router()(netlist3, placements3, width3,
+                                            leg_widths3, blocks=blocks3,
+                                            tracks=tracks3)
     except NotImplementedError as exc:
         _attempt(meta, 3, _ENG_FULL, False, status="UNAVAILABLE",
                  note=str(exc) or "router stub", seconds=time.time() - t0)
