@@ -193,7 +193,7 @@ import heapq
 from bigcell_engine.geometry import (BREAK_GAP_COLS, MID_UM, WELL_GAP_UM)
 from smt_engine import die_view
 from smt_engine.gds import (CONTACT_S, POLY_OVERHANG, row_geometry,
-                            track_geometry)
+                            track_domain, track_geometry)
 from smt_engine.netlist import (build_diffusion_blocks, exposed_net_set,
                                 gate_access_points)
 from smt_engine.route_model import (BAR_LEVELS, BOUNDARY_T, N_TRACKS,
@@ -246,23 +246,23 @@ _M1, _M2, _PJ, _G, _HUB, _PIN = "M1", "M2", "PJ", "G", "HUB", "PIN"
 _EMPTY_FROZEN = frozenset()
 
 
-def track_positions(height_um=2.47, grid_um=0.19):
+def track_positions(height_um=2.47, grid_um=0.19, tracks="bar9"):
     """(trackY, barY): y-centres of the routing tracks and the bar domain.
 
-    Re-uses smt_engine/gds.track_geometry -- the shared 7-track model's
-    positions extended by the two supply-rail levels (barY = [GND] + trackY
-    + [VCC], 9 levels).  This is the vertical domain of the RouteResult
-    contract; ASTRAN's rule-derived ~13-track list is the documented
-    extension path (doc/STAGE3_BIGCELL_ENGINE.md section 7.1).
+    Re-uses smt_engine/gds.track_geometry -- the selected domain's
+    positions (bar9: the shared 7-track model extended by the two
+    supply-rail levels, 9 levels; astran13: ASTRAN's own rule-derived
+    16-signal-track list, gds.py's module header).  This is the vertical
+    domain of the RouteResult contract.
     """
-    return track_geometry(height_um, grid_um)
+    return track_geometry(height_um, grid_um, tracks=tracks)
 
 
-def _row_track_ranges(height_um, grid_um):
+def _row_track_ranges(height_um, grid_um, dom):
     """{(is_p, row): tracks whose y lies inside the diffusion rectangle}."""
-    trackY, _ = track_geometry(height_um, grid_um)
+    trackY = dom.trackY
     _, rows = row_geometry(height_um, grid_um)
-    return {key: tuple(t for t in range(N_TRACKS) if y0 <= trackY[t] <= y1)
+    return {key: tuple(t for t in range(dom.n_tracks) if y0 <= trackY[t] <= y1)
             for key, (y0, y1) in rows.items()}
 
 
@@ -363,9 +363,21 @@ class _RouteGrid(object):
 
     def __init__(self, netlist, placement, width_cols,
                  height_um=2.47, grid_um=0.19, metal2_verticals=True,
-                 blocks=None):
+                 blocks=None, tracks="bar9"):
         self.netlist = netlist
         self.placement = placement
+        # the track domain (gds.TRACK_DOMAINS): bar9 keeps the historical
+        # 7-track grid byte-for-byte; astran13 routes on ASTRAN's own
+        # rule-derived 16-signal-track list (gds.py's module header) --
+        # every constant below then reads the domain record, whose bar9
+        # values equal the historical module constants exactly
+        self.tracks = tracks
+        self.dom = dom = track_domain(tracks, height_um, grid_um)
+        self.n_tracks = dom.n_tracks
+        self.boundary_t = dom.boundary_t
+        self.bar_levels = dom.bar_levels
+        self.row_track = dom.row_track
+        self.row_tracks = dom.row_tracks
         # the orientation-aware block view the placement was built from
         # (bigcell_engine.engine meta["blocks"]), forwarded to die_view's
         # tree-arrangement fallback AND to the slot-geometry test: only
@@ -396,7 +408,7 @@ class _RouteGrid(object):
         # router, so every cell that closed before keeps its exact
         # route (AGENTS.md invariant 8/9 determinism discipline).
         self.metal2_verticals = metal2_verticals
-        self.trackY, self.barY = track_geometry(height_um, grid_um)
+        self.trackY, self.barY = dom.trackY, dom.barY
         self.graph = []             # node id -> _Node
         self.arcs = []
         self._id = {}               # geometry tuple -> node id
@@ -452,12 +464,13 @@ class _RouteGrid(object):
         """
         width = self.width_cols
         idmap = self._id
+        n_tracks = self.n_tracks
         self._m1_tab = [[idmap[(_M1, t, c)] for c in range(width)]
-                        for t in range(N_TRACKS)]
+                        for t in range(n_tracks)]
         self._m2_tab = [[idmap[(_M2, t, c)] for c in range(width)]
-                        for t in range(N_TRACKS)]
+                        for t in range(n_tracks)]
         self._pj_tab = {t: [idmap[(_PJ, t, c)] for c in range(width)]
-                        for t in sorted(ROW_TRACKS)}
+                        for t in sorted(self.row_tracks)}
         adj = [None] * len(self.graph)
         arcs = self.arcs
         for nid, node in enumerate(self.graph):
@@ -473,7 +486,7 @@ class _RouteGrid(object):
         # (not field and not (net has a gate at the column)).  The
         # ``(t, c) not in _poly_span`` arm of _allow is dead -- the PJ
         # node domain IS _poly_span's domain -- and the assert pins it.
-        assert len(self._poly_span) == len(ROW_TRACKS) * width
+        assert len(self._poly_span) == len(self.row_tracks) * width
         gate_at = set()
         for gname, cols in self.gate_nets_at.items():
             for c in cols:
@@ -563,7 +576,7 @@ class _RouteGrid(object):
                     if (c < width):
                         self.diff_tracks[c][dev.is_p].update(tracks)
         else:
-            row_tracks = _row_track_ranges(height, grid)
+            row_tracks = _row_track_ranges(height, grid, self.dom)
             for dev in netlist.devices:
                 p = placement[dev]
                 for c in range(p.start_col, p.end_col + 1):
@@ -610,18 +623,18 @@ class _RouteGrid(object):
         self.by_name = {net.name: net for net in self.nets + self.power}
 
         # ---- M1/M2 point grids ----
-        for t in range(N_TRACKS):
+        for t in range(self.n_tracks):
             for c in range(width):
                 self._m1(t, c)
                 self._node((_M2, t, c))
         # poly jump points on the row tracks
-        for t in sorted(ROW_TRACKS):
+        for t in sorted(self.row_tracks):
             for c in range(width):
                 self._node((_PJ, t, c))
         # poly-jump foreign-gate blocking: gates spanning the track at the
         # column (raw y-span -- verify.py's foreign-gate rule)
         self._poly_span = {}
-        for t in sorted(ROW_TRACKS):
+        for t in sorted(self.row_tracks):
             for c in range(width):
                 spanning = frozenset(
                     g for g in self.gate_nets_at
@@ -630,7 +643,7 @@ class _RouteGrid(object):
                 self._poly_span[(t, c)] = spanning
 
         # ---- arcs ----
-        for t in range(N_TRACKS):
+        for t in range(self.n_tracks):
             for c in range(width - 1):
                 self._add_arc(self._m1(t, c), self._m1(t, c + 1),
                               H_MET_COST)
@@ -638,7 +651,7 @@ class _RouteGrid(object):
                               self._node((_M2, t, c + 1)), M2_H_COST)
                 self._add_arc(self._m1(t, c), self._node((_M2, t, c)),
                               VIA_COST)
-        for t in range(1, N_TRACKS):
+        for t in range(1, self.n_tracks):
             for c in range(width):
                 self._add_arc(self._m1(t - 1, c), self._m1(t, c),
                               self._v_cost(c, t))
@@ -650,11 +663,11 @@ class _RouteGrid(object):
         # cannot profit from metal2 stay byte-identical.  Phase 1
         # (metal2_verticals=False) builds the pre-freedom graph.
         if self.metal2_verticals:
-            for t in range(1, N_TRACKS):
+            for t in range(1, self.n_tracks):
                 for c in range(width):
                     self._add_arc(self._node((_M2, t - 1, c)),
                                   self._node((_M2, t, c)), M2_V_COST)
-        for t in sorted(ROW_TRACKS):
+        for t in sorted(self.row_tracks):
             for c in range(width - 1):
                 # the jump segment (t, c) must leave field oxide at its
                 # right end (verify.py: unconditional c+1 in field[t])
@@ -669,7 +682,7 @@ class _RouteGrid(object):
                 g = self._node((_G, c, net))
                 for t in self.gate_tracks[(net, c)]:
                     self._add_arc(g, self._m1(t, c), GATE_CONTACT_COST)
-                    if (t in ROW_TRACKS):
+                    if (t in self.row_tracks):
                         # poly jumps run on the row tracks only; the poly
                         # merge of the gate stripe uses the same tracks
                         self._add_arc(g, self._node((_PJ, t, c)), 0)
@@ -678,7 +691,7 @@ class _RouteGrid(object):
         for c in range(width):
             hub = self._node((_HUB, c))
             n_ini, p_ini = self._diff_ini(c)
-            for t in range(N_TRACKS):
+            for t in range(self.n_tracks):
                 cost = HUB_CORRIDOR_COST if (n_ini < t < p_ini) else HUB_COST
                 self._add_arc(hub, self._m1(t, c), cost)
         ports = getattr(netlist, "external", set())
@@ -698,7 +711,7 @@ class _RouteGrid(object):
         # ---- terminals: diffusion accesses + gates + pins ----
         for net in self.nets:
             for c, dev in diff_sig.get(net.name, ()):
-                t_star = ROW_TRACK[device_rail(dev, placement[dev].row)]
+                t_star = self.row_track[device_rail(dev, placement[dev].row)]
                 self._claim(self._m1(t_star, c), net)
             for c in sorted(gate_access_points(netlist, placement).get(
                     net.name, ())):
@@ -725,8 +738,8 @@ class _RouteGrid(object):
         for net in self.power:
             is_vcc = net.name in VCC_NAMES
             for c, dev in diff_pow.get(net.name, ()):
-                t_star = ROW_TRACK[device_rail(dev, placement[dev].row)]
-                span = range(t_star, N_TRACKS) if is_vcc \
+                t_star = self.row_track[device_rail(dev, placement[dev].row)]
+                span = range(t_star, self.n_tracks) if is_vcc \
                     else range(0, t_star + 1)
                 for t in span:
                     self._claim(self._m1(t, c), net)
@@ -782,20 +795,20 @@ class _RouteGrid(object):
                 for sy0, sy1 in strip_ranges.get((net, c), ()):
                     lo = max(sy0, y0) - POLY_OVERHANG + CONTACT_S / 2.0
                     hi = min(sy1, y1) + POLY_OVERHANG - CONTACT_S / 2.0
-                    tracks.update(t for t in range(N_TRACKS)
+                    tracks.update(t for t in range(self.n_tracks)
                                   if lo <= trackY[t] <= hi)
                 pol = strip_pol.get((net, c), (False, False))
                 if (pol[0] and pol[1]):
                     lo = MID_UM - WELL_GAP_UM + CONTACT_S / 2.0
                     hi = MID_UM + WELL_GAP_UM - CONTACT_S / 2.0
-                    tracks.update(t for t in range(N_TRACKS)
+                    tracks.update(t for t in range(self.n_tracks)
                                   if lo <= trackY[t] <= hi)
                 gate_tracks[(net, c)] = sorted(tracks)
             else:
                 lo = y0 - POLY_OVERHANG + CONTACT_S / 2.0
                 hi = y1 + POLY_OVERHANG - CONTACT_S / 2.0
                 gate_tracks[(net, c)] = sorted(
-                    t for t in range(N_TRACKS) if lo <= trackY[t] <= hi)
+                    t for t in range(self.n_tracks) if lo <= trackY[t] <= hi)
         return gate_tracks, gate_nets_at, gate_span
 
     def _strip_y(self, dev):
@@ -816,7 +829,7 @@ class _RouteGrid(object):
         strips; the shared 7-track domain itself is the RouteResult
         contract with smt_engine.verify/gds and stays untouched)."""
         y0, y1 = self._strip_y(dev)
-        return set(t for t in range(N_TRACKS)
+        return set(t for t in range(self.n_tracks)
                    if y0 <= self.trackY[t] <= y1)
 
     def _spans_track(self, gate_net, c, t):
@@ -831,7 +844,7 @@ class _RouteGrid(object):
             active.setdefault((dev.is_p, p.row), set()).update(
                 range(p.start_col, p.end_col))
         field = {}
-        for t, (is_p, row) in _ROW_OF_TRACK.items():
+        for t, (is_p, row) in self.dom.row_of_track.items():
             field[t] = set(range(self.width_cols)) \
                 - active.get((is_p, row), set())
         return field
@@ -842,7 +855,7 @@ class _RouteGrid(object):
         (ASTRAN's lateral GAP elements, autocell2.cpp:304)."""
         nts = self.diff_tracks[c][False]
         pts = self.diff_tracks[c][True]
-        centre = N_TRACKS // 2
+        centre = self.boundary_t
         return (max(nts) if nts else centre, min(pts) if pts else centre)
 
     def _v_cost(self, c, t):
@@ -850,7 +863,7 @@ class _RouteGrid(object):
         the three-way rule of createElement (autocell2.cpp:26-33)."""
         nts = self.diff_tracks[c][False]
         pts = self.diff_tracks[c][True]
-        centre = N_TRACKS // 2
+        centre = self.boundary_t
         n_end, n_ini = (min(nts), max(nts)) if nts else (centre, centre)
         p_ini, p_end = (min(pts), max(pts)) if pts else (centre, centre)
         vcost = VCOST_GATE if c in self.gate_cols else VCOST_DIFF
@@ -940,7 +953,7 @@ class _RouteGrid(object):
                     adds.append((m1_tab[t][c + 1], m1_tab[t][c]))
                     crossed_g.add(nid)
                     break
-                if (t in ROW_TRACKS
+                if (t in self.row_tracks
                         and pj_tab[t][c] in mine):
                     adds.append((pj_tab[t][c + 1], pj_tab[t][c]))
                     crossed_g.add(nid)
@@ -1004,7 +1017,7 @@ class _RouteGrid(object):
         from the reverse index).
         """
         for t in self.gate_tracks.get((gname, c), ()):
-            if (t in ROW_TRACKS and c + 1 < self.width_cols
+            if (t in self.row_tracks and c + 1 < self.width_cols
                     and (c + 1) in self.field[t]
                     and self._poly_span[(t, c)] <= frozenset((net.name,))
                     and self._claimable(self._node((_PJ, t, c)), net, mine)
@@ -1195,8 +1208,8 @@ class _RouteGrid(object):
         have = set(net.tree)
         for c in sorted(cols):
             tracks = cols[c]
-            n_side = sorted(t for t in tracks if t <= BOUNDARY_T)
-            p_side = sorted(t for t in tracks if t >= BOUNDARY_T)
+            n_side = sorted(t for t in tracks if t <= self.boundary_t)
+            p_side = sorted(t for t in tracks if t >= self.boundary_t)
             fill = []
             if (n_side and p_side):
                 if (self.metal2_verticals
@@ -1207,8 +1220,8 @@ class _RouteGrid(object):
                     fill.extend(range(n_side[0], n_side[-1] + 1))
                     fill.extend(range(p_side[0], p_side[-1] + 1))
                 else:
-                    fill.extend(range(n_side[0], BOUNDARY_T + 1))
-                    fill.extend(range(BOUNDARY_T, p_side[-1] + 1))
+                    fill.extend(range(n_side[0], self.boundary_t + 1))
+                    fill.extend(range(self.boundary_t, p_side[-1] + 1))
             elif (n_side):
                 fill.extend(range(n_side[0], n_side[-1] + 1))
             elif (p_side):
@@ -1233,7 +1246,7 @@ class _RouteGrid(object):
             if (t == prev + 1):
                 prev = t
                 continue
-            if (start < prev and start <= BOUNDARY_T <= prev):
+            if (start < prev and start <= self.boundary_t <= prev):
                 return True
             if (t is None):
                 break
@@ -1433,7 +1446,7 @@ class _RouteGrid(object):
                             and m1_tab[t][c + 1] in mine):
                         ok = True
                         break
-                    if (t in ROW_TRACKS
+                    if (t in self.row_tracks
                             and pj_tab[t][c] in mine
                             and pj_tab[t][c + 1] in mine):
                         ok = True
@@ -1446,7 +1459,7 @@ class _RouteGrid(object):
                     for t in self.gate_tracks.get((gname, c), ()):
                         if (m1_tab[t][c] in mine):
                             bump(m1_tab[t][c])
-                        if (t in ROW_TRACKS
+                        if (t in self.row_tracks
                                 and pj_tab[t][c] in mine):
                             bump(pj_tab[t][c])
                     # a gate-only net's tree holds no crossing points at
@@ -1469,7 +1482,7 @@ class _RouteGrid(object):
                             if (not (0 <= cc < self.width_cols)):
                                 continue
                             cands = [m1_tab[t][cc]]
-                            if (t in ROW_TRACKS):
+                            if (t in self.row_tracks):
                                 cands.append(pj_tab[t][cc])
                             for nid in cands:
                                 blockers = [u for u in
@@ -1525,13 +1538,13 @@ class _RouteGrid(object):
                     (c > 0 and m1_tab[t][c - 1] in mine)
                     or (c + 1 < width and m1_tab[t][c + 1] in mine)
                     or (t > 0 and m1_tab[t - 1][c] in mine)
-                    or (t + 1 < N_TRACKS and m1_tab[t + 1][c] in mine)
+                    or (t + 1 < self.n_tracks and m1_tab[t + 1][c] in mine)
                     or m1c in node_m1)
                 m2_real = (
                     (c > 0 and m2_tab[t][c - 1] in mine)
                     or (c + 1 < width and m2_tab[t][c + 1] in mine)
                     or (t > 0 and m2_tab[t - 1][c] in mine)
-                    or (t + 1 < N_TRACKS and m2_tab[t + 1][c] in mine))
+                    or (t + 1 < self.n_tracks and m2_tab[t + 1][c] in mine))
                 if (m1_real and m2_real):
                     continue            # node via: both sides real
                 conflicts += 1
@@ -1862,7 +1875,7 @@ class _RouteGrid(object):
                     continue
                 name = self._net_name(nidx)
                 lo = 0 if name in GND_NAMES else run[0] + 1
-                hi = BAR_LEVELS - 1 if name in VCC_NAMES else run[-1] + 1
+                hi = self.bar_levels - 1 if name in VCC_NAMES else run[-1] + 1
                 prev = plan.get((c, slot))
                 if (prev is None):
                     plan[(c, slot)] = (nidx, lo, hi)
@@ -1985,16 +1998,16 @@ class _RouteGrid(object):
                     self._term_owner.get(self._id.get((_M1, t, cc)),
                                          xidx) == xidx
                     for cc in (c, c + 1))
-                pj_ok = (t in ROW_TRACKS
+                pj_ok = (t in self.row_tracks
                          and (c + 1) in self.field[t]
                          and self._poly_span[(t, c)]
                          <= frozenset((gname,)))
                 if (m1_ok or pj_ok):
                     legal.append(t)
-            if (legal == [BOUNDARY_T]):
-                demands[BOUNDARY_T, c] = (name,
+            if (legal == [self.boundary_t]):
+                demands[self.boundary_t, c] = (name,
                                           "gate contact @col %d" % c)
-                demands[BOUNDARY_T, c + 1] = (name,
+                demands[self.boundary_t, c + 1] = (name,
                                               "gate contact @col %d" % c)
         return demands
 
@@ -2045,7 +2058,7 @@ class _RouteGrid(object):
                 corridor = []
                 for nid in cage1:
                     kind = self.graph[nid].kind
-                    if (kind[0] == _M1 and kind[1] == BOUNDARY_T):
+                    if (kind[0] == _M1 and kind[1] == self.boundary_t):
                         corridor.append(nid)
                 banned_cache = {}
                 for t2 in terms:
@@ -2065,7 +2078,7 @@ class _RouteGrid(object):
             for key, entry in net_demands.items():
                 demands.setdefault(key, {})[entry[0]] = entry[1]
         contests = {c: users for (t, c), users in sorted(demands.items())
-                    if t == BOUNDARY_T and len(users) > 1}
+                    if t == self.boundary_t and len(users) > 1}
         return contests, walled
 
     def _structural_note(self):
@@ -2185,8 +2198,8 @@ class _RouteGrid(object):
         owner_p = [None] * width
         lo_n = [0] * width
         hi_n = [0] * width
-        lo_p = [BAR_LEVELS - 1] * width
-        hi_p = [BAR_LEVELS - 1] * width
+        lo_p = [self.bar_levels - 1] * width
+        hi_p = [self.bar_levels - 1] * width
         reachB_n = [False] * width
         reachB_p = [False] * width
         plan, _contested, _conflicted = self._stripe_plan()
@@ -2194,10 +2207,10 @@ class _RouteGrid(object):
             name = self._net_name(nidx)
             if (slot == 0):
                 owner_n[c], lo_n[c], hi_n[c] = name, lo, hi
-                reachB_n[c] = hi == BOUNDARY_T + 1
+                reachB_n[c] = hi == self.boundary_t + 1
             else:
                 owner_p[c], lo_p[c], hi_p[c] = name, lo, hi
-                reachB_p[c] = lo == BOUNDARY_T + 1
+                reachB_p[c] = lo == self.boundary_t + 1
         vseg = sum(1 for o in owner_n if o is not None) \
             + sum(1 for o in owner_p if o is not None)
         cost = (sum(1 for k in hseg if not m2.get(k) and not pj.get(k))
@@ -2230,7 +2243,7 @@ class _RouteGrid(object):
             "UNKNOWN",
             [None] * width, [None] * width,
             [0] * width, [0] * width,
-            [BAR_LEVELS - 1] * width, [BAR_LEVELS - 1] * width,
+            [self.bar_levels - 1] * width, [self.bar_levels - 1] * width,
             {}, {}, {}, {},
             [False] * width, [False] * width,
             width, 0, 0, 0, 0, 0)
@@ -2262,7 +2275,7 @@ def _phase1_skip_reason(contests, walled):
 
 def route_cell(netlist, placement, width_cols, leg_widths=None,
                height_um=2.47, grid_um=0.19, max_attempts=MAX_ATTEMPTS,
-               blocks=None):
+               blocks=None, tracks="bar9"):
     """Route one placed cell; returns a RouteResult (solve_routing's type).
 
     ``netlist`` is a smt_engine CellNetlist, ``placement`` maps
@@ -2318,7 +2331,7 @@ def route_cell(netlist, placement, width_cols, leg_widths=None,
                      max((p.end_col for p in placement.values()), default=0))
     grid = _RouteGrid(netlist, placement, width_cols,
                       height_um=height_um, grid_um=grid_um,
-                      metal2_verticals=False, blocks=blocks)
+                      metal2_verticals=False, blocks=blocks, tracks=tracks)
     # the phase-1 skip gate: a build-time failure needs no diagnosis
     # (route() fails on it deterministically and phase 2 repeats it), so
     # the diagnosis only runs where a negotiation could actually start
@@ -2335,7 +2348,7 @@ def route_cell(netlist, placement, width_cols, leg_widths=None,
     # fresh grid -- the negotiation restarts, nothing carries over
     grid = _RouteGrid(netlist, placement, width_cols,
                       height_um=height_um, grid_um=grid_um,
-                      metal2_verticals=True, blocks=blocks)
+                      metal2_verticals=True, blocks=blocks, tracks=tracks)
     if (grid.route(max_attempts=max_attempts)):
         result = grid.build_result()
     else:

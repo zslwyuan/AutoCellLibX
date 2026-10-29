@@ -45,7 +45,7 @@ from . import die_view
 from .netlist import (build_diffusion_blocks, diffusion_access_points,
                       gate_access_points)
 from .route_model import (BOUNDARY_T, N_TRACKS, ROW_TRACK, ROW_TRACKS,
-                          device_rail)
+                          device_rail, track_domain_local)
 from .gds import (CONTACT_S, POLY_OVERHANG, row_geometry,
                   track_geometry)
 
@@ -63,13 +63,24 @@ class VerifyReport(object):
         return {"ok": self.ok(), "violations": list(self.violations)}
 
 
-def _gate_spans(netlist, placement, height_um=2.47, grid_um=0.19):
-    """(gate_net, col) -> (y0, y1) the poly stripe spans (incl. overhang)."""
+def _gate_spans(netlist, placement, height_um=2.47, grid_um=0.19, dom=None):
+    """(gate_net, col) -> (y0, y1) the poly stripe spans (incl. overhang).
+
+    bar9 (dom None / not strip_anchored): the four sub-row bands.  The
+    astran13 domain spans the slot model's W-tall well-anchored strips
+    (the drawn poly; the union over the (net, col) devices covers the
+    well corridor for an aligned P/N pair -- exactly the merged stripe
+    gds_cells draws there)."""
+    if dom is None:
+        dom = track_domain_local("bar9", height_um, grid_um)
     _, rows = row_geometry(height_um, grid_um)
     spans = {}
     for dev in netlist.devices:
         p = placement[dev]
-        y0, y1 = rows[(dev.is_p, p.row)]
+        if dom.strip_anchored:
+            y0, y1 = dom.strip_y(dev.is_p, dev.width_um, height_um)
+        else:
+            y0, y1 = rows[(dev.is_p, p.row)]
         for j in range(p.legs):
             c = p.start_col + j * p.leg_width_cols + p.leg_width_cols // 2
             key = (dev.gate, c)
@@ -82,23 +93,48 @@ def _gate_spans(netlist, placement, height_um=2.47, grid_um=0.19):
             for k, (y0, y1) in spans.items()}
 
 
-def _field_map(netlist, placement, width_cols):
-    """Row tracks with no active diffusion (poly-jump legality)."""
+def _field_map(netlist, placement, width_cols, dom=None, height_um=2.47):
+    """Row tracks with no active diffusion (poly-jump legality).
+
+    bar9: the historical column form.  astran13 (strip_anchored): y-aware
+    per track -- a strip blocks only the tracks its y-range covers
+    (ASTRAN's per-column pol-node existence, autocell2.cpp:41/:50)."""
+    if dom is None:
+        dom = track_domain_local("bar9", height_um)
+    if dom.strip_anchored:
+        return route_model_field_map(netlist, placement, width_cols, dom,
+                                      height_um)
     active = {}
     for dev in netlist.devices:
         p = placement[dev]
         active.setdefault((dev.is_p, p.row), set()).update(
             range(p.start_col, p.end_col))
     field = {}
-    for t in ROW_TRACKS:
-        is_p, row = ROW_OF_TRACK[t]
+    for t in dom.row_tracks:
+        is_p, row = dom.row_of_track[t]
         field[t] = set(range(width_cols)) - active.get((is_p, row), set())
     return field
 
 
+def route_model_field_map(netlist, placement, width_cols, dom, height_um):
+    """The y-aware field map (route_model._field_map's strip-anchored
+    branch, shared so the verifier and the model agree exactly)."""
+    from .route_model import _field_map as _rm_field
+    return _rm_field(netlist, placement, width_cols, dom, height_um)
+
+
 def verify_cell(netlist, placement, route, grid_um=0.19, height_um=2.47,
-                break_um=0.19, blocks=None, slot_model=False):
+                break_um=0.19, blocks=None, slot_model=False,
+                tracks="bar9"):
     """Structural verification; returns VerifyReport.
+
+    ``tracks`` selects the route's track domain (gds.TRACK_DOMAINS):
+    the RouteResult's hseg keys and bar endpoint indices speak that
+    domain, so the verifier derives its trackY/barY, rail->track map,
+    field map and gate spans from the same record (default bar9 keeps
+    the historical verification byte-identical; astran13 verifies
+    ASTRAN's own 16-signal-track grid with strip-anchored gate spans
+    and the y-aware poly field).
 
     ``blocks`` optionally supplies the diffusion-block view the placement
     was built from (an iterable of DiffusionBlock-compatible objects with
@@ -126,7 +162,13 @@ def verify_cell(netlist, placement, route, grid_um=0.19, height_um=2.47,
     (``blocks`` None) stays byte-identical to the historical behaviour.
     """
     violations = []
-    trackY, barY = track_geometry(height_um, grid_um)
+    dom = track_domain_local(tracks, height_um, grid_um)
+    # bar9: every value equals the historical module constant
+    # (byte-identical verification); astran13 re-generalizes them
+    N_TRACKS = dom.n_tracks
+    ROW_TRACK = dom.row_track
+    ROW_TRACKS = dom.row_tracks
+    trackY, barY = dom.trackY, dom.barY
     width_cols = route.width_cols
     pj = getattr(route, "pj", {})
     m2 = getattr(route, "m2", {})
@@ -252,8 +294,8 @@ def verify_cell(netlist, placement, route, grid_um=0.19, height_um=2.47,
     else:
         sig_diff, power_diff = diffusion_access_points(netlist, placement)
     gate = gate_access_points(netlist, placement)
-    field = _field_map(netlist, placement, width_cols)
-    spans = _gate_spans(netlist, placement, height_um, grid_um)
+    field = _field_map(netlist, placement, width_cols, dom, height_um)
+    spans = _gate_spans(netlist, placement, height_um, grid_um, dom)
     gateNetsAt = {}
     for net, cols in gate.items():
         for c in cols:
@@ -476,7 +518,8 @@ def verify_cell(netlist, placement, route, grid_um=0.19, height_um=2.47,
         if (not _net_connected_exact(netlist, placement, route, net,
                                      sig_diff.get(net, set()),
                                      gate.get(net, []), trackY, spans,
-                                     pj, m2, via, m2v, m2via)):
+                                     pj, m2, via, m2v, m2via,
+                                     n_tracks=N_TRACKS)):
             violations.append("net %s is not connected" % net)
     return VerifyReport(violations)
 
@@ -503,7 +546,8 @@ def _nets_touch(netlist, a, b, blocks=None):
 
 
 def _net_connected_exact(netlist, placement, route, net, diffPts, gateCols,
-                         trackY, spans, pj, m2, via, m2v=None, m2via=None):
+                         trackY, spans, pj, m2, via, m2v=None, m2via=None,
+                         n_tracks=N_TRACKS):
     """Exact physical connectivity.
 
     Nodes: (t, c) for M1 segments, (M2, (t, c)) for M2 segments,
@@ -596,7 +640,7 @@ def _net_connected_exact(netlist, placement, route, net, diffPts, gateCols,
             if (net2 != net):
                 continue
             bar = "NB" if slot == "N" else "PB"
-            for t in range(N_TRACKS):
+            for t in range(n_tracks):
                 if (lo <= t + 1 <= hi):
                     edge(node(bar, c), node(t, c))
     # gate stripes join every crossing inside their y-range (M1 contact,

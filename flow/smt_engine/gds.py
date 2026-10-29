@@ -45,6 +45,104 @@ POLY_OVERHANG = 0.05        # poly sticks past the diffusion edge
 GND_RAIL = 4
 VCC_RAIL = 5
 
+# ---------------------------------------------------------------------------
+# The track domains (the RouteResult vocabulary's vertical axis)
+# ---------------------------------------------------------------------------
+#
+# The bar9 domain is the historical 7-track / 9-bar-level model (T0..T6 +
+# the two rail levels -- see track_geometry below).  The astran13 domain is
+# the faithful port of ASTRAN's own rule-derived track list, calcArea's
+# trackPos (tools/astran/src/autocell2.cpp:68-100), at the production
+# geometry of AGENTS.md invariant 2 (set rowheight 13 / grid 0.19 0.19 /
+# supplysize 0.26 / nwellpos 1.235, tools/astran/build/Work/
+# tech_freePDK45.rul, resolution 400 internal units/um):
+#
+# - the track pitch is S1M1M1 + W1M1 = 0.065 + 0.065 = 0.13 um
+#   (autocell2.cpp:91/:98; rules.cpp getIntValue = ceil(f*resolution) so
+#   the internal pitch is the exact integer 52/400);
+# - the central track sits at center*vGrid with
+#   center = round(posNWell/vGrid - 0.5) = round(1.235/0.19 - 0.5) = 6,
+#   i.e. y = 1.14 um (autocell2.cpp:85-86) -- the level every measured
+#   GDS shows as the busiest M1 row (NAND2X1's 1.14 stripe);
+# - tracks below descend by the pitch while next >= supWidth =
+#   max(0.26, W1M1)/2 = 0.13 (autocell2.cpp:79/:89-93): 1.01, 0.88, ...,
+#   and one final 0.10 level is inserted before the guard rejects it
+#   (the do-while inserts first);
+# - tracks above ascend while next + S2M1M1(0.090) <= height - supWidth =
+#   2.34 (autocell2.cpp:96-100): 1.27 .. 2.18 accepted, plus one final
+#   2.31 level (the do-while's last insert).
+#
+# That is 18 rule-derived levels: the two END levels (0.10 / 2.31) are
+# the POWER nets' own tracks -- autocell2.cpp:55-56 does
+# addNodetoNet(gnd, met[0]) / addNodetoNet(vdd, met[17]) for EVERY column,
+# so no signal can ever occupy them -- and the 16 interior levels
+# (0.23 .. 2.18) are the signal tracks.  This port folds the power end
+# levels into the bar domain's rail ends (a power bar reaching level 0 /
+# level 17 draws through exactly that y range, ASTRAN's gnd/vdd tree on
+# their end track subsumed), and keeps the 16 signal tracks verbatim:
+# trackY = [0.23, 0.36, 0.49, 0.62, 0.75, 0.88, 1.01, 1.14, 1.27, 1.40,
+#           1.53, 1.66, 1.79, 1.92, 2.05, 2.18]
+# barY   = [0.065 (GND rail), trackY..., 2.405 (VCC rail)]  (18 levels).
+#
+# (The "~13" of AUDIT 5.60-5.62 / route_grid's docstring counts the 0.19
+# grid rows the 18-level list SPANS; the C++ derivation itself is exact
+# and yields 18 levels / 16 signal tracks.  The corridor pair straddling
+# the nwell is 1.14 / 1.27 -- ASTRAN's createElement central-cost region
+# nDiffIni < x <= pDiffIni -- and this domain's boundary track is the
+# upper one, 1.27: the N-half slot reaches it from below and the P-half
+# from above, the same single shared merge level bar9's T3 provides.)
+#
+# The astran13 diffusion row-track map mirrors ASTRAN's own terminal
+# bands: the N diffusion's terminal track is the topmost track below
+# nDif_iniY = posNWell - S1DNWN = 1.18 (autocell2.cpp:268 stops at
+# trackPos[7] = 1.01), the P diffusion's the bottom-most track at or
+# above pDif_iniY = posNWell + E1WNDP = 1.29 (autocell2.cpp:255 stops at
+# trackPos[10] = 1.40).  On the slot model those are rails 1 (N row,
+# y-top anchored) and 2 (P row); rails 0/3 (the exact engine's two
+# sub-rows per polarity) keep the same spread over the sub-bands.
+#
+# The slot model's diffusion strips (bigcell_engine.geometry._strip_y) are
+# W tall, anchored WELL_GAP = 0.0725 from the nwell boundary -- the
+# anchors below mirror them so smt_engine stays layering-clean.
+
+#: the registered track domains
+TRACK_DOMAINS = ("bar9", "astran13")
+
+#: ASTRAN's rule values for the track derivation (tech_freePDK45.rul, um)
+ASTRAN_S1M1M1 = 0.065             # rul:51 -- the track pitch below/above
+ASTRAN_W1M1 = 0.065               # rul:64
+ASTRAN_S2M1M1 = 0.090             # rul:52 -- the above-loop stop guard
+ASTRAN_SUPPLY_VSIZE = 0.26        # set supplysize 0.26 (astran.py)
+#: the slot-model strip anchor: the strip edge's distance from the nwell
+#: boundary (bigcell_engine.geometry.WELL_GAP_UM, measured S1DNWN band)
+ASTRAN_WELL_GAP_UM = 0.0725
+
+
+def astran_track_positions(height_um=2.47, grid_um=0.19):
+    """ASTRAN calcArea's rule-derived trackPos list (autocell2.cpp:83-100),
+    in um: the 18 levels from the do-while descents around the central
+    track.  Pure function of (height_um, grid_um) -- the run-script
+    geometry is posNWell = height/2 (``set nwellpos 1.235`` at H 2.47) and
+    supWidth = max(0.26, W1M1)/2.  Deterministic (invariant 9)."""
+    pos_nwell = height_um / 2.0
+    sup = max(ASTRAN_SUPPLY_VSIZE, ASTRAN_W1M1) / 2.0
+    pitch = ASTRAN_S1M1M1 + ASTRAN_W1M1
+    center = int(round(pos_nwell / grid_um - 0.5))
+    pos = [center * grid_um]
+    # below the central track (autocell2.cpp:89-93): insert, then guard
+    while True:
+        nxt = pos[0] - pitch
+        pos.insert(0, nxt)
+        if not (nxt >= sup):
+            break
+    # above (autocell2.cpp:96-100)
+    while True:
+        nxt = pos[-1] + pitch
+        pos.append(nxt)
+        if not (nxt + ASTRAN_S2M1M1 <= height_um - sup):
+            break
+    return pos
+
 
 def row_geometry(height_um, grid_um, rail_w=RAIL_W):
     """Rail y-centres and per-row rectangles for a row height.
@@ -73,18 +171,151 @@ def row_geometry(height_um, grid_um, rail_w=RAIL_W):
     return railY, rows
 
 
-def track_geometry(height_um, grid_um, rail_w=RAIL_W):
-    """(trackY, barY): y-centres of the 7 routing tracks (the four row
+def track_geometry(height_um, grid_um, rail_w=RAIL_W, tracks="bar9"):
+    """(trackY, barY): the routing tracks and bar-domain levels of the
+    selected track domain.
+
+    bar9 (default): y-centres of the 7 routing tracks (the four row
     centres, the two row edges and the well-boundary corridor) and the 9
-    bar-domain levels [GND, T0..T6, VCC].  barY = [GND] + trackY + [VCC],
+    bar-domain levels [GND, T0..T6, VCC]; barY = [GND] + trackY + [VCC],
     so a bar's (lo, hi) covers track t iff lo <= t+1 <= hi (one sorted
-    list -- no inverted ranges)."""
-    railY, rows = row_geometry(height_um, grid_um, rail_w)
-    trackY = [railY[0], rows[(False, 0)][1], railY[1],
-              height_um / 2.0,
-              railY[2], rows[(True, 0)][1], railY[3]]
-    barY = [railY[GND_RAIL]] + trackY + [railY[VCC_RAIL]]
-    return trackY, barY
+    list -- no inverted ranges).
+
+    astran13: ASTRAN's own rule-derived list (see the module header and
+    :func:`astran_track_positions`): the 16 interior signal tracks of the
+    18-level trackPos list plus the two rail levels, same
+    ``barY = [GND] + trackY + [VCC]`` index discipline.  rail_w is
+    accepted for signature compatibility and only positions the bar9
+    rails (astran13's rails sit at RAIL_W from the die edges, the same
+    0.13 -- the values coincide at the production geometry)."""
+    if tracks == "bar9":
+        railY, rows = row_geometry(height_um, grid_um, rail_w)
+        trackY = [railY[0], rows[(False, 0)][1], railY[1],
+                  height_um / 2.0,
+                  railY[2], rows[(True, 0)][1], railY[3]]
+        barY = [railY[GND_RAIL]] + trackY + [railY[VCC_RAIL]]
+        return trackY, barY
+    if tracks == "astran13":
+        pos = astran_track_positions(height_um, grid_um)
+        sup = max(ASTRAN_SUPPLY_VSIZE, ASTRAN_W1M1) / 2.0
+        # the signal tracks: the levels the two guards ACCEPT (the two
+        # rejected end inserts are the power nets' own tracks -- folded
+        # into the bar domain's rail ends below)
+        trackY = [y for y in pos
+                  if y >= sup and y + ASTRAN_S2M1M1 <= height_um - sup]
+        gnd_c = rail_w / 2.0
+        vcc_c = height_um - rail_w / 2.0
+        barY = [gnd_c] + trackY + [vcc_c]
+        return trackY, barY
+    raise ValueError("unknown track domain %r (TRACK_DOMAINS=%r)"
+                     % (tracks, TRACK_DOMAINS))
+
+
+class TrackDomain(object):
+    """One track domain's complete parameter record -- everything the
+    route model, the verifier, the router and the renderers need to speak
+    the same vertical vocabulary (the bar9 defaults reproduce the
+    historical module constants exactly, so default-domain behaviour is
+    byte-identical).
+
+    Fields:
+
+    - ``name``;
+    - ``n_tracks`` / ``bar_levels``: the signal track count and the bar
+      domain level count (barY = [GND] + trackY + [VCC]);
+    - ``boundary_t``: the boundary TRACK index -- the one track both
+      column slots may cover (bar9's T3, astran13's 1.27 track), i.e. the
+      merge level of a same-net dual pair; always n_tracks // 2;
+    - ``row_track``: diffusion rail (0/1 N, 2/3 P) -> its access track;
+    - ``row_tracks``: the tracks poly jumps run on (bar9: the four row
+      centres; astran13: every track -- ASTRAN's pol nodes exist wherever
+      the diffusion bands leave room, per column);
+    - ``row_of_track``: track -> (is_p, row) for the field/poly legality
+      maps (astran13: y-aware, below/above the nwell boundary);
+    - ``strip_anchored``: whether the gate spans / diffusion geometry
+      follow the slot model's W-tall well-anchored strips (astran13)
+      instead of the four sub-row bands (bar9);
+    - ``trackY`` / ``barY``: the y positions themselves.
+    """
+
+    def __init__(self, name, n_tracks, bar_levels, boundary_t, row_track,
+                 row_tracks, row_of_track, strip_anchored, trackY, barY):
+        self.name = name
+        self.n_tracks = n_tracks
+        self.bar_levels = bar_levels
+        self.boundary_t = boundary_t
+        self.row_track = dict(row_track)
+        self.row_tracks = tuple(row_tracks)
+        self.row_of_track = dict(row_of_track)
+        self.strip_anchored = strip_anchored
+        self.trackY = list(trackY)
+        self.barY = list(barY)
+
+    @property
+    def n_tracks_set(self):
+        """Tracks the N-half slot may cover (t <= boundary)."""
+        return tuple(range(0, self.boundary_t + 1))
+
+    @property
+    def p_tracks_set(self):
+        """Tracks the P-half slot may cover (t >= boundary)."""
+        return tuple(range(self.boundary_t, self.n_tracks))
+
+    def strip_y(self, is_p, width_um, height_um):
+        """(y0, y1) of a W-tall well-anchored diffusion strip (the slot
+        model's drawing convention, bigcell_engine.geometry._strip_y --
+        N grows down from MID-WELL_GAP, P grows up from MID+WELL_GAP)."""
+        mid = height_um / 2.0
+        if is_p:
+            y0 = mid + ASTRAN_WELL_GAP_UM
+            return y0, y0 + width_um
+        y1 = mid - ASTRAN_WELL_GAP_UM
+        return y1 - width_um, y1
+
+
+def track_domain(tracks, height_um=2.47, grid_um=0.19, rail_w=RAIL_W):
+    """The :class:`TrackDomain` record of a registered domain.
+
+    bar9's record reproduces route_model's historical module constants
+    (N_TRACKS 7, BAR_LEVELS 9, BOUNDARY_T 3, ROW_TRACK {0:0,1:2,2:4,3:6},
+    ROW_TRACKS (0,2,4,6)) and verify's ROW_OF_TRACK verbatim.  astran13's
+    row_track mirrors ASTRAN's terminal bands (N rail 1 -> 1.01, P rail 2
+    -> 1.40; rails 0/3 keep the spread over the exact engine's sub-bands),
+    and its row_of_track splits the 16 tracks at the nwell boundary onto
+    the slot model's two rows (P row 0, N row 1 -- the split the strip
+    anchors define).  Pure; deterministic (invariant 9)."""
+    trackY, barY = track_geometry(height_um, grid_um, rail_w, tracks)
+    if tracks == "bar9":
+        return TrackDomain(
+            "bar9", 7, 9, 3,
+            {0: 0, 1: 2, 2: 4, 3: 6},
+            (0, 2, 4, 6),
+            {0: (False, 0), 2: (False, 1), 4: (True, 0), 6: (True, 1)},
+            False, trackY, barY)
+    # astran13: locate ASTRAN's terminal bands on the signal list.  The
+    # N slot row (rail 1) rides ASTRAN's nDiffTrackIni -- the topmost
+    # track of the central-cost region's low side, 1.01 (autocell2.cpp:
+    # 268) -- and the P slot row (rail 2) its pDiffTrackIni, 1.40
+    # (autocell2.cpp:255): both drawable on the slot strips for every
+    # real W (the strip anchors at MID +/- WELL_GAP).  Rails 0/3 (the
+    # exact engine's sub-rows) keep the spread, anchored toward the well.
+    n_well_track = max(t for t in range(len(trackY))
+                       if trackY[t] < height_um / 2.0)
+    p_well_track = n_well_track + 1
+    n_term = n_well_track - 1 if n_well_track > 0 else 0
+    p_term = min(p_well_track + 1, len(trackY) - 1)
+    _, rows = row_geometry(height_um, grid_um, rail_w)
+    lo0 = max((t for t in range(len(trackY))
+               if trackY[t] <= rows[(False, 0)][1]), default=0)
+    hi3 = min((t for t in range(len(trackY))
+               if trackY[t] >= rows[(True, 1)][0]), default=len(trackY) - 1)
+    return TrackDomain(
+        "astran13", len(trackY), len(barY), p_well_track,
+        {0: lo0, 1: n_term, 2: p_term, 3: hi3},
+        tuple(range(len(trackY))),
+        dict((t, (False, 1) if t <= n_well_track else (True, 0))
+             for t in range(len(trackY))),
+        True, trackY, barY)
 
 
 def _track_x(col, grid_um):
@@ -98,8 +329,13 @@ def _col_x(col, grid_um):
 
 
 def cell_gds(netlist, placement, route, grid_um=0.19, height_um=2.47,
-             rail_w=RAIL_W):
+             rail_w=RAIL_W, tracks="bar9"):
     """Build a gdstk Library for a solved cell (layout + route).
+
+    ``tracks`` selects the route's track domain (TRACK_DOMAINS): the
+    RouteResult's hseg keys and bar endpoints speak that domain's
+    trackY/barY, so the renderer must draw on the same list.  Default
+    bar9 keeps the historical drawing byte-identical.
 
     Returns (library, pin_labels) where pin_labels is [(x, y, net)] for
     the M1 pin texts.  Raises ValueError when the route is not usable.
@@ -107,7 +343,7 @@ def cell_gds(netlist, placement, route, grid_um=0.19, height_um=2.47,
     if (not route.ok):
         raise ValueError("cannot emit GDS: route status %s" % route.status_name)
     railY, rows = row_geometry(height_um, grid_um, rail_w)
-    trackY, barY = track_geometry(height_um, grid_um, rail_w)
+    trackY, barY = track_geometry(height_um, grid_um, rail_w, tracks)
     width_um = route.width_cols * grid_um
     cell = gdstk.Cell("SYNTH")
     g = grid_um

@@ -73,7 +73,7 @@ def _gate_entries_by_col(ordering_p, ordering_n, leg_widths, x_offsets=None):
 
 def cell_gds(netlist, placement, width_cols, ordering_p, ordering_n,
              leg_widths, route=None, cell_name="SYNTH", grid_um=GRID_UM,
-             height_um=HEIGHT_UM, x_offsets=None):
+             height_um=HEIGHT_UM, x_offsets=None, tracks="bar9"):
     """Build a gdstk Library for one slot-model cell.
 
     ``placement`` maps Device -> PlacedTransistor (slot IR); the two
@@ -83,6 +83,11 @@ def cell_gds(netlist, placement, width_cols, ordering_p, ordering_n,
     three block walks below shift their origin by the same integers, so
     strips, contacts and gate crossings draw where the placement put
     them; None keeps both rows at column 0, the historical behaviour.
+    ``tracks`` selects the routing-track domain the route's stripes,
+    bars and via levels live on ("bar9" default, "astran13" the
+    ASTRAN-rule-derived layout) -- the renderer positions every track
+    y through track_geometry, so the drawing follows the domain the
+    solver solved on.
     Returns (library, pin_labels); pin_labels is [(x, y, net)] (signal
     labels only when a route is supplied).
     """
@@ -94,7 +99,7 @@ def cell_gds(netlist, placement, width_cols, ordering_p, ordering_n,
     offs = {P_ROW: x_offsets[0], N_ROW: x_offsets[1]}
     w_um = width_um(width_cols, grid_um)
     edge_x = lambda e: ESCAPE_L_UM + e * grid_um          # noqa: E731
-    trackY, barY = track_geometry(height_um, grid_um)
+    trackY, barY = track_geometry(height_um, grid_um, tracks=tracks)
 
     cell = gdstk.Cell(cell_name)
 

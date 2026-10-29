@@ -110,11 +110,11 @@ def device_rail(dev, row):
     return row + (0 if not dev.is_p else 2)
 
 
-def track_geometry(height_um, grid_um, rail_w=0.13):
-    """(trackY, barY): y-centres of the 7 routing tracks and the 9 bar
-    domain levels [GND, T0..T6, VCC] -- defined in gds.py."""
+def track_geometry(height_um, grid_um, rail_w=0.13, tracks="bar9"):
+    """(trackY, barY): y-centres of the routing tracks and the bar-domain
+    levels of the selected track domain -- defined in gds.py."""
     from .gds import track_geometry as _tg
-    return _tg(height_um, grid_um, rail_w)
+    return _tg(height_um, grid_um, rail_w, tracks)
 
 
 class RouteResult(object):
@@ -243,20 +243,33 @@ def _access_points(netlist, placement):
     return diffusion, gate, power
 
 
-def _gate_track_maps(netlist, placement, width_cols, height_um, grid_um):
+def _gate_track_maps(netlist, placement, width_cols, height_um, grid_um,
+                     dom=None):
     """Per (gate_net, col): the sorted tracks whose y lies inside the
     gate stripe's y-range (its devices' rows plus overhang), so a
     crossing segment actually touches the stripe.
 
     Also returns gateNetsAt: col -> {gate nets} (any row).
+
+    ``dom`` (a gds.TrackDomain; default None = bar9) selects the gate
+    stripe geometry: bar9 keeps the four sub-row bands (row_geometry),
+    astran13 uses the slot model's W-tall well-anchored strips (the drawn
+    poly, dom.strip_y) -- whose union over the (net, col) devices already
+    spans the well corridor for an aligned P/N pair, exactly the merged
+    stripe gds_cells draws there.
     """
-    from .gds import row_geometry, POLY_OVERHANG, CONTACT_S
+    from .gds import POLY_OVERHANG, CONTACT_S, row_geometry
+    if dom is None:
+        dom = track_domain_local("bar9", height_um, grid_um)
     _, rows = row_geometry(height_um, grid_um)
-    trackY, _ = track_geometry(height_um, grid_um)
+    trackY = dom.trackY
     spans = {}
     for dev in netlist.devices:
         p = placement[dev]
-        y0, y1 = rows[(dev.is_p, p.row)]
+        if dom.strip_anchored:
+            y0, y1 = dom.strip_y(dev.is_p, dev.width_um, height_um)
+        else:
+            y0, y1 = rows[(dev.is_p, p.row)]
         for j in range(p.legs):
             c = p.start_col + j * p.leg_width_cols + p.leg_width_cols // 2
             if (c >= width_cols):
@@ -274,29 +287,62 @@ def _gate_track_maps(netlist, placement, width_cols, height_um, grid_um):
         y1 += POLY_OVERHANG
         gateNetsAt.setdefault(c, set()).add(net)
         gate_tracks[(net, c)] = sorted(
-            t for t in range(N_TRACKS)
+            t for t in range(dom.n_tracks)
             if (y0 + CONTACT_S / 2 <= trackY[t] <= y1 - CONTACT_S / 2))
     return gate_tracks, gateNetsAt
 
 
-def _field_map(netlist, placement, width_cols):
+def _field_map(netlist, placement, width_cols, dom=None, height_um=2.47):
     """Row tracks with no active diffusion per row (poly-jump legality):
-    returns field[r] = set of columns free in the row of track 2r."""
+    returns field[t] = set of columns free in the row of track t.
+
+    bar9 (dom None or strip_anchored False): the historical column form
+    -- track 2r is diffusion row r's centre band, free where that row's
+    devices sit nowhere (the row rectangles tile the half, so the column
+    test is the y test).  astran13 (strip_anchored): y-AWARE per track --
+    a strip only blocks the tracks its W-tall y-range actually covers,
+    exactly ASTRAN's pol-node existence rule (autocell2.cpp:41/:50: pol
+    exists where the diffusion bands leave room, per column and track).
+    """
+    if dom is None:
+        dom = track_domain_local("bar9", height_um)
     active = {}
     for dev in netlist.devices:
         p = placement[dev]
         active.setdefault((dev.is_p, p.row), set()).update(
             range(p.start_col, p.end_col))
     field = {}
-    for t in ROW_TRACKS:
-        # track 2r is diffusion row r: t=0/2 are N rows 0/1, t=4/6 are
-        # P rows 0/1 (the old t//2-1 mapped P tracks to rows 1/2 -- row 2
-        # does not exist, so P-row-1 active was invisible to poly
+    if dom.strip_anchored:
+        strip_of = {}
+        for dev in netlist.devices:
+            p = placement[dev]
+            strip_of.setdefault((dev.is_p, p.row), []).append(
+                (p.start_col, p.end_col,
+                 dom.strip_y(dev.is_p, dev.width_um, height_um)))
+        for t in dom.row_tracks:
+            is_p, row = dom.row_of_track[t]
+            y = dom.trackY[t]
+            busy = set()
+            for c0, c1, (sy0, sy1) in strip_of.get((is_p, row), ()):
+                if (sy0 <= y <= sy1):
+                    busy.update(range(c0, c1))
+            field[t] = set(range(width_cols)) - busy
+        return field
+    for t in dom.row_tracks:
+        # bar9: track 2r is diffusion row r: t=0/2 are N rows 0/1, t=4/6
+        # are P rows 0/1 (the old t//2-1 mapped P tracks to rows 1/2 --
+        # row 2 does not exist, so P-row-1 active was invisible to poly
         # legality while P-row-0 jumps were checked against the wrong
         # row; verify.py's ROW_OF_TRACK has the correct mapping)
-        is_p, row = (True, t // 2 - 2) if t >= 4 else (False, t // 2)
+        is_p, row = dom.row_of_track[t]
         field[t] = set(range(width_cols)) - active.get((is_p, row), set())
     return field
+
+
+def track_domain_local(tracks, height_um, grid_um):
+    """The gds.TrackDomain of ``tracks`` (local alias; see gds.py)."""
+    from .gds import track_domain
+    return track_domain(tracks, height_um, grid_um)
 
 
 def _m1_lit(model, h_lit, pj, m2, n, t, c, memo):
@@ -386,8 +432,18 @@ def _fam_gate(fam, name, cst):
 def build_routing_model(netlist, placement, width_cols=None,
                         grid_um=0.19, height_um=2.47, poly_jumps=True,
                         metal2=True, accesses=None, m2_spans=False,
-                        assumptions=False, jump_m2=False):
+                        assumptions=False, jump_m2=False, tracks="bar9"):
     """Stage-2 CP-SAT model over the fixed placement.
+
+    ``tracks`` selects the model's vertical domain (gds.TRACK_DOMAINS):
+    ``"bar9"`` (default) is the historical 7-track / 9-bar-level model --
+    the build is byte-identical to the pre-domain model; ``"astran13"``
+    is the faithful port of ASTRAN's calcArea trackPos list (16 signal
+    tracks at the 0.13 um rule pitch anchored at the 1.14 central track
+    plus the two rail levels -- see gds.py's module header for the C++
+    provenance).  Every loop bound, bar endpoint domain, coverage table,
+    rail->track map and field/gate-span derivation below follows the
+    selected domain; the model's RULES are domain-independent.
 
     ``accesses`` optionally supplies the (diffusion, gate, power) access
     maps in :func:`_access_points`' rail form instead of deriving them
@@ -443,6 +499,18 @@ def build_routing_model(netlist, placement, width_cols=None,
     model = cp_model.CpModel()
     fam = _Assumptions(model) if assumptions else None
 
+    # the track domain: for bar9 every value below equals the historical
+    # module constant (byte-identical build); astran13 re-generalizes
+    # them (the local names shadow the module constants for this scope)
+    dom = track_domain_local(tracks, height_um, grid_um)
+    N_TRACKS = dom.n_tracks
+    BAR_LEVELS = dom.bar_levels
+    BOUNDARY_T = dom.boundary_t
+    ROW_TRACK = dom.row_track
+    ROW_TRACKS = dom.row_tracks
+    N_TRACKS_SET = dom.n_tracks_set
+    P_TRACKS_SET = dom.p_tracks_set
+
     if (accesses is None):
         diffusion, gate, power = _access_points(netlist, placement)
     else:
@@ -453,7 +521,7 @@ def build_routing_model(netlist, placement, width_cols=None,
     power_index = {n: len(nets) + i
                    for i, n in enumerate(sorted(power))}
     gate_tracks, gateNetsAt = _gate_track_maps(
-        netlist, placement, width_cols, height_um, grid_um)
+        netlist, placement, width_cols, height_um, grid_um, dom)
 
     # two slots per column: N half (bar domain 0..4) and P half (4..8)
     owner_n = [model.NewIntVar(-1, len(nets) + len(power_index) - 1,
@@ -915,14 +983,17 @@ def build_routing_model(netlist, placement, width_cols=None,
                                                 + cov_p[(cSide, t)] <= 4))
 
     # --- poly jump legality (row tracks only, y-aware gate crossing) ---
-    field = _field_map(netlist, placement, width_cols)
-    trackY, _ = track_geometry(height_um, grid_um)
+    field = _field_map(netlist, placement, width_cols, dom, height_um)
+    trackY = dom.trackY
     from .gds import row_geometry, POLY_OVERHANG
     _, rowsGeom = row_geometry(height_um, grid_um)
     gateSpanY = {}
     for dev in netlist.devices:
         p = placement[dev]
-        y0, y1 = rowsGeom[(dev.is_p, p.row)]
+        if dom.strip_anchored:
+            y0, y1 = dom.strip_y(dev.is_p, dev.width_um, height_um)
+        else:
+            y0, y1 = rowsGeom[(dev.is_p, p.row)]
         for j in range(p.legs):
             c = p.start_col + j * p.leg_width_cols + p.leg_width_cols // 2
             key = (dev.gate, c)
@@ -1180,7 +1251,19 @@ def build_routing_model(netlist, placement, width_cols=None,
         # (from c-1) and a segment starting on track t2 (to c+1)
         pairs = [(t1, t2) for t1 in range(N_TRACKS)
                  for t2 in range(N_TRACKS) if (t1 != t2)]
-        for c in range(cmin + 1, cmax + 1):
+        # The sweep must also check the transition INTO the first access
+        # column: the access-connection rule lets a same-track segment sit
+        # at (t, cmin-1) -- LEFT of this sweep -- so a track change at the
+        # cmin boundary escaped every join rule and the model certified a
+        # disconnected route (astran13's tight grid cornered the solver
+        # into it; the unfixed optimum was strictly cheaper than the best
+        # connected route, so EVERY unfixed optimum was disconnected).
+        # Domain-scoped so the bar9 build stays byte-identical (the 894-
+        # test record never fired the hole there).
+        trans_lo = cmin + 1
+        if (dom.name != "bar9" and cmin >= 1):
+            trans_lo = cmin
+        for c in range(trans_lo, cmax + 1):
             if (c > width_cols - 2):
                 continue            # no segment can start at column c
             gateJoin = c in gate.get(n, ())
@@ -1456,18 +1539,25 @@ def _decode_spans(rm, solver):
 def solve_routing(netlist, placement, width_cols=None, poly_jumps=True,
                   metal2=True, time_limit_s=SOLVE_TIME_LIMIT_S,
                   m2_spans=False, assumptions=False, jump_m2=False,
-                  accesses=None):
+                  accesses=None, tracks="bar9"):
     """Stage-2 solve; returns RouteResult (UNKNOWN on failure).
 
     ``accesses`` optionally supplies the (diffusion, gate, power) maps
     in :func:`_access_points`' rail form (the window-fixer / probe
     protocol: verify-style slot accesses); default None derives them
     from the base walk -- the historical behaviour.
+
+    ``tracks`` selects the vertical domain (gds.TRACK_DOMAINS; default
+    bar9 = the historical model, astran13 = ASTRAN's own rule-derived
+    track list).  The returned RouteResult's track keys and bar endpoint
+    indices speak the selected domain -- consumers (verify, gds,
+    gds_cells, route_grid) must be handed the same ``tracks``.
     """
     rm = build_routing_model(netlist, placement, width_cols=width_cols,
                              poly_jumps=poly_jumps, metal2=metal2,
                              m2_spans=m2_spans, assumptions=assumptions,
-                             jump_m2=jump_m2, accesses=accesses)
+                             jump_m2=jump_m2, accesses=accesses,
+                             tracks=tracks)
     solver = cp_model.CpSolver()
     # single worker: parallel search picks different equal-cost optima
     # across runs (AGENTS.md invariant 9 -- the engine must be
@@ -2378,9 +2468,16 @@ def solve_window_routing(netlist, placement, width_cols, window,
                          partial=None, blocks=None, poly_jumps=True,
                          metal2=True,
                          time_limit_s=WINDOW_SOLVE_TIME_LIMIT_S,
-                         m2_spans=False, jump_m2=False):
+                         m2_spans=False, jump_m2=False, tracks="bar9"):
     """The exact engine as a window fixer (doc section 2.4, rung 1's
     narrowed role).
+
+    ``tracks``: only the bar9 domain is supported here -- the window
+    tie planner's pseudo-access vocabulary (_win_pseudo_access: which
+    rail's bar can cover which boundary track, and the level extensions
+    that force the interval) is bar9-specific, and no window user asks
+    for another domain (the astran13 captures solve full-cell).  A
+    non-bar9 request is refused loudly rather than silently mis-tied.
 
     Rebuilds the exact routing model restricted to ``window`` =
     (w0, w1), columns of the router's route grid (``width_cols``
@@ -2417,6 +2514,12 @@ def solve_window_routing(netlist, placement, width_cols, window,
     t0 = time.time()
     w0, w1 = window
     width = w1 - w0
+    if (tracks != "bar9"):
+        return WindowFixResult(
+            "SKIPPED", window=(w0, w1),
+            note="window fixing supports the bar9 track domain only "
+                 "(the tie planner's pseudo-access vocabulary is "
+                 "bar9-specific; got %r)" % (tracks,))
     if (w0 < 0 or w1 > width_cols or width <= 0
             or width > WINDOW_MAX_COLS):
         return WindowFixResult(
@@ -2472,7 +2575,8 @@ def solve_window_routing(netlist, placement, width_cols, window,
     rm = build_routing_model(netlist, shifted, width_cols=width,
                              accesses=(diffusion, gate, power),
                              poly_jumps=poly_jumps, metal2=metal2,
-                             m2_spans=m2_spans, jump_m2=jump_m2)
+                             m2_spans=m2_spans, jump_m2=jump_m2,
+                             tracks=tracks)
     if (partial is not None):
         model = rm.model
         ch = _WindowChanneling(model, rm)
