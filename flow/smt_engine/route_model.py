@@ -121,7 +121,8 @@ class RouteResult(object):
     def __init__(self, status_name, col_owner_n, col_owner_p, lo_n, hi_n,
                  lo_p, hi_p, hseg, pj, m2, via, reachB_n, reachB_p,
                  width_cols, hseg_count, vseg_count, pj_count, m2_count,
-                 via_count, m2v=None, m2via=None, extra_stripes=None):
+                 via_count, m2v=None, m2via=None, extra_stripes=None,
+                 gate_stub=None):
         self.status_name = status_name
         self.col_owner_n = col_owner_n      # N-half stripe per column
         self.col_owner_p = col_owner_p      # P-half stripe per column
@@ -167,6 +168,19 @@ class RouteResult(object):
         # appends them, so every consumer written against the accessor
         # (verify's checks, the GDS renderers) sees them unchanged.
         self.extra_stripes = tuple(extra_stripes) if extra_stripes else ()
+        # --- the gate-contact half-slot stub (additive, default empty) ---
+        # The vocabulary's gate-contact M1 form is the FULL slot hseg
+        # (t, cg) -- the segment spans the column and covers the contact
+        # square at the slot centre.  ASTRAN's own geometry is centre-
+        # anchored instead: the C++ element graph ends the M1 wire AT
+        # the gate's node and the contact square sits on it.  When the
+        # full slot is blocked (the next column's stripe covers the
+        # track, so a full-slot stub would short against it), the
+        # conversion emits the half-slot stub: M1 from the node (t, cg)
+        # to just past the contact square -- it never reaches column
+        # cg+1's bar band.  The anchor is the net's own M1 segment
+        # hseg (t, cg-1); the stub's net is read off that anchor.
+        self.gate_stub = dict(gate_stub) if gate_stub else {}
 
     @property
     def ok(self):

@@ -2174,3 +2174,70 @@ COMPLEX11 端到端闭合入表。
 
 四步修复轨迹：词汇（间距规则）→ m2via 发射 → Y 连通 → 列号差一。
 每一步都缩小了断连集。
+
+## §5.69 MUX2X1 闭合：via_pts 死代码、半槽 stub 词汇与条带扩展（2026-10-30）
+
+**§5.68 的"列号差一"是误诊，先行更正**：把两套访问点推导都倒出来后，
+port 的 sig_diff 与 verify 走的是**同一个** `die_view.die_slot_access_points`
+（blocks 传入、槽模型分支）——都在列 6；列 5 来自历史走线
+`diffusion_access_points`（col-1 内缩约定），verify 根本没用它。真正的
+缺口在四处，全部有 C++ 树的直接证据（arc 548 = MET(4,6)↔M2(4,6)，
+cost 4，在 arcs_used 里却被分类丢弃）：
+
+1. **via_pts 分类死代码**：build_result pass 1 的 elif 写
+   `pair[0][0]==_MET and pair[1][0]==_M2`，但 pair 是排序过的元组而
+   `"M2" < "MET"`（字典序）——**elif 永不命中，所有节点 via 被静默丢
+   弃**，via_pts 循环一直是死代码。Y 之前的 m2via 全来自 b04afae 的
+   跨度端点规则，正是这个洞逼出来的。修复：集合比较
+   `{pair[0][0], pair[1][0]} == {_MET, _M2}`。
+2. **BFS 只在跨度里消费 m2via**：verify 的 `_net_connected_exact` 只在
+   m2v 跨度循环里读 m2via——M2 段端点上的节点 via（精确模型 accm 约
+   束的本义，route_model:1470-1474）没有边。修复：段端点循环补
+   `edge(("M2",(t,c)), (t,c))`（M1 侧要求 bar 覆盖或同网 M1 段）。
+   via_pts 循环的两侧守卫也改成**只认已发射的几何**（m2own/条带覆盖/
+   gate_stub），分类过但被丢弃的槽（如 (9,1) 接触 stub 被让位）不再
+   产生悬空 via。
+3. **半槽 stub 词汇（gate_stub）**：C++ 的栅接触是**点接触**——M1 线
+   终止在栅节点上（S 的树：MET(8,3)-(8,4)-(8,5) + 接触 POL(8,5)↔
+   MET(8,5)，没有 hseg(8,5)）。词汇的栅接触形式是全槽 hseg(t,cg)，
+   而全槽会与 a_2_10# 列 6 的 bar 同层短路（x∈[5.965,6] 重叠）——转
+   换正确地丢弃了它，gate-join 修复又只找到悬空 poly 跳线。修复：新增
+   RouteResult.gate_stub((t,cg)->bool)——从节点 (t,cg) 画到槽中心接触
+   孔右缘（c+0.5+CONTACT_S/2），**永不触及列 c+1 的 bar 带**；发射挂
+   在接触循环的全槽被堵分支上，锚要求同网 M1 段 hseg(t,cg-1)；发射
+   后做迟到校验（电源 bar 晚于信号网发射）。verify 门交叉/BFS/合法性
+   检查、GDS 渲染（stub 矩形 + 接触孔方块）、route_signature 全链接
+   入。S 的 G5 经 stub→(8,5)→M1 网→G2 连通。
+4. **条带扩展回退**：C++ 的 P 访问还有第二条连接——12/13 轨 M2 链在
+   (12,6) 经节点 via 落到**扩散条带里的裸 M1 点**（词汇把访问钉在
+   rail 带，bar 只盖到轨 8-9）。修复：via_pts 的 M1 侧为空时，若该半
+   列 owner 是本网，则把 bar 加宽盖住该点（守卫：留在本半列、
+   met_free、对 extra 条带的 S1M1M1 间距、不触电源轨）——C++ 的
+   占用本来就是这一点。a_2_10# 列 6 P bar (9,10)→(9,13)，G2 经
+   col-3 P bar→M2 链→(12,6) 与访问连通。
+
+**种子 trial 的引擎错配（第五处）**：MUX2X1 入表后生产阶梯仍选了 SA
+17 列排布——种子池 trial 用 bar9 网格路由器跑 astran13 种子（42 冲
+突），而 rung 3 对 astran13 实际用 route_cell_ported（它干净）。修
+复：非 bar9 种子的 trial 在**默认路由器**下换成 ported 路由器（注入
+的测试假路由器保持原契约）——种子以 0 冲突短路赢池，rung 3 闭合。
+
+**结果**：MUX2X1 端到端闭合——FEASIBLE（phase 2）→ verify 干净 →
+GDS 6826B → layout_sanity 干净 → **die 1.525µm = 1.147× ASTRAN**
+（带内）；生产阶梯 engine=bigcell-full 闭合。**第三个捕获，也是第
+一个"路由器所有"的闭包**：精确模型对该排布保持 INFEASIBLE（pin 死
+钉），多区间词汇是移植路由器的领地，不是求解器的。SEED_TABLE 三条
+目。
+
+**COMPLEX11 预备修复（同一轮，两个小洞）**：①**via 修复的 m2via
+遮蔽**——`if not ok_form and (t, c) not in m2via` 让 M2-M2 邻接的
+via 旗标躲在节点 via 后面活下来（两者画的是同一位置同一方块，via
+旗标纯冗余）；删掉遮蔽后 COMPLEX11 的 "via track 9 col 13 joins
+M2-M2" 违例消失。②**m2 段 skip 静默**——emit_seg 返回 "skip"（外
+网占了 hseg 槽——词汇的槽单占规则，M1/M2 共享键）时什么也不记录，
+cl4#Y 的 M2 桥（7,4）被 cl2#Y 的 M1 占槽后无声蒸发，两段跨度悬空；
+现在把本网的 M2 节点记入 _collisions，反馈环下一轮换道。**剩余四
+断连网（cl0#Y/cl3#a_12_41#/cl3#a_2_6#/cl4#Y）已诊断**：三座栅岛需
+要 stub 的第二种锚形式（C++ 接触落在裸 M1 点上直接 via 上 M2——
+m2via 锚，无 M1 横线）；cl4#Y 的桥需要重路由成功或 M2-over-M1 槽
+共存词汇。6 轮反馈未闭合——下一轮课题。

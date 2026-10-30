@@ -238,6 +238,83 @@ def test_verify_rejects_the_left_hang_optimum_by_geometry(flow_dir):
 
 
 # --------------------------------------------------------------------------
+# the MUX2X1 closure: the FIRST ROUTER-BASED capture (AUDIT 5.69)
+# --------------------------------------------------------------------------
+
+MUX2X1 = ("MUX2X1", "6028a7b039e2")
+
+
+def test_mux2x1_closes_on_the_ported_router(flow_dir, tmp_path):
+    """THE THIRD CAPTURE, and the first that is the ROUTER's, not the
+    solver's.  The exact model stays INFEASIBLE on this arrangement (the
+    multi-interval half-column vocabulary is beyond the SMT encoding;
+    the ported ASTRAN router walks it natively -- GraphRouter has no
+    stripe concept at all, graphrouter.h:33-44).  The closure rides
+    route_cell_ported phase 2 end to end, and its two vocabulary pieces
+    -- the S gate-5 half-slot stub (the C++'s centre-anchored contact,
+    which the full-slot form would short) and the node vias onto the
+    col-6 bars -- are exactly what the round-565df1e..b04afae chain
+    built them for."""
+    (nl, placements, width, blocks, entry,
+     ordering_p, ordering_n, leg_widths, offsets) = \
+        _seed_setup(MUX2X1, flow_dir)
+    from bigcell_engine.router_port import route_cell_ported
+    route = route_cell_ported(nl, placements, width, blocks=blocks,
+                              tracks="astran13")
+    assert route.ok, route.fail_note
+    assert route.router_phase == 2
+    # the half-slot stub carries S's gate-5 contact at the M1 run's end
+    assert sorted(k for k, v in route.gate_stub.items() if v) == [(8, 5)]
+    assert route.hseg.get((8, 4)) == "S"      # the stub's M1 anchor
+    # the a_2_10# wire drops onto its own col-6 bars through two node
+    # vias -- one at the M2 wire's end, one at the bar the C++ landed
+    # on inside the diffusion strip (the widened coverage)
+    assert (4, 6) in route.m2via and (12, 6) in route.m2via
+    report = verify_cell(nl, placements, route, blocks=blocks,
+                         tracks="astran13")
+    assert report.ok(), report.violations
+    gds = str(tmp_path / "mux2x1_astran13.gds")
+    write_cell_gds(gds, nl, placements, width, ordering_p, ordering_n,
+                   leg_widths, route=route, x_offsets=offsets,
+                   tracks="astran13")
+    from layout_sanity import check_layout
+    sanity = check_layout(gds, units_per_um=1.0)
+    assert sanity.ok(), sanity.violations
+    die = width_um(width)
+    assert die == pytest.approx(1.525, abs=0.001)
+    assert die / entry["astran_um"] == pytest.approx(1.147, abs=0.001)
+
+
+def test_mux2x1_seed_arrangement_stays_exact_infeasible(flow_dir):
+    """The honest boundary: the SAME arrangement through the EXACT model
+    (the closure funnel's own solve, full vocabulary, astran13 domain)
+    stays INFEASIBLE -- the closure is the ported router's, and this pin
+    keeps the solver from silently growing the vocabulary the router
+    owns."""
+    (nl, placements, width, blocks, _e, _op, _on, _lw, _of) = \
+        _seed_setup(MUX2X1, flow_dir)
+    route = _capture_solve(nl, placements, width, blocks)
+    assert route.status_name == "INFEASIBLE"
+
+
+def test_mux2x1_closes_through_the_production_ladder(flow_dir):
+    """The table entry reproduces through synth_cell: the seed wins the
+    pool -- its trial runs the PORTED router on its own domain (the bar9
+    grid router would misprice the capture at 42 conflicts and the pool
+    would drop it, AUDIT 5.69) -- and rung 3 closes it verify-clean on
+    ASTRAN's own arrangement."""
+    from bigcell_engine.engine import synth_cell
+    nl = _load_cell(EXTRACTED_TABLE[MUX2X1]["source"], flow_dir)
+    placement, route, meta = synth_cell(nl, exact_budget_s=20.0)
+    assert meta["engine"] == "bigcell-full"
+    assert meta["slot_emit"]["tracks"] == "astran13"
+    assert route.ok and route.router_phase == 2
+    report = verify_cell(nl, placement, route, blocks=meta["blocks"],
+                         tracks="astran13")
+    assert report.ok(), report.violations
+
+
+# --------------------------------------------------------------------------
 # determinism (invariant 9): the closure is hash-seed independent
 # --------------------------------------------------------------------------
 

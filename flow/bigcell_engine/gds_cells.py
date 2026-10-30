@@ -285,6 +285,7 @@ def _draw_route(cell, route, edge_x, trackY, barY, grid_um, height_um,
     pj = getattr(route, "pj", {}) or {}
     m2v = getattr(route, "m2v", {}) or {}
     m2via = getattr(route, "m2via", {}) or {}
+    gate_stub = getattr(route, "gate_stub", {}) or {}
 
     def rect(x0, y0, x1, y1, layer):
         cell.add(gdstk.rectangle((x0, y0), (x1, y1), layer=layer))
@@ -324,6 +325,15 @@ def _draw_route(cell, route, edge_x, trackY, barY, grid_um, height_um,
             continue
         rect(edge_x(c), trackY[t] - POLY_W / 2,
              edge_x(c + 1), trackY[t] + POLY_W / 2, LAYER["poly"])
+    # the gate-contact half-slot stubs: M1 from the gate column's node
+    # to just past the contact square at the slot centre -- the C++'s
+    # centre-anchored contact, ending short of the next column's bar
+    for (t, c), on in sorted(gate_stub.items()):
+        if not on:
+            continue
+        rect(edge_x(c), trackY[t] - M1_W / 2,
+             edge_x(c) + grid_um / 2.0 + CONTACT_S / 2,
+             trackY[t] + M1_W / 2, LAYER["metal1"])
 
     # gate contacts: an M1 (or poly) crossing of the gate net on a track
     # inside the stripe's y-range, at the gate column centre.  Drawable
@@ -355,7 +365,14 @@ def _draw_route(cell, route, edge_x, trackY, barY, grid_um, height_um,
                         right = route.hseg.get((t, c)) \
                             if c <= route.width_cols - 2 else None
                         if right != member.device.gate:
-                            continue
+                            # the half-slot stub form: the contact square
+                            # sits on the stub, whose net is the M1 run
+                            # ending at the column's node
+                            stub_net = None
+                            if (gate_stub.get((t, c)) and c >= 1):
+                                stub_net = route.hseg.get((t, c - 1))
+                            if stub_net != member.device.gate:
+                                continue
                         if not (y0 <= trackY[t] <= y1
                                 or t in contact_tracks.get(
                                     (member.device.gate, c), ())):

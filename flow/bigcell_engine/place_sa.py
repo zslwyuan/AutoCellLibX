@@ -2892,6 +2892,7 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
     """
     router = trial_router if trial_router is not None \
         else _default_trial_router()
+    router_is_default = trial_router is None
     blocks_aware = _router_accepts_blocks(router)
     critical = core_critical_nets(_cell_name(netlist)) if core_guided else ()
     crit = frozenset(critical) if critical else None
@@ -3038,16 +3039,28 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
         # _router_accepts_blocks courtesy: test fakes keep their 4-arg
         # contract)
         kw = {}
-        if (t_tracks is not None and _router_accepts_kw(router, "tracks")):
-            kw["tracks"] = t_tracks
+        trial_r = router
+        if (t_tracks is not None):
+            # a non-bar9 seed's PRODUCTION closure runs on the ported
+            # ASTRAN router (engine rung 3's astran13 path), so its
+            # trial must measure that engine -- the bar9 grid router
+            # would misprice it and the pool would drop the capture.
+            # Only the default router is swapped: an injected trial
+            # router keeps its own contract (the test fakes)
+            if router_is_default:
+                from bigcell_engine.router_port import route_cell_ported
+                trial_r = route_cell_ported
+                kw["tracks"] = t_tracks
+            elif _router_accepts_kw(router, "tracks"):
+                kw["tracks"] = t_tracks
         try:
             if blocks_aware:
-                result = router(t_netlist, placements, width, t_lws,
-                                max_attempts=trial_attempts,
-                                blocks=blocks_view, **kw)
+                result = trial_r(t_netlist, placements, width, t_lws,
+                                 max_attempts=trial_attempts,
+                                 blocks=blocks_view, **kw)
             else:
-                result = router(t_netlist, placements, width, t_lws,
-                                max_attempts=trial_attempts, **kw)
+                result = trial_r(t_netlist, placements, width, t_lws,
+                                 max_attempts=trial_attempts, **kw)
         except Exception as exc:                   # noqa: BLE001
             result = None
             note = "trial router raised %s: %s" % (

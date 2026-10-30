@@ -1077,8 +1077,14 @@ class _ElementRouter(object):
                     else:
                         m2_h.add((pair[0][1], min(pair[0][2],
                                                   pair[1][2])))
-                elif pair[0][0] == _MET and pair[1][0] == _M2:
-                    via_pts.add((pair[0][1], pair[0][2]))
+                elif {pair[0][0], pair[1][0]} == {_MET, _M2}:
+                    # NB: the sorted pair puts _M2 FIRST ("M2" < "MET"
+                    # lexicographically) -- the old ordered test never
+                    # matched, so every node via was silently dropped and
+                    # the via_pts loop below was dead code
+                    for k in (pair[0], pair[1]):
+                        if k[0] == _MET:
+                            via_pts.add((k[1], k[2]))
                 elif pair[0][0] == _POL and pair[1][0] == _POL:
                     if pair[0][2] != pair[1][2]:
                         pol_h.add((pair[0][1], min(pair[0][2],
@@ -1163,6 +1169,7 @@ class _ElementRouter(object):
         via = {}
         m2v = {}
         m2via = {}
+        gate_stub = {}
         owner_n = [None] * (W + 1)
         owner_p = [None] * (W + 1)
         lo_n = [0] * (W + 1)
@@ -1510,6 +1517,40 @@ class _ElementRouter(object):
                     continue
                 if ((t, c + 1) not in m1pts
                         and not met_free(t, c + 1, net)):
+                    # the full-slot stub cannot reach past the gate: the
+                    # C++ contact is centre-anchored (the M1 wire ENDS at
+                    # the gate's node), and the half-slot form below is
+                    # its honest translation -- M1 from the node to just
+                    # past the contact square at the slot centre, never
+                    # reaching column c+1's bar band
+                    if (hseg.get((t, c - 1)) != net.name
+                            or pj.get((t, c - 1))
+                            or m2flag.get((t, c - 1))):
+                        continue        # no M1 run ends at the node
+                    if hseg.get((t, c)) not in (None, net.name):
+                        continue        # a foreign slot overlaps the stub
+                    if not met_free(t, c, net):
+                        continue        # a foreign M1 point (a stripe
+                                        # endpoint, another stub) overlaps
+                    if not m1_joinable(t, c, net.name):
+                        continue
+                    # the stub overlaps the column's own bar band at
+                    # x = c .. c + M1_W/2: a FOREIGN bar covering the
+                    # track would short against it
+                    if (owner_n[c] is not None and owner_n[c] != net.name
+                            and lo_n[c] <= t + 1 <= hi_n[c]):
+                        continue
+                    if (owner_p[c] is not None and owner_p[c] != net.name
+                            and lo_p[c] <= t + 1 <= hi_p[c]):
+                        continue
+                    if any(ec == c and en not in (None, net.name)
+                           and elo <= t + 1 <= ehi
+                           for (ec, en, elo, ehi, _es) in extra_stripes):
+                        continue
+                    gate_stub[(t, c)] = True
+                    # the stub occupies the slot's left half on M1: a
+                    # foreign M1 segment at (t, c) would overlap it
+                    m1_users.setdefault((t, c), set()).add(net.index)
                     continue
                 if not m1_joinable(t, c, net.name):
                     continue
@@ -1532,6 +1573,16 @@ class _ElementRouter(object):
                         "vocabulary: M2 segment slot (%d, %d) contested "
                         "between %s and %s" % (t, c, hseg[(t, c)],
                                                net.name))
+                if st == "skip":
+                    # the C++ wire ran over a foreign-owned slot -- the
+                    # vocabulary's hseg key is single-occupancy (M1 and
+                    # M2 share it), so this wire cannot be drawn; bump
+                    # OUR M2 node so the next routeNets round trades
+                    # the wire to a free slot instead of leaving the
+                    # net silently disconnected (COMPLEX11's cl4#Y
+                    # bridge was the silent form)
+                    self._collisions.add(self._node((_M2, t, c)))
+                    continue
                 if st == "ok":
                     m2own.add((t, c))
                     if hseg.get((t, c - 1)) == net.name \
@@ -1581,9 +1632,65 @@ class _ElementRouter(object):
                             if on_bar:
                                 m2via[(te, c)] = True
             for t, c in sorted(via_pts):
-                if (t, c) not in m1pts:
-                    continue         # the M1 side was dropped; verify
-                                     # judges the M2 leaf's fate
+                # the metal2 side must be EMITTED at the point: a segment
+                # ending or starting there, or a span member -- a slot
+                # the conversion later dropped (the contact stub that
+                # replaced an M2 wire's first slot, a contested segment)
+                # has no metal2 to land the via on
+                m2_real = ((t, c) in m2own or (t, c - 1) in m2own
+                           or any(cc == c and t1 <= t <= t2
+                                  for (cc, t1, t2) in m2v))
+                if not m2_real:
+                    continue         # a dead M2 side (the C++ tree used
+                                     # the via arc with an M2 leaf our
+                                     # vocabulary cannot draw) -- drop
+                                     # the junction, verify judges
+                # the M1 side must be EMITTED at the point too: an M1
+                # segment ending or starting there, a stub, or the net's
+                # own bar coverage -- a classified contact whose stub was
+                # dropped leaves no metal1 to land the via on
+                m1_point = (
+                    any(hseg.get((t, cs)) == net.name
+                        and not pj.get((t, cs)) and not m2flag.get((t, cs))
+                        for cs in (c - 1, c))
+                    or gate_stub.get((t, c))
+                    or (owner_n[c] == net.name
+                        and lo_n[c] <= t + 1 <= hi_n[c])
+                    or (owner_p[c] == net.name
+                        and lo_p[c] <= t + 1 <= hi_p[c])
+                    or any(ec == c and en == net.name and elo <= t + 1 <= ehi
+                           for (ec, en, elo, ehi, _es) in extra_stripes))
+                if not m1_point:
+                    # the C++ via landed on a bare M1 point of the
+                    # diffusion strip -- outside the rail band the
+                    # vocabulary pins the access stripe to.  Widen the
+                    # net's OWN stripe to cover it (the C++'s occupancy
+                    # was exactly that point); the extension must stay
+                    # in its half, clear of foreign M1 points, keep the
+                    # S1M1M1 spacing against foreign extra intervals,
+                    # and off the power rails
+                    is_n = t + 1 <= self.boundary_t + 1
+                    if is_n:
+                        own, lo, hi = owner_n[c], lo_n[c], hi_n[c]
+                    else:
+                        own, lo, hi = owner_p[c], lo_p[c], hi_p[c]
+                    nlo, nhi = min(lo, t + 1), max(hi, t + 1)
+                    ok_ext = (
+                        own == net.name
+                        and (nlo >= 1 if is_n else nhi <= self.bar_levels - 2)
+                        and all(met_free(tt, c, net)
+                                for tt in range(nlo - 1, nhi))
+                        and all(shi2 + 2 <= nlo or nhi + 2 <= slo2
+                                for (slo2, shi2) in _half_intervals(c, is_n)
+                                if (slo2, shi2) != (lo, hi)))
+                    if not ok_ext:
+                        continue
+                    if is_n:
+                        lo_n[c], hi_n[c] = nlo, nhi
+                    else:
+                        lo_p[c], hi_p[c] = nlo, nhi
+                    m2via[(t, c)] = True
+                    continue
                 both_side = (
                     c > 0 and c < W
                     and (((t, c - 1) in m1_h and (t, c + 1) in m2_h)
@@ -1591,15 +1698,7 @@ class _ElementRouter(object):
                 if both_side:
                     via[(t, c)] = True
                     continue
-                m1_real = (
-                    (t, c - 1) in m1_h or (t, c + 1) in m1_h
-                    or (t, c) in m1_v or (t + 1, c) in m1_v
-                    or (t, c) in contact)
-                m2_real = (
-                    (t, c - 1) in m2_h or (t, c + 1) in m2_h
-                    or (t, c) in m2_v or (t + 1, c) in m2_v)
-                if m1_real and m2_real:
-                    m2via[(t, c)] = True
+                m2via[(t, c)] = True
                 # else: a dead via side (the C++ tree used the via arc
                 # with an M2 leaf our vocabulary cannot draw) -- drop
                 # the junction, the net's connectivity is verify's
@@ -1665,6 +1764,38 @@ class _ElementRouter(object):
                         "between %s and %s" % (slot, hseg[slot],
                                                net.name))
 
+        # ---- the half-slot stubs' late validation: the bars emitted
+        # after the stub's own contact pass (the power rails run after
+        # the signal nets, later nets' stripes) must not cover a stub's
+        # track, and the stub's slot must have stayed free of foreign
+        # M1 -- a violated stub is dropped and its node fed back ----
+        for (t, c) in sorted(gate_stub):
+            stub_net = hseg.get((t, c - 1))
+            net = self.net_by_name.get(stub_net)
+            ok = (net is not None and net in self.nets
+                  and not pj.get((t, c - 1))
+                  and not m2flag.get((t, c - 1)))
+            if ok:
+                for owner, lo, hi in ((owner_n[c], lo_n[c], hi_n[c]),
+                                      (owner_p[c], lo_p[c], hi_p[c])):
+                    if (owner is not None and owner != stub_net
+                            and lo <= t + 1 <= hi):
+                        ok = False
+            if ok:
+                for (ec, en, elo, ehi, _es) in extra_stripes:
+                    if (ec == c and en != stub_net
+                            and elo <= t + 1 <= ehi):
+                        ok = False
+            if ok and hseg.get((t, c)) not in (None, stub_net):
+                ok = False
+            if ok:
+                users = m1_users.get((t, c))
+                if users and users - {net.index}:
+                    ok = False
+            if not ok:
+                del gate_stub[(t, c)]
+                self._collisions.add(m1_tab[t][c])
+
         # ---- pass 3: every gate needs one margin-legal crossing ----
         for (gnet, c) in sorted(self.gate_pol):
             net = self.net_by_name.get(gnet)
@@ -1677,6 +1808,12 @@ class _ElementRouter(object):
             # track
             for t in self.gate_tracks[(gnet, c)]:
                 if hseg.get((t, c)) == gnet and not m2flag.get((t, c)):
+                    crossed = True
+                    break
+                if (gate_stub.get((t, c))
+                        and hseg.get((t, c - 1)) == gnet):
+                    # the half-slot stub crossed the stripe at its
+                    # anchor's end
                     crossed = True
                     break
             if not crossed:
@@ -1745,6 +1882,13 @@ class _ElementRouter(object):
                 crossings[c] = set(
                     t for t in self.gate_tracks.get((net.name, c), ())
                     if hseg.get((t, c)) == net.name)
+                # a stub crossing chains exactly like a full-slot one:
+                # the M1 run that anchors it crosses every column it
+                # spans, so two gates sharing the stub's track are tied
+                crossings[c].update(
+                    t for t in self.gate_tracks.get((net.name, c), ())
+                    if gate_stub.get((t, c))
+                    and hseg.get((t, c - 1)) == net.name)
             # union-find over the gate columns; two adjacent columns
             # join when one track has margin crossings at both
             parent = {c: c for c in gates}
@@ -1947,7 +2091,11 @@ class _ElementRouter(object):
         # ---- the final via fixup: the adjacent-segment via forms must
         # hold at the END (later emissions can flip a slot's layer),
         # and every same-net M1|M2 adjacency needs its via square
-        # (verify's rule: the layer switch is legal only through one)
+        # (verify's rule: the layer switch is legal only through one).
+        # A node-via point (m2via) draws its OWN square at the same
+        # position, so a failing via flag there is pure redundancy --
+        # deleting it never loses the drawn junction (COMPLEX11's
+        # track-9 M2-M2 via was exactly this shield).
         for (t, c) in sorted(via):
             left = hseg.get((t, c - 1))
             right = hseg.get((t, c))
@@ -1956,7 +2104,7 @@ class _ElementRouter(object):
                 and not pj.get((t, c - 1)) and not pj.get((t, c))
                 and (bool(m2flag.get((t, c - 1)))
                      != bool(m2flag.get((t, c)))))
-            if not ok_form and (t, c) not in m2via:
+            if not ok_form:
                 del via[(t, c)]
         for (t, c) in sorted(hseg):
             if not m2flag.get((t, c)) or pj.get((t, c)):
@@ -1974,7 +2122,8 @@ class _ElementRouter(object):
             "FEASIBLE", owner_n, owner_p, lo_n, hi_n, lo_p, hi_p,
             hseg, pj, m2flag, via, reachB_n, reachB_p, W + 1,
             len(hseg), vseg, len(pj), len(m2flag), len(via),
-            m2v=m2v, m2via=m2via, extra_stripes=tuple(extra_stripes))
+            m2v=m2v, m2via=m2via, extra_stripes=tuple(extra_stripes),
+            gate_stub=gate_stub)
         result.route_cost = (
             sum(1 for k in hseg if not m2flag.get(k) and not pj.get(k))
             * H_MET_COST

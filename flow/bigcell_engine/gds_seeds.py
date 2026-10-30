@@ -467,6 +467,27 @@ SEED_TABLE[('COMPLEX0', 'e6b547710f5e')] = {'source': 'outputs/max/COMPLEX0.gds'
  'n_widths': (1, 1, 2, 1, 1, 1),
  'x_offsets': (0, 0),
  'tracks': 'astran13'}
+# THE FIRST ROUTER-BASED CAPTURE (AUDIT 5.69): the exact model stays
+# INFEASIBLE on this arrangement (the multi-interval vocabulary wall is
+# the router's to break, not the solver's) -- the closure rides
+# router_port.route_cell_ported's phase 2 through the production
+# ladder's rung 3, verify-gated like every closure.
+SEED_TABLE[('MUX2X1', '6028a7b039e2')] = {'source': 'original_astran_cells/MUX2X1.gds',
+ 'astran_um': 1.33,
+ 'p': (('M1', 'VCC', 'a_17_50#'),
+       ('M2', 'a_17_50#', 'Y'),
+       ('M3', 'Y', 'a_30_54#'),
+       ('M4', 'a_30_54#', 'VCC'),
+       ('M0', 'VCC', 'a_2_10#')),
+ 'n': (('M6', 'GND', 'a_17_10#'),
+       ('M7', 'a_17_10#', 'Y'),
+       ('M8', 'Y', 'a_30_10#'),
+       ('M9', 'a_30_10#', 'GND'),
+       ('M5', 'GND', 'a_2_10#')),
+ 'p_widths': (1, 1, 1, 2, 1),
+ 'n_widths': (1, 1, 1, 2, 1),
+ 'x_offsets': (0, 0),
+ 'tracks': 'astran13'}
 
 
 # --------------------------------------------------------------------------
