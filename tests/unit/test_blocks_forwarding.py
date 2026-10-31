@@ -207,7 +207,10 @@ def test_engine_rung3_forwards_blocks_and_rung2_keeps_contract(
         monkeypatch):
     """The rung-3 router call receives blocks=blocks3 (the same object
     recorded in meta), while rung 2's injected router keeps its fixed
-    (netlist, placement, width_cols, leg_widths) signature."""
+    (netlist, placement, width_cols, leg_widths) signature.  The domain
+    rung (3.7) is mocked to fail too -- its real router would close
+    NAND2 on astran13 and the ladder would not end in refusal."""
+    import bigcell_engine.router_port as rp
     captured = {}
 
     def rung3_router(netlist, placement, width_cols, leg_widths,
@@ -222,6 +225,18 @@ def test_engine_rung3_forwards_blocks_and_rung2_keeps_contract(
             [BAR_LEVELS - 1] * width, {}, {}, {}, {},
             [False] * width, [False] * width, width, 0, 0, 0, 0, 0)
         shell.fail_note = None
+        return shell
+
+    def failing_ported(netlist, placement, width_cols, leg_widths=None,
+                       blocks=None, tracks="astran13", **_kw):
+        width = max(width_cols,
+                    max(p.end_col for p in placement.values())) + 1
+        shell = RouteResult(
+            "UNKNOWN", [None] * width, [None] * width,
+            [0] * width, [0] * width, [BAR_LEVELS - 1] * width,
+            [BAR_LEVELS - 1] * width, {}, {}, {}, {},
+            [False] * width, [False] * width, width, 0, 0, 0, 0, 0)
+        shell.fail_note = "no conflict-free routing after 4 attempts"
         return shell
 
     def rung2_router(*args, **kwargs):
@@ -241,6 +256,7 @@ def test_engine_rung3_forwards_blocks_and_rung2_keeps_contract(
                         lambda *a, **k: eng._failed_route("INFEASIBLE"))
     monkeypatch.setattr(eng, "_default_grid_router",
                         lambda: rung3_router)
+    monkeypatch.setattr(rp, "route_cell_ported", failing_ported)
     with pytest.raises(eng.UnsupportedCell) as excinfo:
         synth_cell(_netlist(NAND2), exact_budget_s=20.0,
                    grid_router=rung2_router)

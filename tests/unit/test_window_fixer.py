@@ -347,10 +347,21 @@ def test_rung25_window_close_via_jump_capacity(
 
 
 def test_rung35_skipped_when_note_names_no_nets(monkeypatch):
+    import bigcell_engine.router_port as rp
+
+    def failing_ported(netlist, placement, width_cols, leg_widths=None,
+                       blocks=None, tracks="astran13", **_kw):
+        width = max(width_cols,
+                    max(p.end_col for p in placement.values())) + 1
+        return _failed_shell(width, None)
+
     monkeypatch.setattr(eng, "solve_routing",
                         lambda *a, **k: eng._failed_route("INFEASIBLE"))
     monkeypatch.setattr(eng, "_default_grid_router",
                         lambda: _failing_router(None))
+    # the domain rung (3.7) must fail too: its real router would close
+    # NAND2 on astran13 and the ladder would not end in refusal
+    monkeypatch.setattr(rp, "route_cell_ported", failing_ported)
     with pytest.raises(eng.UnsupportedCell) as excinfo:
         synth_cell(_netlist(NAND2), exact_budget_s=20.0)
     meta = excinfo.value.meta
