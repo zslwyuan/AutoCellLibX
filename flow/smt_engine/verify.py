@@ -202,9 +202,7 @@ def verify_cell(netlist, placement, route, grid_um=0.19, height_um=2.47,
             if (lo <= t + 1 <= hi):
                 return net2
         if (getattr(route, "gate_stub", {}).get((t, c))):
-            n2 = route.stub_net(t, c)
-            if (n2 is not None):
-                return n2
+            return route.gate_stub.get((t, c))
         for cseg in (c - 1, c):
             n2 = route.hseg.get((t, cseg))
             if (n2 is not None and not pj.get((t, cseg))
@@ -360,8 +358,7 @@ def verify_cell(netlist, placement, route, grid_um=0.19, height_um=2.47,
                     # the stripe's y-range would leave the contact
                     # floating
                     crossed = True
-                if (getattr(route, "gate_stub", {}).get((t, c))
-                        and route.stub_net(t, c) == net
+                if (getattr(route, "gate_stub", {}).get((t, c)) == net
                         and _touches_gate(spans, net, c, t, trackY)):
                     # the half-slot stub: the net's M1 run ends at the
                     # gate column (or the node via lands on the stub)
@@ -410,11 +407,14 @@ def verify_cell(netlist, placement, route, grid_um=0.19, height_um=2.47,
     for (t, c), on in getattr(route, "gate_stub", {}).items():
         if (not on):
             continue
-        net = route.stub_net(t, c)
+        net = route.gate_stub.get((t, c))
         if (net is None):
             violations.append("gate stub (%d, %d): no anchoring segment"
                               % (t, c))
             continue
+        if (not route.stub_anchored(t, c, net)):
+            violations.append("gate stub (%d, %d) of %s: the anchor is "
+                              "gone" % (t, c, net))
         for net2, lo, hi, _slot in stripes(c):
             if (net2 != net and lo <= t + 1 <= hi):
                 violations.append("gate stub (%d, %d) of %s crosses the "
@@ -715,8 +715,7 @@ def _net_connected_exact(netlist, placement, route, net, diffPts, gateCols,
                     route.hseg.get((t, cseg)) == net
                     and not pj.get((t, cseg)) and not m2.get((t, cseg))
                     for cseg in (c - 1, c)) \
-                    or (getattr(route, "gate_stub", {}).get((t, c))
-                        and route.stub_net(t, c) == net)
+                    or getattr(route, "gate_stub", {}).get((t, c)) == net
                 if (on_stripe or on_m1seg):
                     edge(sn, node(t, c))
     # a node via joins the net's M2 segment ENDPOINT to the M1 point at
@@ -739,8 +738,7 @@ def _net_connected_exact(netlist, placement, route, net, diffPts, gateCols,
             route.hseg.get((t, cseg)) == net
             and not pj.get((t, cseg)) and not m2.get((t, cseg))
             for cseg in (c - 1, c)) \
-            or (getattr(route, "gate_stub", {}).get((t, c))
-                and route.stub_net(t, c) == net)
+            or getattr(route, "gate_stub", {}).get((t, c)) == net
         if (on_stripe or on_m1seg):
             edge(node("M2", (t, c)), node(t, c))
     # bars join the tracks their interval covers (index rule); a dual
@@ -777,7 +775,7 @@ def _net_connected_exact(netlist, placement, route, net, diffPts, gateCols,
     # the node via lands on the stub) and the stub reaches the contact
     # square at the slot centre -- the stripe joins that node through it
     for (t, c), on in (getattr(route, "gate_stub", {}) or {}).items():
-        if (not on or route.stub_net(t, c) != net):
+        if (not on or route.gate_stub.get((t, c)) != net):
             continue          # not this net's stub
         if (c in gateCols):
             edge(node("G", c), node(t, c))

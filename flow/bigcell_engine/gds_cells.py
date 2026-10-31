@@ -378,7 +378,7 @@ def _draw_route(cell, route, edge_x, trackY, barY, grid_um, height_um,
                             # M2 the node via climbs into
                             stub_net = None
                             if (gate_stub.get((t, c)) and c >= 1):
-                                stub_net = route.stub_net(t, c)
+                                stub_net = route.gate_stub.get((t, c))
                             if stub_net != member.device.gate:
                                 continue
                         if not (y0 <= trackY[t] <= y1

@@ -178,8 +178,11 @@ class RouteResult(object):
         # track, so a full-slot stub would short against it), the
         # conversion emits the half-slot stub: M1 from the node (t, cg)
         # to just past the contact square -- it never reaches column
-        # cg+1's bar band.  The anchor is the net's own M1 segment
-        # hseg (t, cg-1); the stub's net is read off that anchor.
+        # cg+1's bar band.  The VALUE is the emitting NET's name (the
+        # derivation cannot know it -- a foreign M1 run can end at the
+        # same node); stub_anchored re-checks the three anchor forms
+        # (the net's M1 run ending at the node, its own stripe covering
+        # the track, or the via-anchored M2 the node via climbs into).
         self.gate_stub = dict(gate_stub) if gate_stub else {}
         # --- the over-foreign-slot M2 segments (additive, default empty) ---
         # The hseg key (track, col) is single-occupancy: one net, one
@@ -201,25 +204,27 @@ class RouteResult(object):
         """Both slot owners of a column (net names or None)."""
         return self.col_owner_n[c], self.col_owner_p[c]
 
-    def stub_net(self, t, c):
-        """The net a gate_stub entry at (t, c) serves.
-
-        Two anchor forms: the M1 run ENDING at the node (hseg (t, c-1)
-        is the net's plain M1), or -- the via-anchored form ASTRAN's
-        centre-anchored contact produces -- the M2 segment the node via
-        at (t, c) climbs into (the contact lands on a bare M1 point
-        with no horizontal run).  None when neither anchors (verify
-        reports the stub as dangling)."""
+    def stub_anchored(self, t, c, net):
+        """Whether the gate_stub at (t, c) is anchored for ``net``: the
+        net's M1 run ENDING at the node (hseg (t, c-1)), its own stripe
+        covering the track, or -- the via-anchored form ASTRAN's
+        centre-anchored contact produces -- the net's M2 segment the
+        node via at (t, c) climbs into.  The stub's own net is the
+        RECORDED value (gate_stub[(t, c)]); this is the verifier's
+        anchor check, not a derivation."""
         n = self.hseg.get((t, c - 1))
-        if (n is not None and not self.pj.get((t, c - 1))
+        if (n == net and not self.pj.get((t, c - 1))
                 and not self.m2.get((t, c - 1))):
-            return n
+            return True
+        for net2, lo, hi, _slot in self.stripes(c):
+            if (net2 == net and lo <= t + 1 <= hi):
+                return True
         if self.m2via.get((t, c)):
             for cs in (c - 1, c):
-                n2 = self.hseg.get((t, cs))
-                if (n2 is not None and self.m2.get((t, cs))):
-                    return n2
-        return None
+                if (self.hseg.get((t, cs)) == net
+                        and self.m2.get((t, cs))):
+                    return True
+        return False
 
     def stripes(self, c):
         """(net, lo, hi, slot) tuples for the column's stripes."""

@@ -1180,12 +1180,19 @@ class _ElementRouter(object):
 
         def stub_serves(t, c, name):
             """Whether the gate_stub at (t, c) serves ``name``: the M1
-            run ending at the node, or the via-anchored M2 segment the
-            node via climbs into (RouteResult.stub_net's logic on the
-            conversion's own state)."""
+            run ending at the node, the net's own bar covering the
+            track, or the via-anchored M2 segment the node via climbs
+            into (RouteResult.stub_net's logic on the conversion's own
+            state)."""
             left = hseg.get((t, c - 1))
             if (left == name and not pj.get((t, c - 1))
                     and not m2flag.get((t, c - 1))):
+                return True
+            if ((owner_n[c] == name and lo_n[c] <= t + 1 <= hi_n[c])
+                    or (owner_p[c] == name
+                        and lo_p[c] <= t + 1 <= hi_p[c])
+                    or any(ec == c and en == name and elo <= t + 1 <= ehi
+                           for (ec, en, elo, ehi, _es) in extra_stripes)):
                 return True
             if m2via.get((t, c)):
                 for cs in (c - 1, c):
@@ -1553,13 +1560,30 @@ class _ElementRouter(object):
                     # the gate's node), and the half-slot form below is
                     # its honest translation -- M1 from the node to just
                     # past the contact square at the slot centre, never
-                    # reaching column c+1's bar band
-                    if (hseg.get((t, c - 1)) != net.name
-                            or pj.get((t, c - 1))
-                            or m2flag.get((t, c - 1))):
-                        continue        # no M1 run ends at the node
-                    if hseg.get((t, c)) not in (None, net.name):
-                        continue        # a foreign slot overlaps the stub
+                    # reaching column c+1's bar band.  Three anchors: an
+                    # M1 run ending at the node, the net's OWN bar
+                    # covering the track (the stub bridges the bar band
+                    # to the contact square), or nothing (dropped)
+                    run_anchored = (hseg.get((t, c - 1)) == net.name
+                                    and not pj.get((t, c - 1))
+                                    and not m2flag.get((t, c - 1)))
+                    bar_anchored = (
+                        (owner_n[c] == net.name
+                         and lo_n[c] <= t + 1 <= hi_n[c])
+                        or (owner_p[c] == net.name
+                            and lo_p[c] <= t + 1 <= hi_p[c])
+                        or any(ec == c and en == net.name
+                               and elo <= t + 1 <= ehi
+                               for (ec, en, elo, ehi, _es)
+                               in extra_stripes))
+                    if not (run_anchored or bar_anchored):
+                        continue        # no M1 reaches the contact point
+                    if (hseg.get((t, c)) not in (None, net.name)
+                            and not pj.get((t, c))
+                            and not m2flag.get((t, c))):
+                        continue        # a foreign M1 slot overlaps the
+                                        # stub -- a foreign M2/poly slot
+                                        # coexists (different layers)
                     if not met_free(t, c, net):
                         continue        # a foreign M1 point (a stripe
                                         # endpoint, another stub) overlaps
@@ -1570,7 +1594,7 @@ class _ElementRouter(object):
                     # track would short against it
                     if not stub_bar_clear(c, t, net.name):
                         continue
-                    gate_stub[(t, c)] = True
+                    gate_stub[(t, c)] = net.name
                     # the stub occupies the slot's left half on M1: a
                     # foreign M1 segment at (t, c) would overlap it
                     m1_users.setdefault((t, c), set()).add(net.index)
@@ -1734,7 +1758,7 @@ class _ElementRouter(object):
                                     and not pj.get((t, c - 1))
                                     and not m2flag.get((t, c - 1))):
                                 if stub_bar_clear(c, t, net.name):
-                                    gate_stub[(t, c)] = True
+                                    gate_stub[(t, c)] = net.name
                                     # the stub occupies the slot's left
                                     # half (plus the via-side sliver in
                                     # the left slot, whose foreign-M1
@@ -1785,6 +1809,27 @@ class _ElementRouter(object):
                     via[(t, c)] = True
                     continue
                 m2via[(t, c)] = True
+                # the BAR-anchored contact: the via lands on the net's
+                # own bar (m1_point came from coverage), but the contact
+                # square at the slot centre sits 0.465 um right of the
+                # bar's band -- the gate stripe still needs the half-slot
+                # stub to reach it (the third anchor form, after the M1
+                # run and the bare via point)
+                if (c in self.gate_nets_at.get(net.name, ())
+                        and t in self.gate_tracks.get((net.name, c), ())
+                        and not gate_stub.get((t, c))):
+                    right = hseg.get((t, c))
+                    if (right is None or pj.get((t, c))
+                            or m2flag.get((t, c))):
+                        left = hseg.get((t, c - 1))
+                        if not (left is not None
+                                and left != net.name
+                                and not pj.get((t, c - 1))
+                                and not m2flag.get((t, c - 1))):
+                            if stub_bar_clear(c, t, net.name):
+                                gate_stub[(t, c)] = net.name
+                                m1_users.setdefault(
+                                    (t, c), set()).add(net.index)
             # 5. the poly runs: the used poly arcs' slots + the gate
             #    arrival merges, grouped per track; a run is emitted
             #    only when it contains a margin-legal gate crossing
@@ -1878,21 +1923,14 @@ class _ElementRouter(object):
         # after the stub's own contact pass (the power rails run after
         # the signal nets, later nets' stripes) must not cover a stub's
         # track, and the stub's slot must have stayed free of foreign
-        # M1 -- a violated stub is dropped and its node fed back ----
+        # M1 -- a violated stub is dropped and its node fed back.  The
+        # stub's net is the RECORDED name (the emission knew it); the
+        # anchors are re-checked per net (stub_serves) ----
         for (t, c) in sorted(gate_stub):
-            stub_net = hseg.get((t, c - 1))
-            if (stub_net is None or pj.get((t, c - 1))
-                    or m2flag.get((t, c - 1))):
-                # the via-anchored form: the stub's net is the M2's,
-                # landed through the node via at the stub's left end
-                if m2via.get((t, c)):
-                    for cs in (c - 1, c):
-                        n2 = hseg.get((t, cs))
-                        if (n2 is not None and m2flag.get((t, cs))):
-                            stub_net = n2
-                            break
+            stub_net = gate_stub[(t, c)]
             net = self.net_by_name.get(stub_net)
-            ok = net is not None and net in self.nets
+            ok = (net is not None and net in self.nets
+                  and stub_serves(t, c, stub_net))
             if ok:
                 for owner, lo, hi in ((owner_n[c], lo_n[c], hi_n[c]),
                                       (owner_p[c], lo_p[c], hi_p[c])):
@@ -1904,8 +1942,10 @@ class _ElementRouter(object):
                     if (ec == c and en != stub_net
                             and elo <= t + 1 <= ehi):
                         ok = False
-            if ok and hseg.get((t, c)) not in (None, stub_net):
-                ok = False
+            if (ok and hseg.get((t, c)) not in (None, stub_net)
+                    and not pj.get((t, c)) and not m2flag.get((t, c))):
+                ok = False      # a foreign M1 slot; an M2/poly slot
+                                # coexists with the M1 stub (layers)
             if ok:
                 users = m1_users.get((t, c))
                 if users and users - {net.index}:
