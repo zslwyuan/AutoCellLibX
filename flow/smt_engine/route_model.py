@@ -122,7 +122,7 @@ class RouteResult(object):
                  lo_p, hi_p, hseg, pj, m2, via, reachB_n, reachB_p,
                  width_cols, hseg_count, vseg_count, pj_count, m2_count,
                  via_count, m2v=None, m2via=None, extra_stripes=None,
-                 gate_stub=None):
+                 gate_stub=None, extra_m2=None):
         self.status_name = status_name
         self.col_owner_n = col_owner_n      # N-half stripe per column
         self.col_owner_p = col_owner_p      # P-half stripe per column
@@ -181,6 +181,17 @@ class RouteResult(object):
         # cg+1's bar band.  The anchor is the net's own M1 segment
         # hseg (t, cg-1); the stub's net is read off that anchor.
         self.gate_stub = dict(gate_stub) if gate_stub else {}
+        # --- the over-foreign-slot M2 segments (additive, default empty) ---
+        # The hseg key (track, col) is single-occupancy: one net, one
+        # layer per slot.  ASTRAN's element graph has no such rule -- an
+        # M2 node and a MET node coexist at the same point (different
+        # layers, no interaction).  When the C++ routes an M2 wire over
+        # a slot whose M1 belongs to another net, the conversion drops
+        # it from hseg and records it here: a flat tuple of
+        # (track, col, net) drawn as one M2 rectangle [col, col+1] on
+        # the track, same-layer conflicts guarded at emission (a
+        # foreign M2 segment or span touching it would short).
+        self.extra_m2 = tuple(extra_m2) if extra_m2 else ()
 
     @property
     def ok(self):
@@ -189,6 +200,26 @@ class RouteResult(object):
     def owners(self, c):
         """Both slot owners of a column (net names or None)."""
         return self.col_owner_n[c], self.col_owner_p[c]
+
+    def stub_net(self, t, c):
+        """The net a gate_stub entry at (t, c) serves.
+
+        Two anchor forms: the M1 run ENDING at the node (hseg (t, c-1)
+        is the net's plain M1), or -- the via-anchored form ASTRAN's
+        centre-anchored contact produces -- the M2 segment the node via
+        at (t, c) climbs into (the contact lands on a bare M1 point
+        with no horizontal run).  None when neither anchors (verify
+        reports the stub as dangling)."""
+        n = self.hseg.get((t, c - 1))
+        if (n is not None and not self.pj.get((t, c - 1))
+                and not self.m2.get((t, c - 1))):
+            return n
+        if self.m2via.get((t, c)):
+            for cs in (c - 1, c):
+                n2 = self.hseg.get((t, cs))
+                if (n2 is not None and self.m2.get((t, cs))):
+                    return n2
+        return None
 
     def stripes(self, c):
         """(net, lo, hi, slot) tuples for the column's stripes."""

@@ -325,15 +325,22 @@ def _draw_route(cell, route, edge_x, trackY, barY, grid_um, height_um,
             continue
         rect(edge_x(c), trackY[t] - POLY_W / 2,
              edge_x(c + 1), trackY[t] + POLY_W / 2, LAYER["poly"])
-    # the gate-contact half-slot stubs: M1 from the gate column's node
-    # to just past the contact square at the slot centre -- the C++'s
-    # centre-anchored contact, ending short of the next column's bar
+    # the gate-contact half-slot stubs: M1 from just inside the gate
+    # column's node (the via-side extension covers the node via's left
+    # half -- the via-anchored form lands there) to just past the
+    # contact square at the slot centre -- the C++'s centre-anchored
+    # contact, ending short of the next column's bar
     for (t, c), on in sorted(gate_stub.items()):
         if not on:
             continue
-        rect(edge_x(c), trackY[t] - M1_W / 2,
+        rect(edge_x(c) - CONTACT_S / 2, trackY[t] - M1_W / 2,
              edge_x(c) + grid_um / 2.0 + CONTACT_S / 2,
              trackY[t] + M1_W / 2, LAYER["metal1"])
+    # the over-foreign-slot M2 segments: one metal2 rectangle over a
+    # slot whose M1/poly belongs to another net (layers coexist)
+    for (t, c, _n) in sorted(getattr(route, "extra_m2", ()) or ()):
+        rect(edge_x(c), trackY[t] - M1_W / 2,
+             edge_x(c + 1), trackY[t] + M1_W / 2, LAYER["metal2"])
 
     # gate contacts: an M1 (or poly) crossing of the gate net on a track
     # inside the stripe's y-range, at the gate column centre.  Drawable
@@ -366,11 +373,12 @@ def _draw_route(cell, route, edge_x, trackY, barY, grid_um, height_um,
                             if c <= route.width_cols - 2 else None
                         if right != member.device.gate:
                             # the half-slot stub form: the contact square
-                            # sits on the stub, whose net is the M1 run
-                            # ending at the column's node
+                            # sits on the stub -- the net is the M1 run
+                            # ending at the node, or the via-anchored
+                            # M2 the node via climbs into
                             stub_net = None
                             if (gate_stub.get((t, c)) and c >= 1):
-                                stub_net = route.hseg.get((t, c - 1))
+                                stub_net = route.stub_net(t, c)
                             if stub_net != member.device.gate:
                                 continue
                         if not (y0 <= trackY[t] <= y1

@@ -488,6 +488,48 @@ SEED_TABLE[('MUX2X1', '6028a7b039e2')] = {'source': 'original_astran_cells/MUX2X
  'n_widths': (1, 1, 1, 2, 1),
  'x_offsets': (0, 0),
  'tracks': 'astran13'}
+# THE SECOND ROUTER-BASED CAPTURE (AUDIT 5.70): 32T, the biggest cell
+# the ported router has closed -- the three vocabulary pieces the
+# MUX2X1 round built (the via-anchored gate stub, the +1-slot via
+# retry, the over-foreign-slot extra_m2) carry its four hard nets.
+SEED_TABLE[('COMPLEX11', '419776c896b9')] = {'source': 'outputs/adder/COMPLEX11.gds',
+ 'astran_um': 3.8,
+ 'p': (('Mcl2#0', 'cl2#a_2_54#', 'cl2#a_9_54#'),
+       ('Mcl2#1', 'cl2#a_9_54#', 'VCC'),
+       ('Mcl2#2', 'VCC', 'cl2#Y'),
+       ('Mcl4#2', 'VCC', 'cl4#Y'),
+       ('Mcl4#1', 'cl4#Y', 'cl4#a_9_54#'),
+       ('Mcl4#0', 'cl4#a_9_54#', 'VCC'),
+       ('Mcl0#1', 'VCC', 'cl0#Y'),
+       ('Mcl0#0', 'cl0#Y', 'VCC'),
+       ('Mcl1#0', 'VCC', 'cl1#Y'),
+       ('Mcl1#1', 'cl1#Y', 'VCC'),
+       ('Mcl3#0', 'cl3#a_2_6#', 'VCC'),
+       ('Mcl3#1', 'VCC', 'cl3#a_18_54#'),
+       ('Mcl3#2', 'cl3#a_18_54#', 'cl3#Y'),
+       ('Mcl3#3', 'cl3#Y', 'cl3#a_35_54#'),
+       ('Mcl3#4', 'cl3#a_35_54#', 'VCC'),
+       ('Mcl3#5', 'VCC', 'cl3#a_12_41#')),
+ 'n': (('Mcl2#3', 'GND', 'cl2#a_2_54#'),
+       ('Mcl2#4', 'cl2#a_2_54#', 'GND'),
+       ('Mcl2#5', 'GND', 'cl2#Y'),
+       ('Mcl4#5', 'cl4#Y', 'cl4#a_2_6#'),
+       ('Mcl4#4', 'cl4#a_2_6#', 'GND'),
+       ('Mcl4#3', 'GND', 'cl4#a_2_6#'),
+       ('Mcl0#3', 'cl0#Y', 'cl0#a_9_6#'),
+       ('Mcl0#2', 'cl0#a_9_6#', 'GND'),
+       ('Mcl1#2', 'GND', 'cl1#a_9_6#'),
+       ('Mcl1#3', 'cl1#a_9_6#', 'cl1#Y'),
+       ('Mcl3#6', 'cl3#a_2_6#', 'GND'),
+       ('Mcl3#7', 'GND', 'cl3#a_18_6#'),
+       ('Mcl3#8', 'cl3#a_18_6#', 'cl3#Y'),
+       ('Mcl3#9', 'cl3#Y', 'cl3#a_35_6#'),
+       ('Mcl3#10', 'cl3#a_35_6#', 'GND'),
+       ('Mcl3#11', 'GND', 'cl3#a_12_41#')),
+ 'p_widths': (1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+ 'n_widths': (1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+ 'x_offsets': (0, 0),
+ 'tracks': 'astran13'}
 
 
 # --------------------------------------------------------------------------

@@ -263,9 +263,13 @@ def test_mux2x1_closes_on_the_ported_router(flow_dir, tmp_path):
                               tracks="astran13")
     assert route.ok, route.fail_note
     assert route.router_phase == 2
-    # the half-slot stub carries S's gate-5 contact at the M1 run's end
-    assert sorted(k for k, v in route.gate_stub.items() if v) == [(8, 5)]
-    assert route.hseg.get((8, 4)) == "S"      # the stub's M1 anchor
+    # the half-slot stubs: (8, 5) carries S's gate-5 contact at the M1
+    # run's end; (9, 1) is the C++'s own contact on S@1's stripe (the
+    # M2 escape it fed was dead geometry, but the contact is real --
+    # the via-anchored form draws it now instead of dropping it)
+    assert sorted(k for k, v in route.gate_stub.items() if v) == \
+        [(8, 5), (9, 1)]
+    assert route.hseg.get((8, 4)) == "S"      # the (8, 5) stub's anchor
     # the a_2_10# wire drops onto its own col-6 bars through two node
     # vias -- one at the M2 wire's end, one at the bar the C++ landed
     # on inside the diffusion strip (the widened coverage)
@@ -308,6 +312,80 @@ def test_mux2x1_closes_through_the_production_ladder(flow_dir):
     placement, route, meta = synth_cell(nl, exact_budget_s=20.0)
     assert meta["engine"] == "bigcell-full"
     assert meta["slot_emit"]["tracks"] == "astran13"
+    assert route.ok and route.router_phase == 2
+    report = verify_cell(nl, placement, route, blocks=meta["blocks"],
+                         tracks="astran13")
+    assert report.ok(), report.violations
+
+
+# --------------------------------------------------------------------------
+# the COMPLEX11 closure: the second router-based capture (AUDIT 5.70)
+# --------------------------------------------------------------------------
+
+COMPLEX11 = ("COMPLEX11", "419776c896b9")
+
+
+def test_complex11_closes_on_the_ported_router(flow_dir, tmp_path):
+    """THE FOURTH CAPTURE, the second router-owned one, and the biggest
+    cell the ported router has closed (32T, die 3.995 um = 1.051x
+    ASTRAN).  The three vocabulary pieces the MUX2X1 round built carry
+    its hard nets: the via-anchored gate stubs (cl0#Y's G13 contact
+    lands on a bare M1 point that climbs straight into its M2 chain),
+    the +1-slot via retry (cl3#a_12_41#'s contact stub displaced the
+    M2 wire's slot, the via lands on the run's end node), and the
+    over-foreign-slot extra_m2 segments (both M2 bridges cross foreign
+    M1 slots -- layers coexist, the C++ nodes did exactly that)."""
+    (nl, placements, width, blocks, entry,
+     ordering_p, ordering_n, leg_widths, offsets) = \
+        _seed_setup(COMPLEX11, flow_dir)
+    from bigcell_engine.router_port import route_cell_ported
+    route = route_cell_ported(nl, placements, width, blocks=blocks,
+                              tracks="astran13")
+    assert route.ok, route.fail_note
+    assert route.router_phase == 2
+    # the load-bearing vocabulary pieces (AUDIT 5.70's three forms)
+    stubs = sorted(k for k, v in route.gate_stub.items() if v)
+    assert (4, 13) in stubs and (9, 15) in stubs and (10, 13) in stubs
+    assert route.hseg.get((4, 14)) is not None      # M1 near the stub
+    extras = sorted((t, c) for (t, c, _n) in route.extra_m2)
+    assert (6, 16) in extras and (7, 4) in extras
+    report = verify_cell(nl, placements, route, blocks=blocks,
+                         tracks="astran13")
+    assert report.ok(), report.violations
+    gds = str(tmp_path / "complex11_astran13.gds")
+    write_cell_gds(gds, nl, placements, width, ordering_p, ordering_n,
+                   leg_widths, route=route, x_offsets=offsets,
+                   tracks="astran13")
+    from layout_sanity import check_layout
+    sanity = check_layout(gds, units_per_um=1.0)
+    assert sanity.ok(), sanity.violations
+    die = width_um(width)
+    assert die == pytest.approx(3.995, abs=0.001)
+    assert die / entry["astran_um"] == pytest.approx(1.051, abs=0.001)
+
+
+def test_complex11_seed_arrangement_stays_exact_infeasible(flow_dir):
+    """The honest boundary: 32T through the EXACT model (the closure
+    funnel's own solve, full vocabulary, astran13 domain) stays
+    INFEASIBLE (~47 s CP-SAT proof) -- the over-slot M2 coexistence is
+    beyond the SMT encoding's single-occupancy hseg, and the ported
+    router's GraphRouter has no such rule (graphrouter.h:33-44)."""
+    (nl, placements, width, blocks, _e, _op, _on, _lw, _of) = \
+        _seed_setup(COMPLEX11, flow_dir)
+    route = _capture_solve(nl, placements, width, blocks)
+    assert route.status_name == "INFEASIBLE"
+
+
+def test_complex11_closes_through_the_production_ladder(flow_dir):
+    """The table entry reproduces through synth_cell: the seed wins the
+    pool (its trial runs the ported router on astran13) and rung 3
+    closes the 32T cell verify-clean at width 19 columns."""
+    from bigcell_engine.engine import synth_cell
+    nl = _load_cell(EXTRACTED_TABLE[COMPLEX11]["source"], flow_dir)
+    placement, route, meta = synth_cell(nl, exact_budget_s=20.0)
+    assert meta["engine"] == "bigcell-full"
+    assert meta["slot_emit"]["tracks"] == "astran13"
+    assert meta["width_cols"] == 19
     assert route.ok and route.router_phase == 2
     report = verify_cell(nl, placement, route, blocks=meta["blocks"],
                          tracks="astran13")

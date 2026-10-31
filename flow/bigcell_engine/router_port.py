@@ -1163,6 +1163,36 @@ class _ElementRouter(object):
                     return False
             return True
 
+        def stub_bar_clear(c, t, name):
+            """The half-slot stub's own-column conflicts: the stub
+            overlaps its column's bar band at x = c (and the via-side
+            extension reaches x = c - CS/2 into it), so a FOREIGN bar
+            or extra interval covering the track would short."""
+            if (owner_n[c] is not None and owner_n[c] != name
+                    and lo_n[c] <= t + 1 <= hi_n[c]):
+                return False
+            if (owner_p[c] is not None and owner_p[c] != name
+                    and lo_p[c] <= t + 1 <= hi_p[c]):
+                return False
+            return not any(ec == c and en not in (None, name)
+                           and elo <= t + 1 <= ehi
+                           for (ec, en, elo, ehi, _es) in extra_stripes)
+
+        def stub_serves(t, c, name):
+            """Whether the gate_stub at (t, c) serves ``name``: the M1
+            run ending at the node, or the via-anchored M2 segment the
+            node via climbs into (RouteResult.stub_net's logic on the
+            conversion's own state)."""
+            left = hseg.get((t, c - 1))
+            if (left == name and not pj.get((t, c - 1))
+                    and not m2flag.get((t, c - 1))):
+                return True
+            if m2via.get((t, c)):
+                for cs in (c - 1, c):
+                    if (hseg.get((t, cs)) == name and m2flag.get((t, cs))):
+                        return True
+            return False
+
         hseg = {}
         pj = {}
         m2flag = {}
@@ -1170,6 +1200,7 @@ class _ElementRouter(object):
         m2v = {}
         m2via = {}
         gate_stub = {}
+        extra_m2 = []
         owner_n = [None] * (W + 1)
         owner_p = [None] * (W + 1)
         lo_n = [0] * (W + 1)
@@ -1537,15 +1568,7 @@ class _ElementRouter(object):
                     # the stub overlaps the column's own bar band at
                     # x = c .. c + M1_W/2: a FOREIGN bar covering the
                     # track would short against it
-                    if (owner_n[c] is not None and owner_n[c] != net.name
-                            and lo_n[c] <= t + 1 <= hi_n[c]):
-                        continue
-                    if (owner_p[c] is not None and owner_p[c] != net.name
-                            and lo_p[c] <= t + 1 <= hi_p[c]):
-                        continue
-                    if any(ec == c and en not in (None, net.name)
-                           and elo <= t + 1 <= ehi
-                           for (ec, en, elo, ehi, _es) in extra_stripes):
+                    if not stub_bar_clear(c, t, net.name):
                         continue
                     gate_stub[(t, c)] = True
                     # the stub occupies the slot's left half on M1: a
@@ -1564,6 +1587,7 @@ class _ElementRouter(object):
                     own_slots.add((t, c))
             # 4. the M2 segments, spans and vias
             m2own = set()
+            extra_slots = set((t, c) for (t, c, _en) in extra_m2)
             for t, c in sorted(m2_h):
                 if (t, c) in own_slots:
                     continue
@@ -1574,13 +1598,25 @@ class _ElementRouter(object):
                         "between %s and %s" % (t, c, hseg[(t, c)],
                                                net.name))
                 if st == "skip":
-                    # the C++ wire ran over a foreign-owned slot -- the
-                    # vocabulary's hseg key is single-occupancy (M1 and
-                    # M2 share it), so this wire cannot be drawn; bump
+                    # the C++ wire ran over a foreign-owned slot.  When
+                    # that slot is M1 or poly (a DIFFERENT layer -- the
+                    # C++'s M2 and MET nodes coexist at the point), the
+                    # wire is drawn as an over-foreign-slot extra_m2
+                    # segment.  The same-layer adjacency guard runs
+                    # here (a foreign M2 segment touching it would
+                    # short); the span conflicts are validated late,
+                    # after the span synthesis.  A true conflict bumps
                     # OUR M2 node so the next routeNets round trades
-                    # the wire to a free slot instead of leaving the
-                    # net silently disconnected (COMPLEX11's cl4#Y
-                    # bridge was the silent form)
+                    # the wire away
+                    prev = hseg.get((t, c))
+                    if (prev is not None and not m2flag.get((t, c))
+                            and not any(
+                                hseg.get((t, cc)) is not None
+                                and hseg.get((t, cc)) != net.name
+                                and m2flag.get((t, cc))
+                                for cc in (c - 1, c + 1))):
+                        extra_m2.append((t, c, net.name))
+                        continue
                     self._collisions.add(self._node((_M2, t, c)))
                     continue
                 if st == "ok":
@@ -1638,9 +1674,22 @@ class _ElementRouter(object):
                 # replaced an M2 wire's first slot, a contested segment)
                 # has no metal2 to land the via on
                 m2_real = ((t, c) in m2own or (t, c - 1) in m2own
+                           or (t, c) in extra_slots or (t, c - 1) in extra_slots
                            or any(cc == c and t1 <= t <= t2
                                   for (cc, t1, t2) in m2v))
                 if not m2_real:
+                    # the C++ via's M2 wire may be expressed one slot
+                    # RIGHT: its own slot became the gate contact's M1
+                    # stub, and the wire survives as the span at column
+                    # c+1 (cl3#a_12_41#'s (7,14) via is the shape) --
+                    # the port via then lands on the run's end node
+                    if (hseg.get((t, c)) == net.name
+                            and not pj.get((t, c))
+                            and not m2flag.get((t, c))
+                            and any(cc == c + 1 and t1 <= t <= t2
+                                    and n2 == net.name
+                                    for (cc, t1, t2), n2 in m2v.items())):
+                        m2via[(t, c + 1)] = True
                     continue         # a dead M2 side (the C++ tree used
                                      # the via arc with an M2 leaf our
                                      # vocabulary cannot draw) -- drop
@@ -1661,12 +1710,49 @@ class _ElementRouter(object):
                     or any(ec == c and en == net.name and elo <= t + 1 <= ehi
                            for (ec, en, elo, ehi, _es) in extra_stripes))
                 if not m1_point:
-                    # the C++ via landed on a bare M1 point of the
-                    # diffusion strip -- outside the rail band the
-                    # vocabulary pins the access stripe to.  Widen the
-                    # net's OWN stripe to cover it (the C++'s occupancy
-                    # was exactly that point); the extension must stay
-                    # in its half, clear of foreign M1 points, keep the
+                    # the C++ via landed on a bare M1 point.  First form:
+                    # the point is the gate's own CONTACT -- a via/
+                    # contact junction with no horizontal M1 run (the
+                    # contact loop's stub branch needs one).  When the
+                    # point sits at the net's own gate column on a
+                    # drawable track, the half-slot stub IS the M1 side:
+                    # the node via lands on the stub, the stub reaches
+                    # the contact square at the slot centre.  The slot
+                    # may carry the net's own M2 (the chain the via
+                    # climbs into -- layers coexist); a FOREIGN M1
+                    # there, or in the left slot the via-side extension
+                    # reaches into, would short it
+                    if (c in self.gate_nets_at.get(net.name, ())
+                            and t in self.gate_tracks.get((net.name, c), ())
+                            and not gate_stub.get((t, c))):
+                        right = hseg.get((t, c))
+                        if (right is None or pj.get((t, c))
+                                or m2flag.get((t, c))):
+                            left = hseg.get((t, c - 1))
+                            if not (left is not None
+                                    and left != net.name
+                                    and not pj.get((t, c - 1))
+                                    and not m2flag.get((t, c - 1))):
+                                if stub_bar_clear(c, t, net.name):
+                                    gate_stub[(t, c)] = True
+                                    # the stub occupies the slot's left
+                                    # half (plus the via-side sliver in
+                                    # the left slot, whose foreign-M1
+                                    # case the guard above rejects);
+                                    # marking the LEFT slot would be
+                                    # slot-granular over-blocking -- a
+                                    # power fill's met_free spans the
+                                    # whole half-column
+                                    m1_users.setdefault(
+                                        (t, c), set()).add(net.index)
+                                    m2via[(t, c)] = True
+                                    continue
+                    # second form: a bare M1 point of the diffusion
+                    # strip -- outside the rail band the vocabulary
+                    # pins the access stripe to.  Widen the net's OWN
+                    # stripe to cover it (the C++'s occupancy was
+                    # exactly that point); the extension must stay in
+                    # its half, clear of foreign M1 points, keep the
                     # S1M1M1 spacing against foreign extra intervals,
                     # and off the power rails
                     is_n = t + 1 <= self.boundary_t + 1
@@ -1699,10 +1785,6 @@ class _ElementRouter(object):
                     via[(t, c)] = True
                     continue
                 m2via[(t, c)] = True
-                # else: a dead via side (the C++ tree used the via arc
-                # with an M2 leaf our vocabulary cannot draw) -- drop
-                # the junction, the net's connectivity is verify's
-                # verdict
             # 5. the poly runs: the used poly arcs' slots + the gate
             #    arrival merges, grouped per track; a run is emitted
             #    only when it contains a margin-legal gate crossing
@@ -1764,6 +1846,34 @@ class _ElementRouter(object):
                         "between %s and %s" % (slot, hseg[slot],
                                                net.name))
 
+        # ---- the over-foreign-slot M2 segments' late validation: the
+        # spans were synthesized after the emission, so the same-layer
+        # span conflicts (a foreign span's x-band [c-+M2_W/2] overlaps
+        # the segment's [c, c+1] on a covered track) and the foreign
+        # extra-adjacency only check out here.  A pruned segment feeds
+        # its M2 node back for the re-route
+        extra_set = list(extra_m2)
+        del extra_m2[:]
+        for (t, c, en) in extra_set:
+            ok_x = not any(
+                hseg.get((t, cc)) is not None
+                and hseg.get((t, cc)) != en
+                and m2flag.get((t, cc))
+                for cc in (c - 1, c + 1))
+            if ok_x:
+                ok_x = not any(
+                    (et, ec) == (t, cc) and en2 != en
+                    for cc in (c - 1, c + 1)
+                    for (et, ec, en2) in extra_set)
+            if ok_x:
+                ok_x = not any(
+                    cc in (c, c + 1) and t1 <= t <= t2 and n2 != en
+                    for (cc, t1, t2), n2 in m2v.items())
+            if ok_x:
+                extra_m2.append((t, c, en))
+            else:
+                self._collisions.add(self._node((_M2, t, c)))
+
         # ---- the half-slot stubs' late validation: the bars emitted
         # after the stub's own contact pass (the power rails run after
         # the signal nets, later nets' stripes) must not cover a stub's
@@ -1771,10 +1881,18 @@ class _ElementRouter(object):
         # M1 -- a violated stub is dropped and its node fed back ----
         for (t, c) in sorted(gate_stub):
             stub_net = hseg.get((t, c - 1))
+            if (stub_net is None or pj.get((t, c - 1))
+                    or m2flag.get((t, c - 1))):
+                # the via-anchored form: the stub's net is the M2's,
+                # landed through the node via at the stub's left end
+                if m2via.get((t, c)):
+                    for cs in (c - 1, c):
+                        n2 = hseg.get((t, cs))
+                        if (n2 is not None and m2flag.get((t, cs))):
+                            stub_net = n2
+                            break
             net = self.net_by_name.get(stub_net)
-            ok = (net is not None and net in self.nets
-                  and not pj.get((t, c - 1))
-                  and not m2flag.get((t, c - 1)))
+            ok = net is not None and net in self.nets
             if ok:
                 for owner, lo, hi in ((owner_n[c], lo_n[c], hi_n[c]),
                                       (owner_p[c], lo_p[c], hi_p[c])):
@@ -1810,10 +1928,9 @@ class _ElementRouter(object):
                 if hseg.get((t, c)) == gnet and not m2flag.get((t, c)):
                     crossed = True
                     break
-                if (gate_stub.get((t, c))
-                        and hseg.get((t, c - 1)) == gnet):
+                if gate_stub.get((t, c)) and stub_serves(t, c, gnet):
                     # the half-slot stub crossed the stripe at its
-                    # anchor's end
+                    # anchor's end (or through the node via)
                     crossed = True
                     break
             if not crossed:
@@ -1888,7 +2005,7 @@ class _ElementRouter(object):
                 crossings[c].update(
                     t for t in self.gate_tracks.get((net.name, c), ())
                     if gate_stub.get((t, c))
-                    and hseg.get((t, c - 1)) == net.name)
+                    and stub_serves(t, c, net.name))
             # union-find over the gate columns; two adjacent columns
             # join when one track has margin crossings at both
             parent = {c: c for c in gates}
@@ -2123,7 +2240,7 @@ class _ElementRouter(object):
             hseg, pj, m2flag, via, reachB_n, reachB_p, W + 1,
             len(hseg), vseg, len(pj), len(m2flag), len(via),
             m2v=m2v, m2via=m2via, extra_stripes=tuple(extra_stripes),
-            gate_stub=gate_stub)
+            gate_stub=gate_stub, extra_m2=tuple(extra_m2))
         result.route_cost = (
             sum(1 for k in hseg if not m2flag.get(k) and not pj.get(k))
             * H_MET_COST
@@ -2238,6 +2355,7 @@ def route_cell_ported(netlist, placement, width_cols, leg_widths=None,
         bumps = {}
         best = None
         best_report = None
+        best_rank = None
         for rnd in range(vocab_rounds):
             routed = grid.route(max_attempts=max_attempts,
                                 optimize=optimize,
@@ -2270,9 +2388,17 @@ def route_cell_ported(netlist, placement, width_cols, leg_widths=None,
                 return result, report
             clean = (result.ok
                      and not getattr(result, "router_verify", ()))
-            if best is None or (clean and best is not None
-                                and getattr(best, "router_verify", ())):
-                best, best_report = result, report
+            # the best-round rank: clean beats dirty, then fewer verify
+            # violations -- a later feedback round that mends SOME of
+            # round 1's gaps must be able to win (the old clean-only
+            # replacement kept round 1 however much worse it was).  A
+            # FAILED conversion ranks below every real one: it carries
+            # no violations list at all and would otherwise win by
+            # vacuity
+            rank = (0 if clean else 1 if result.ok else 2,
+                    len(getattr(result, "router_verify", ()) or ()))
+            if (best is None or rank < best_rank):
+                best, best_report, best_rank = result, report, rank
             # the feedback: the conversion's blocker nodes (the fills'
             # collisions, the two-stripe runs, the dropped unanchored
             # poly runs) take a CUMULATIVE price -- the next routeNets

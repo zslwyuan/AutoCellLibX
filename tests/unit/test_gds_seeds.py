@@ -210,14 +210,15 @@ def test_complexc_ids_stay_disambiguated(flow_dir):
 
 def test_seed_table_carries_exactly_the_captures(flow_dir):
     """The closure table carries exactly the CAPTURED arrangements
-    (AUDIT 5.63: CLKBUF1 + max/COMPLEX0, both astran13; 5.69: MUX2X1,
-    the first ROUTER-based capture) -- an entry lands here only when
-    the arrangement closes, and then the closure reproduces from the
-    table alone."""
+    (AUDIT 5.63: CLKBUF1 + max/COMPLEX0, both astran13; 5.69/5.70:
+    MUX2X1 and COMPLEX11, the router-owned captures) -- an entry lands
+    here only when the arrangement closes, and then the closure
+    reproduces from the table alone."""
     assert set(SEED_TABLE) == {
         ("CLKBUF1", "8cf4a81927d7"),
         ("COMPLEX0", _max_complex0_digest()),
         ("MUX2X1", "6028a7b039e2"),
+        ("COMPLEX11", "419776c896b9"),
     }
     for entry in SEED_TABLE.values():
         assert entry["tracks"] == "astran13"

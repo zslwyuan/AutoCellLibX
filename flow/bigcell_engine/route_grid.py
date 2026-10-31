@@ -2388,4 +2388,6 @@ def route_signature(route):
     for key in sorted(getattr(route, "gate_stub", {}) or {}):
         if (route.gate_stub[key]):
             parts.append("g%s" % (key,))
+    for (t, c, n) in sorted(getattr(route, "extra_m2", ()) or ()):
+        parts.append("e%d_%d=%s" % (t, c, n))
     return "\n".join(parts)
