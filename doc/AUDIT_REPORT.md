@@ -2286,3 +2286,39 @@ engine=bigcell-full 闭合；精确模型 47s 证 INFEASIBLE（pin 死钉）。
 SEED_TABLE 四捕获。MUX2X1 的 (9,1) stub（C++ 在 S@1 栅带上的冗余接
 触，喂给死 M2 逃逸线）现在也被诚实画出，pin 更新为 [(8,5),(9,1)]。
 下一轮：其余 12 个可提取 seed 走同一词汇链。
+
+## §5.71 域档位：astran13 从"捕获的门"变成"阶梯的档"（2026-10-31）
+
+**方法论纠偏（用户质询"是不是逐个 cell 定制化"）**。分层审计：词汇/
+转换/验证层通用（引擎代码 0 个 cell 名，六件词汇各对应 ASTRAN 自产
+的物理形式，通用守卫 + 通用验证器）；但**过程被实例驱动**（词汇发现
+靠单 cell 失败触发），且**闭包被逐 cell 数据门控**——astran13 域只
+有 SEED_TABLE 里有捕获条目的 cell 才激活。对照实验（决定性）：纯 SA
+排布（零捕获数据）直接过 astran13 移植路由器，5 个 cell 里 **4 个路
+由失败、1 个差一网**（NOR3X1 无路径、XNOR2X1/DFFPOSX1 条带合并撞
+VCC、DFFNEGX1 无路径、XOR2X1 差 a_2_6#）——根因：**SA 的试布在
+bar9 网格路由器上评估**，搜索从头到尾在为错误的域优化；捕获排布赢
+就赢在它本来就是 astran13 可布的。
+
+**修复（算法化，非逐 cell）**：
+- **trial_tracks 贯通 place_sa**：select_orderings/sa_refine_routable
+  接受试布域，全部候选（不只是 seed）在目标域的**生产路由器**（移植
+  路由器）上试布，trial 固定 vocab_rounds=1（试布测第一转换；生产
+  路由保留完整反馈环）；None 默认保持 bar9 字节恒等。
+- **rung 3.7（bigcell-domain）**：bar9 链（3/3.5）全部未闭合时，
+  排布**重搜**（每个候选按 astran13 试布定价）+ 移植路由器路由 +
+  verify——闭包不再需要任何捕获排布；SEED_TABLE 降级为宽度候选
+  （捕获更窄时仍在池内赢宽度）。
+
+**记分板**：**DFFPOSX1（22T）零捕获闭合**——engine=bigcell-domain、
+13 列（ASTRAN 排布 17 列，更窄）、~10 分钟（重搜成本）；XNOR2X1/
+XOR2X1 到 verify-dirty（各差一网 a_2_6#/A——同词缺口类，下一轮）；
+DFFNEGX1 未闭（待诊）；NOR3X1 在 rung 3 前退出（阶梯结构问题，待
+诊）。**旧的"逐个 seed 入表"计划作废**——闭包由算法保证，捕获只是
+宽度副产物。test_rung25 诚实性 pin 同步（3.7 也 mock 失败，保住
+"refusals are recorded"的测法）。
+
+**遗留的算法化项**（按用户方向排）：①转换覆盖审计不变量（C++ 弧分
+类学 → 构造性完备映射，不再等 cell 触发洞）；②CORE_CRITICAL_NETS
+手表（SA 搜索引导）算法化——从网表结构推导；③XNOR2X1/XOR2X1 的
+单网缺口与 NOR3X1/DFFNEGX1 的阶梯诊断。

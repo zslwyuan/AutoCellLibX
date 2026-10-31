@@ -370,8 +370,11 @@ def test_rung25_honesty_guard_skips_unreproducible_plateau(monkeypatch):
     """A route width ABOVE WINDOW_MAX_COLS forces a strict sub-window,
     and the honesty guard refuses a plateau the deterministic re-run
     does not reproduce (NAND2 actually routes -- no plateau to fix, no
-    moving target).  Nothing closes; the refusals are recorded."""
+    moving target).  Nothing closes; the refusals are recorded.  The
+    domain rung (3.7) is mocked to fail too -- its real router would
+    close NAND2 on astran13 and the ladder would not end in refusal."""
     import bigcell_engine.route_grid as rg
+    import bigcell_engine.router_port as rp
 
     def failing_route_cell(netlist, placement, width_cols,
                            leg_widths, blocks=None, tracks="bar9"):
@@ -381,9 +384,18 @@ def test_rung25_honesty_guard_skips_unreproducible_plateau(monkeypatch):
             width, "no conflict-free routing after 4 attempts (best 2 "
                    "conflicts at attempt 2; unresolved: Y)")
 
+    def failing_ported(netlist, placement, width_cols, leg_widths=None,
+                       blocks=None, tracks="astran13", **_kw):
+        width = max(width_cols,
+                    max(p.end_col for p in placement.values())) + 11
+        return _failed_shell(
+            width, "no conflict-free routing after 4 attempts (best 2 "
+                   "conflicts at attempt 2; unresolved: Y)")
+
     monkeypatch.setattr(eng, "solve_routing",
                         lambda *a, **k: eng._failed_route("INFEASIBLE"))
     monkeypatch.setattr(rg, "route_cell", failing_route_cell)
+    monkeypatch.setattr(rp, "route_cell_ported", failing_ported)
     with pytest.raises(eng.UnsupportedCell) as excinfo:
         synth_cell(_netlist(NAND2), exact_budget_s=20.0)
     meta = excinfo.value.meta

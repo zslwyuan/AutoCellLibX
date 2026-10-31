@@ -2745,9 +2745,17 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
                      candidate_count=DEFAULT_CANDIDATES,
                      trial_attempts=DEFAULT_TRIAL_ATTEMPTS,
                      trial_router=None, variant_classes=False,
-                     cage=False, legacy_best=None, core_guided=False):
+                     cage=False, legacy_best=None, core_guided=False,
+                     trial_tracks=None):
     """Speculate stage (doc section 2.2 "Composition"): score the
     candidate pool by a fast trial route and pick the winner.
+
+    ``trial_tracks`` (engine rung 3.7's domain lever): every candidate
+    -- not just a GDS-seed -- trials on this track domain through the
+    domain's own production router (the ported ASTRAN router for
+    non-bar9), so the search optimizes the routability it will be
+    judged by.  None keeps the historical bar9 behaviour byte-identical;
+    a seed candidate's OWN domain still wins for itself.
 
     Returns ``(ordering_p, ordering_n, report)``.  Ranking policy (the
     gate-cage lever, AUDIT 5.46, extended by the crossing lever, AUDIT
@@ -3022,6 +3030,8 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
             t_x_offsets = sctx[1]
             if len(sctx) > 2 and sctx[2] != "bar9":
                 t_tracks = sctx[2]
+        if (t_tracks is None and trial_tracks is not None):
+            t_tracks = trial_tracks
         placements, width = layout_cell(op, on, t_lws,
                                         x_offsets=t_x_offsets)
         # the candidate's OWN die view: the orientation-aware block view
@@ -3051,6 +3061,10 @@ def select_orderings(best_p, best_n, seed_p, seed_n, netlist, leg_widths,
                 from bigcell_engine.router_port import route_cell_ported
                 trial_r = route_cell_ported
                 kw["tracks"] = t_tracks
+                # the trial measures the FIRST conversion (one vocab
+                # round, the trial attempt budget); the production
+                # route keeps the full feedback loop
+                kw["vocab_rounds"] = 1
             elif _router_accepts_kw(router, "tracks"):
                 kw["tracks"] = t_tracks
         try:
@@ -3327,7 +3341,7 @@ def sa_refine_routable(ordering_p, ordering_n, netlist, leg_widths,
                        trial_router=None, iterations=None,
                        quality=DEFAULT_QUALITY, init_moves=None,
                        seed=None, check=True, variant_classes=False,
-                       cage=None, core_guided=False):
+                       cage=None, core_guided=False, trial_tracks=None):
     """``sa_refine`` + the speculate selection stage: the rung-3 entry
     point for routability-aware placement.
 
@@ -3419,6 +3433,7 @@ def sa_refine_routable(ordering_p, ordering_n, netlist, leg_widths,
         cost_p, cost_n, ordering_p, ordering_n, netlist, leg_widths,
         candidate_count=eff_candidates, trial_attempts=trial_attempts,
         trial_router=trial_router, variant_classes=variant_classes,
+        trial_tracks=trial_tracks,
         cage=cage, legacy_best=legacy_best, core_guided=core_guided)
     if sel.get("fold_overrides"):
         # a fold-variant winner: the selected orderings decompose the

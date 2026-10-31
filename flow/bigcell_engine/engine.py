@@ -67,6 +67,11 @@ _ENG_EXACT = "smt-exact"
 _ENG_GRID = "bigcell-grid"
 _ENG_FULL = "bigcell-full"
 _ENG_WINDOW = "bigcell-window-fix"
+#: rung 3.7's engine name -- the astran13 domain as a LADDER rung: the
+#: placement re-searches with every candidate trialed on the domain's
+#: own production router, then routes the winner on it.  The domain is
+#: a property of the search, not of a per-cell captured arrangement.
+_ENG_DOMAIN = "bigcell-domain"
 _ENG_GRID_WINDOW = "bigcell-grid+window-fix"
 _ENG_FULL_WINDOW = "bigcell-full+window-fix"
 
@@ -250,7 +255,7 @@ def _default_grid_router():
     return route_cell
 
 
-def _heuristic_placement(netlist):
+def _heuristic_placement(netlist, trial_tracks=None):
     """Rung-3 placement: fold -> blocks -> seeds -> euler -> SA -> columns.
 
     Returns (netlist3, placements, width_cols, leg_widths, blocks,
@@ -262,6 +267,12 @@ def _heuristic_placement(netlist):
     mirrored block pair reads as a missing diffusion break), and
     ``orderings`` is the (ordering_p, ordering_n) tuple the GDS slot
     emitter needs.
+
+    ``trial_tracks`` (rung 3.7's domain lever): the speculate selection
+    trials every candidate on that track domain through the domain's own
+    production router, so the search optimizes the routability it will
+    be judged by (AUDIT 5.71).  None keeps the historical bar9 trials
+    byte-identical.
     Deterministic; raises on structural failure.
     """
     from . import geometry
@@ -276,7 +287,7 @@ def _heuristic_placement(netlist):
     ordering_p, ordering_n = euler_orderings(seeds, leg_widths)
     ordering_p, ordering_n, cost = sa_refine_routable(
         ordering_p, ordering_n, netlist3, leg_widths, variant_classes=True,
-        core_guided=True)
+        core_guided=True, trial_tracks=trial_tracks)
     # fold-variant winner (place_sa's lazy phase 6): the selected
     # orderings decompose the OVERRIDE fold decision, so every consumer
     # below (layout, router, verify, GDS emit) must work against the
@@ -739,6 +750,81 @@ def synth_cell(netlist, exact_budget_s=60.0, grid_budget_s=120.0,
                                  "leg_widths": leg_widths3,
                                  "tracks": tracks3}
             return placements3, fixed3, meta
+
+    # --- rung 3.7: the astran13 DOMAIN as a ladder rung (AUDIT 5.71) --
+    # not a per-cell capture.  When the bar9 path leaves the cell
+    # unclosed, the placement RE-SEARCHES with every candidate trialed
+    # on the domain's own production router (the ported ASTRAN router
+    # -- the search then optimizes the routability it will be judged
+    # by), and the winner routes + verifies on that domain.  Cells
+    # close WITHOUT any captured arrangement; a SEED_TABLE capture
+    # that happens to be narrower still wins its pool on width.
+    if (best is None):
+        t0 = time.time()
+        dom37 = None
+        try:
+            (nl37, pl37, w37, lws37, blocks37, ord37,
+             _tr37) = _heuristic_placement(netlist, trial_tracks="astran13")
+        except Exception as exc:                       # noqa: BLE001
+            _attempt(meta, 3.7, _ENG_DOMAIN, False, status="ERROR",
+                     stage="placement",
+                     note="%s: %s" % (type(exc).__name__, exc),
+                     seconds=time.time() - t0)
+            nl37 = None
+        else:
+            _attempt(meta, 3.7, _ENG_DOMAIN, True, status="OK",
+                     stage="placement", note="width %d cols" % w37,
+                     seconds=time.time() - t0)
+            try:
+                from .router_port import route_cell_ported
+                route37 = route_cell_ported(nl37, pl37, w37, lws37,
+                                            blocks=blocks37,
+                                            tracks="astran13")
+            except Exception as exc:                   # noqa: BLE001
+                _attempt(meta, 3.7, _ENG_DOMAIN, False, status="ERROR",
+                         stage="routing",
+                         note="%s: %s" % (type(exc).__name__, exc),
+                         seconds=time.time() - t0)
+                route37 = None
+            if (route37 is not None and route37.ok):
+                try:
+                    report37 = verify_cell(nl37, pl37, route37,
+                                           blocks=blocks37,
+                                           tracks="astran13")
+                except Exception as exc:               # noqa: BLE001
+                    report37 = None
+                    v37 = "verify raised %s: %s" % (type(exc).__name__,
+                                                    exc)
+                else:
+                    v37 = ("verify ok" if report37.ok()
+                           else "verify failed: %s"
+                           % report37.violations[:2])
+                if (report37 is not None and report37.ok()):
+                    _attempt(meta, 3.7, _ENG_DOMAIN, True,
+                             status=route37.status_name, stage="routing",
+                             note=v37, seconds=time.time() - t0)
+                    dom37 = route37
+                else:
+                    _attempt(meta, 3.7, _ENG_DOMAIN, False,
+                             status=route37.status_name, stage="routing",
+                             note=v37, seconds=time.time() - t0)
+            elif (route37 is not None):
+                _attempt(meta, 3.7, _ENG_DOMAIN, False,
+                         status=route37.status_name, stage="routing",
+                         note=getattr(route37, "fail_note", None),
+                         seconds=time.time() - t0)
+        if (dom37 is not None):
+            meta["engine"] = _ENG_DOMAIN
+            meta["width_cols"] = dom37.width_cols
+            meta["width_um"] = dom37.width_cols * GRID_UM
+            meta["slot_emit"] = {"width_cols": w37,
+                                 "ordering_p": ord37[0],
+                                 "ordering_n": ord37[1],
+                                 "leg_widths": lws37,
+                                 "tracks": "astran13"}
+            meta["cell_netlist"] = nl37
+            meta["blocks"] = blocks37
+            return pl37, dom37, meta
 
     if (best is not None):
         # the slot chain did not beat the earlier closing rung -- hand
