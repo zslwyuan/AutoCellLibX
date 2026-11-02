@@ -344,6 +344,21 @@ def verify_cell(netlist, placement, route, grid_um=0.19, height_um=2.47,
                     or (slot == "P" and hi == len(barY) - 1)):
                 violations.append("signal bar %s@%d (%s) reaches the "
                                   "power rail" % (net2, c, slot))
+    # half-column stripe exclusivity: two different nets' intervals in
+    # one half may not SHARE a level (the collinear bars short);
+    # level-adjacent intervals are the minimum-pitch grid and legal
+    # (the emission's quantized S1M1M1, non-overlap -- the astran13 bar
+    # pitch is exactly S1M1M1 + W1M1, rul:51/:64)
+    for c in range(width_cols):
+        seen = {}
+        for net2, lo, hi, slot in stripes(c):
+            for (plo, phi, pnet) in seen.get(slot, ()):
+                if (net2 != pnet and lo <= phi and plo <= hi):
+                    violations.append(
+                        "stripe %s@%d (%s) shares levels %d..%d with the "
+                        "stripe of %s" % (net2, c, slot,
+                                          max(lo, plo), min(hi, phi), pnet))
+            seen.setdefault(slot, []).append((lo, hi, net2))
     for net, cols in gate.items():
         for c in cols:
             crossed = False

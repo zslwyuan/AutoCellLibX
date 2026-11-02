@@ -1236,11 +1236,14 @@ class _ElementRouter(object):
             return out
 
         def _try_extra(c, net, slo, shi, is_n, side):
-            """A second (or later) interval in a half-column: spaced
-            >=1 free track from every existing interval (the C++'s
-            S1M1M1 quantized), or an honest fail."""
+            """A second (or later) interval in a half-column: it may not
+            SHARE a level with any existing interval (the collinear bars
+            would short), or an honest fail.  Level-ADJACENT intervals
+            are legal -- the astran13 bar pitch IS the minimum-pitch
+            construct (S1M1M1 + W1M1, rul:51/:64), exactly the rule the
+            adjacent-track segments and the M2 spans already follow."""
             for (plo, phi) in _half_intervals(c, is_n):
-                if not (shi + 2 <= plo or phi + 2 <= slo):
+                if not (shi < plo or phi < slo):
                     for t in side:
                         self._collisions.add(m1_tab[t][c])
                     return False
