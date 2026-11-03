@@ -250,11 +250,11 @@ def test_mux2x1_closes_on_the_ported_router(flow_dir, tmp_path):
     multi-interval half-column vocabulary is beyond the SMT encoding;
     the ported ASTRAN router walks it natively -- GraphRouter has no
     stripe concept at all, graphrouter.h:33-44).  The closure rides
-    route_cell_ported phase 2 end to end, and its two vocabulary pieces
-    -- the S gate-5 half-slot stub (the C++'s centre-anchored contact,
-    which the full-slot form would short) and the node vias onto the
-    col-6 bars -- are exactly what the round-565df1e..b04afae chain
-    built them for."""
+    route_cell_ported end to end.  Since the multi-interval relaxations
+    (AUDIT 5.73: the non-overlap spacing; the same-net extra interval;
+    the per-rail access coverage) the pure C++ configuration suffices
+    -- PHASE 1, no metal2 at all: the half-slot stubs carry S's three
+    gate contacts and no node vias are needed."""
     (nl, placements, width, blocks, entry,
      ordering_p, ordering_n, leg_widths, offsets) = \
         _seed_setup(MUX2X1, flow_dir)
@@ -262,18 +262,15 @@ def test_mux2x1_closes_on_the_ported_router(flow_dir, tmp_path):
     route = route_cell_ported(nl, placements, width, blocks=blocks,
                               tracks="astran13")
     assert route.ok, route.fail_note
-    assert route.router_phase == 2
-    # the half-slot stubs: (8, 5) carries S's gate-5 contact at the M1
-    # run's end; (9, 1) is the C++'s own contact on S@1's stripe (the
-    # M2 escape it fed was dead geometry, but the contact is real --
-    # the via-anchored form draws it now instead of dropping it)
+    assert route.router_phase == 1
+    # the half-slot stubs carry S's gate contacts: (5, 2) and (9, 1)
+    # are the C++'s own contacts on S@2/S@1's stripes, (8, 5) the
+    # gate-5 contact at the M1 run's end
     assert sorted(k for k, v in route.gate_stub.items() if v) == \
-        [(8, 5), (9, 1)]
+        [(5, 2), (8, 5), (9, 1)]
     assert route.hseg.get((8, 4)) == "S"      # the (8, 5) stub's anchor
-    # the a_2_10# wire drops onto its own col-6 bars through two node
-    # vias -- one at the M2 wire's end, one at the bar the C++ landed
-    # on inside the diffusion strip (the widened coverage)
-    assert (4, 6) in route.m2via and (12, 6) in route.m2via
+    assert not any(route.m2via.values())       # phase 1: no node vias
+    assert not route.extra_m2
     report = verify_cell(nl, placements, route, blocks=blocks,
                          tracks="astran13")
     assert report.ok(), report.violations
@@ -306,13 +303,14 @@ def test_mux2x1_closes_through_the_production_ladder(flow_dir):
     pool -- its trial runs the PORTED router on its own domain (the bar9
     grid router would misprice the capture at 42 conflicts and the pool
     would drop it, AUDIT 5.69) -- and rung 3 closes it verify-clean on
-    ASTRAN's own arrangement."""
+    ASTRAN's own arrangement (phase 1 since
+    the multi-interval relaxations, AUDIT 5.73)."""
     from bigcell_engine.engine import synth_cell
     nl = _load_cell(EXTRACTED_TABLE[MUX2X1]["source"], flow_dir)
     placement, route, meta = synth_cell(nl, exact_budget_s=20.0)
     assert meta["engine"] == "bigcell-full"
     assert meta["slot_emit"]["tracks"] == "astran13"
-    assert route.ok and route.router_phase == 2
+    assert route.ok and route.router_phase == 1
     report = verify_cell(nl, placement, route, blocks=meta["blocks"],
                          tracks="astran13")
     assert report.ok(), report.violations

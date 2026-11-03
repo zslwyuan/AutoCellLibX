@@ -1320,28 +1320,20 @@ class _ElementRouter(object):
                     runs.append((start, prev))
                 is_access = (net.name, c) in access_rail
                 if is_access:
-                    rails = access_rail.get((net.name, c), ())
-                    # the well-boundary track belongs to the P half here:
-                    # assigning it to both (route_grid's stripe-split
-                    # convention) merges an N access with a P-side
-                    # point one track above the boundary and fills the
-                    # gap through a foreign crossing; the emission's
-                    # own split still covers it in both stripes when
-                    # the run actually spans it
-                    need_n = {t for t in tracks
-                              if t < self.boundary_t}
-                    need_n.update(r for r in rails
-                                  if r < self.boundary_t)
-                    need_p = {t for t in tracks
-                              if t >= self.boundary_t}
-                    need_p.update(r for r in rails
-                                  if r >= self.boundary_t)
-                    runs = [r for r in runs
-                            if r[0] < self.boundary_t < r[1]]
-                    if need_n:
-                        runs.append((min(need_n), max(need_n)))
-                    if need_p:
-                        runs.append((min(need_p), max(need_p)))
+                    # the access demand is that each RAIL track is
+                    # covered by SOME interval of the net at this
+                    # column -- NOT one interval spanning every run:
+                    # the old span merge invented coverage over gaps
+                    # that hold other nets' contacts (NOR3X1's track
+                    # 10 was A's gate contact).  An uncovered rail
+                    # becomes its own single-track interval (the
+                    # emission's access rule allows it); the natural
+                    # runs stay as-is, and the boundary-crossing ones
+                    # are still split per side by the emission
+                    for rail in sorted(access_rail.get((net.name, c), ())):
+                        if not any(lo <= rail <= hi
+                                   for (lo, hi) in runs):
+                            runs.append((rail, rail))
                 elif dual_merge and len(runs) > 1:
                     n_side = [r for r in runs if r[1] <= self.boundary_t]
                     p_side = [r for r in runs if r[0] >= self.boundary_t]
@@ -1402,10 +1394,16 @@ class _ElementRouter(object):
                             slo = 0 if net.name in GND_NAMES else side[0] + 1
                             shi = side[-1] + 1
                             prev = owner_n[c]
-                            if prev is not None and prev != net.name:
+                            if prev is not None:
                                 # the C++ has no single-stripe rule --
-                                # a second net's interval is legal when
-                                # spaced >=1 free track (S1M1M1)
+                                # a SECOND interval in the half-column
+                                # (this net's own second run included)
+                                # is legal when it shares no level with
+                                # the existing one.  The old same-net
+                                # merge fused the gap between the runs
+                                # into drawn metal and died on whatever
+                                # sat inside it (NOR3X1's track 10 was
+                                # A's gate contact)
                                 if not _try_extra(c, net, slo, shi,
                                                   True, side):
                                     return self._fail(
@@ -1415,31 +1413,6 @@ class _ElementRouter(object):
                                         "interval" % (net.name, c))
                                 reachB_n[c] = reachB_n[c] or (
                                     shi == self.boundary_t + 1)
-                            elif prev == net.name:
-                                # the net's own second run at this
-                                # column MERGES into the one interval
-                                # (the vocabulary's single stripe per
-                                # half-column) -- the fused gap draws
-                                # metal, so every added track must be
-                                # free (the fill's own rule)
-                                for t in range(min(lo_n[c], slo),
-                                               max(hi_n[c], shi) + 1):
-                                    if (t, c) in m1pts:
-                                        continue
-                                    if not met_free(t, c, net):
-                                        users = m1_users[(t, c)] \
-                                            - {net.index}
-                                        self._collisions.add(
-                                            m1_tab[t][c])
-                                        return self._fail(
-                                            "vocabulary: %s's stripe "
-                                            "merge at column %d track %d "
-                                            "collides with %s"
-                                            % (net.name, c, t,
-                                               self._net_name(
-                                                   max(users))))
-                                lo_n[c] = min(lo_n[c], slo)
-                                hi_n[c] = max(hi_n[c], shi)
                             else:
                                 owner_n[c], lo_n[c], hi_n[c] = \
                                     net.name, slo, shi
@@ -1449,7 +1422,10 @@ class _ElementRouter(object):
                             shi = self.bar_levels - 1 \
                                 if net.name in VCC_NAMES else side[-1] + 1
                             prev = owner_p[c]
-                            if prev is not None and prev != net.name:
+                            if prev is not None:
+                                # the same-net second run also takes the
+                                # extra-interval form (no gap fusing --
+                                # see the N branch above)
                                 if not _try_extra(c, net, slo, shi,
                                                   False, side):
                                     return self._fail(
@@ -1459,25 +1435,6 @@ class _ElementRouter(object):
                                         "interval" % (net.name, c))
                                 reachB_p[c] = reachB_p[c] or (
                                     slo == self.boundary_t + 1)
-                            elif prev == net.name:
-                                for t in range(min(lo_p[c], slo),
-                                               max(hi_p[c], shi) + 1):
-                                    if (t, c) in m1pts:
-                                        continue
-                                    if not met_free(t, c, net):
-                                        users = m1_users[(t, c)] \
-                                            - {net.index}
-                                        self._collisions.add(
-                                            m1_tab[t][c])
-                                        return self._fail(
-                                            "vocabulary: %s's stripe "
-                                            "merge at column %d track %d "
-                                            "collides with %s"
-                                            % (net.name, c, t,
-                                               self._net_name(
-                                                   max(users))))
-                                lo_p[c] = min(lo_p[c], slo)
-                                hi_p[c] = max(hi_p[c], shi)
                             else:
                                 owner_p[c], lo_p[c], hi_p[c] = \
                                     net.name, slo, shi
