@@ -2403,3 +2403,26 @@ overlap: M1 vs M1"：astran13 试布度量的是路由器冲突，排布的布�
 
 **词汇收敛形态**（多区间三轮后的不变量）：区间唯一规则=不重叠（同列
 共线短路）；覆盖只画 C++ 占用过的轨；同网/异网第二区间同规。
+
+## §5.75 电源网不是扩散内部节点：NOR3X1 的全量性 bug（2026-11-04）
+
+**NOR3X1 的布局级失败（"diffusion overlap: M1 vs M1"）回溯到基础分解的
+TOTALITY bug**：块视图里 M0/M1 各出现**两次**——同一个对管既发了
+series 块又发了 parallel 块。
+
+**机制**：`find_series_chains` 的纯内部节点测试排除子电路端口——但
+无端口 deck（测试的 `.subckt X x` 约定）下 VCC/GND 不在
+`netlist.external`，而 NOR3X1 是第一个 VCC **恰好只有 2 个器件端子**
+的 cell（M0/M1 上拉对；此前所有 cell 的电源网端子更多）。于是 VCC 通
+过内部节点测试，M0-M1 经电源轨串成链，同一对又并联成组——两个发射
+路径无互斥，都发了。
+
+**修复**：电源网按定义就是轨，无论端口表怎么说。三处内部节点守卫
+（`smt_engine.netlist.find_series_chains`、`smt_cell_placer` 镜像、
+`netlist_ext._pure_internal_nodes`）一律排除 `POWER_NET_NAMES`。
+
+**结果**：NOR3X1 分解为 4 个干净的 parallel 块（逐成员全量）；纯 SA
+宽度 9→6 列；布局级违例消失，cell 坐到词汇前沿（a_2_64#，多区系
+——与 XOR2X1 的 a_2_6# 同类）。**真实端口流程从未见过此 bug**
+（VCC/GND 是端口、守卫本就生效）——x-端口约定暴露了它，修复两者兼
+顾。152 测试绿；三捕获回归干净。
