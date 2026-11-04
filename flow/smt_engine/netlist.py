@@ -24,6 +24,11 @@ from smt_cell_placer import Device, parse_spice_subckt
 _SERIES_KIND = "series"
 _PARALLEL_KIND = "parallel"
 
+#: supply net names -- the rails by definition, never diffusion-internal
+#: candidates (whatever the subckt port list says; see
+#: find_series_chains' guard)
+POWER_NET_NAMES = ("VCC", "VDD", "GND", "VSS")
+
 
 class NetTerminal(object):
     """One terminal of a device on a net: 's'|'d'|'g'."""
@@ -85,10 +90,15 @@ def find_series_chains(netlist):
     # stripe separates the two diffusion regions (COMPLEX0's
     # cl2#a_2_54# is both cl2#0's source net, cl2#3's drain net and
     # cl2#2's gate net: sharing it as a chain would force three devices
-    # to abut under one poly, which is not a real layout).
+    # to abut under one poly, which is not a real layout).  A SUPPLY
+    # net is never internal either -- it is the rail by definition,
+    # whatever the subckt's port list says (a port-less deck, or one
+    # that names only signal ports, still wires VCC/GND to the rails;
+    # NOR3X1's two-terminal VCC as a chain node turned the M0/M1 pair
+    # into BOTH a series and a parallel block -- a totality bug).
     internal = set()
     for node, terms in node_terms.items():
-        if (node in netlist.external):
+        if (node in netlist.external or node in POWER_NET_NAMES):
             continue
         gateCount = sum(1 for dev in netlist.devices if dev.gate == node)
         if (len(terms) == 2 and gateCount == 0

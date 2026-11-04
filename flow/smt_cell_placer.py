@@ -156,7 +156,12 @@ def find_series_chains(netlist):
         node_terms[dev.drain].append((dev, "d"))
     internal = set()
     for node, terms in node_terms.items():
-        if (node in netlist.external_nodes):
+        # a SUPPLY net is never an internal node -- it is the rail by
+        # definition, whatever the port list says (a port-less deck's
+        # two-terminal VCC would otherwise chain its pair AND parallel-
+        # group them: smt_engine.netlist's totality bug, same fix)
+        if (node in netlist.external_nodes
+                or node in ("VCC", "VDD", "GND", "VSS")):
             continue
         gate_count = sum(1 for dev in netlist.devices if dev.gate == node)
         if (len(terms) == 2 and gate_count == 0

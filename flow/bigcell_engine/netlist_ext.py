@@ -314,8 +314,13 @@ def _pure_internal_nodes(netlist, max_degree=None):
         gates.add(dev.gate)
     couplers = {}
     all_pure = set()
+    from smt_engine.netlist import POWER_NET_NAMES
     for net in sorted(terms):
-        if net in netlist.external or net in gates:
+        # a SUPPLY net is never a pure internal node (it is the rail
+        # whatever the port list says -- find_series_chains' rule, the
+        # same totality bug fixed there)
+        if (net in netlist.external or net in gates
+                or net in POWER_NET_NAMES):
             continue
         n = len(terms[net])
         if n >= 3 and (max_degree is None or n <= max_degree):
