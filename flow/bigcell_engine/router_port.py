@@ -1502,6 +1502,16 @@ class _ElementRouter(object):
                         "vocabulary: M1 segment slot (%d, %d) contested "
                         "between %s and %s" % (t, c, hseg[(t, c)],
                                                net.name))
+                if st == "skip":
+                    # the C++ wire ran under a foreign poly jump or M2
+                    # slot (different layers, the nodes coexist); the
+                    # hseg key is single-occupancy, so the wire cannot
+                    # be drawn here -- bump OUR M1 node so the next
+                    # routeNets round trades the wire away (a re-route
+                    # over the same ground may take the M2 form, which
+                    # extra_m2 CAN express over a poly slot)
+                    self._collisions.add(self._met(t, c))
+                    continue
                 if st == "ok":
                     own_slots.add((t, c))
             # the gate-contact crossings (the used contact arcs): the
