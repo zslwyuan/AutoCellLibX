@@ -2461,3 +2461,19 @@ SEED_TABLE 捕获回归干净；104 测试绿。XOR2X1 的 a_2_6#（poly field
 **结果**：XOR2X1 零捕获 verify 干净——**第七个纯 Python 闭合**：
 CLKBUF1、MUX2X1、XNOR2X1、DFFPOSX1、COMPLEX11、NOR3X1、XOR2X1。四个
 捕获回归干净；104 测试绿。DFFNEGX1 的门 Q@10 守门。
+
+## §5.78 via 锚可以是 M2 竖跨度；访问覆盖看见 extra 条带（2026-11-06）
+
+**DFFNEGX1 门 Q@10 无穿越形式**：其接触 stub 的锚是 col-10 的 **M2V 竖
+跨度**（轨 6..7），不是水平 M2 段——`stub_serves`/`stub_anchored` 只认
+水平 M2 段，把跨度锚的 stub 在迟到校验里删掉。两个锚判定都补上跨度成
+员（"an m2v span member OR an M2 segment endpoint"——route_model 自己
+的定义）。
+
+**访问覆盖校验漏检 extra 条带**：`access a_23_6#@4 loses its rail track 9`
+只因查列的 OWNER 条带——a_23_6# 的 P 条带被另一网先占 owner，落进
+extra_stripes。校验现在也接受覆盖 rail 的 extra 区间。
+
+**结果**：两个具名门关闭，DFFNEGX1 推进到多区系网前沿（a_2_6#、
+a_66_6# 未连通——与 XOR2X1/NOR3X1 刚闭合的同类）。XOR2X1/NOR3X1/四
+捕获回归干净；83 测试绿。
