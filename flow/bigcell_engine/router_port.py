@@ -1107,6 +1107,12 @@ class _ElementRouter(object):
         # merge segment ends at the slot edge, half a pitch clear)
         m1_users = {}
         poly_pairs = {}
+        # (t, c) -> {net index} of classified contact arcs: the via-side
+        # stripe extension ignores these points (a contact square sits
+        # at the slot CENTRE x=c+0.5, never in the via's x=c band, and
+        # a dropped stub draws nothing) -- every OTHER met_free check
+        # keeps the full claim (a real short is otherwise unguarded)
+        contact_claims = {}
         for net in self.nets + self.power:
             (m1_h, m1_v, _m2_h, _m2_v, _via, pol_h, contact) = \
                 used[net.index]
@@ -1116,8 +1122,11 @@ class _ElementRouter(object):
             for (t, c) in m1_v:
                 m1_users.setdefault((t - 1, c), set()).add(net.index)
                 m1_users.setdefault((t, c), set()).add(net.index)
+            # the contact squares are occupancy for the met_free guards
+            # (their M1 stubs mark again through emit_seg when emitted)
             for (t, c) in contact:
                 m1_users.setdefault((t, c), set()).add(net.index)
+                contact_claims.setdefault((t, c), set()).add(net.index)
             if net in self.power:
                 # the pre-built power stripes' claimed points are drawn
                 # occupancy: a fill over one would short the rail stub
@@ -1758,12 +1767,34 @@ class _ElementRouter(object):
                     ok_ext = (
                         own == net.name
                         and (nlo >= 1 if is_n else nhi <= self.bar_levels - 2)
-                        and all(met_free(tt, c, net)
-                                for tt in range(nlo - 1, nhi))
+                        # the via-side extension ignores contact-CLAIMED
+                        # points ONLY when no stub was emitted at them:
+                        # a dropped stub draws nothing (a contact square
+                        # sits at the slot centre, never in the via's
+                        # band), but an EMITTED stub is real M1 and must
+                        # veto the extension (a_2_6#'s extension covered
+                        # track 10 where A's just-emitted stub sits)
+                        and all(
+                            not (users := m1_users.get((tt, c)))
+                            or not (users - {net.index}
+                                    - (set() if gate_stub.get((tt, c))
+                                       else contact_claims.get((tt, c),
+                                                              set())))
+                            for tt in range(nlo - 1, nhi))
                         and all(shi2 + 2 <= nlo or nhi + 2 <= slo2
                                 for (slo2, shi2) in _half_intervals(c, is_n)
                                 if (slo2, shi2) != (lo, hi)))
                     if not ok_ext:
+                        # the extension is contested -- record the
+                        # conflicted points so the next routeNets round
+                        # trades the FOREIGN wire away (the m1 skip's
+                        # silent-drop lesson: without this the feedback
+                        # never learns that B's segment at (8,6) must
+                        # move for a_2_6#'s extension to land)
+                        for tt in range(nlo - 1, nhi):
+                            users = m1_users.get((tt, c))
+                            if users and users - {net.index}:
+                                self._collisions.add(m1_tab[tt][c])
                         continue
                     if is_n:
                         lo_n[c], hi_n[c] = nlo, nhi
