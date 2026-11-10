@@ -224,6 +224,13 @@ class RouteResult(object):
                 if (self.hseg.get((t, cs)) == net
                         and self.m2.get((t, cs))):
                     return True
+            # the via-anchored form's M2 side can also be an m2v SPAN
+            # at this column covering the track -- the via lands on the
+            # span (DFFNEGX1's gate Q@10: its contact stub's anchor is
+            # the col-10 span (6..7), not a horizontal M2 segment)
+            for (cc, t1, t2), n2 in self.m2v.items():
+                if (cc == c and n2 == net and t1 <= t <= t2):
+                    return True
         return False
 
     def stripes(self, c):

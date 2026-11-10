@@ -1207,6 +1207,13 @@ class _ElementRouter(object):
                 for cs in (c - 1, c):
                     if (hseg.get((t, cs)) == name and m2flag.get((t, cs))):
                         return True
+                # the via-anchored form's M2 side can be an m2v SPAN at
+                # this column covering the track (DFFNEGX1's Q@10:
+                # its contact stub anchors on the col-10 span, not a
+                # horizontal M2 segment)
+                for (cc, t1, t2), n2 in m2v.items():
+                    if (cc == c and n2 == name and t1 <= t <= t2):
+                        return True
             return False
 
         hseg = {}
@@ -2241,6 +2248,10 @@ class _ElementRouter(object):
                     covered = True
                 if owner_p[c] == name and lo_p[c] <= rail + 1 <= hi_p[c]:
                     covered = True
+                if not covered and any(
+                        ec == c and en == name and elo <= rail + 1 <= ehi
+                        for (ec, en, elo, ehi, _es) in extra_stripes):
+                    covered = True      # an extra interval covers it too
                 if not covered:
                     return self._fail(
                         "vocabulary: access %s@%d loses its rail track %d"
