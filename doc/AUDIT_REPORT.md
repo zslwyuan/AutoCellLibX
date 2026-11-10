@@ -2443,3 +2443,21 @@ routeNets 把线换走——重路由取 M2 形式过 poly 槽，**extra_m2 从�
 合**：CLKBUF1、MUX2X1、XNOR2X1、DFFPOSX1、COMPLEX11、NOR3X1。四个
 SEED_TABLE 捕获回归干净；104 测试绿。XOR2X1 的 a_2_6#（poly field
 变体）与 DFFNEGX1 的门 Q@10 守门。
+
+## §5.77 扩展记录冲突：XOR2X1 闭合——第七个零捕获（2026-11-05）
+
+**a_2_6# 需要 via 侧条带扩展（col 8 的孤立 N 条带），两处独立缺陷链**：
+
+1. **contact-claim 的占用标记只在真正发出 stub 时为真**。扩展的范围检查
+   起初学会忽略 contact-claim 点（接触方块在槽中心 x=c+0.5，永远不在
+   via 的 x=c 带内）——但排除法**连真 stub 也忽略了**：a_2_6# 的扩展盖
+   住轨 10，A 刚发出的 stub 就在那里（真实的 M1-M1 重叠，verify 的
+   owner 检查报成 "a_2_6# vs A"）。现在排除只在该点**没有发出 stub**
+   时生效；发出的 stub 一律否决。
+2. **扩展拒绝路径不记碰撞**——反馈永远不知道 B 在 (8,6) 的 M1 必须让
+   位（与 5.69 的 m1 skip 同款的静默丢落课）。冲突点现在记入碰撞，下
+   一轮 routeNets 把外网 wire 换走，扩展落地。
+
+**结果**：XOR2X1 零捕获 verify 干净——**第七个纯 Python 闭合**：
+CLKBUF1、MUX2X1、XNOR2X1、DFFPOSX1、COMPLEX11、NOR3X1、XOR2X1。四个
+捕获回归干净；104 测试绿。DFFNEGX1 的门 Q@10 守门。
